@@ -9,12 +9,14 @@ const ESTADOS_NOTA_OBLIGATORIA = new Set<Estado>([
   "ABANDONO",
   "ALTA_MEDICA",
   "EGRESO_VOLUNTARIO",
+  "DERIVADO",
 ]);
 
 const ESTADOS_EGRESO = new Set<Estado>([
   "ABANDONO",
   "ALTA_MEDICA",
   "EGRESO_VOLUNTARIO",
+  "DERIVADO",
 ]);
 
 const ESTADO_DESCRIPTIONS: Partial<Record<Estado, string>> = {
@@ -25,6 +27,7 @@ const ESTADO_DESCRIPTIONS: Partial<Record<Estado, string>> = {
   ALTA_MEDICA: "Alta médica dada por el profesional. Requiere notas.",
   EGRESO_VOLUNTARIO:
     "El paciente decidió terminar por voluntad propia. Requiere notas.",
+  DERIVADO: "Cierre por derivación a otro dispositivo. Requiere notas.",
 };
 
 interface Props {
@@ -47,31 +50,39 @@ export default function CambiarEstadoModal({
 
   const estadosPermitidos = useMemo(() => {
     if (rol === "ADMINISTRATIVO") {
-      return ESTADOS_EGRESO.has(paciente.estado)
-        ? (["INGRESADO", "RESCATE"] as Estado[])
-        : (["INGRESADO", "RESCATE"] as Estado[]);
+      return ["INGRESADO", "RESCATE"] as Estado[];
     }
 
     if (ESTADOS_EGRESO.has(paciente.estado)) {
       return ["PENDIENTE", "INGRESADO", "RESCATE"] as Estado[];
     }
 
-    return [
-      "PENDIENTE",
-      "INGRESADO",
-      "RESCATE",
-      "ABANDONO",
-      "ALTA_MEDICA",
-      "EGRESO_VOLUNTARIO",
-    ] as Estado[];
+    if (paciente.estado === "PENDIENTE") {
+      return ["INGRESADO", "RESCATE"] as Estado[];
+    }
+
+    if (paciente.estado === "RESCATE") {
+      return ["INGRESADO", "PENDIENTE"] as Estado[];
+    }
+
+    if (paciente.estado === "INGRESADO") {
+      return [
+        "ALTA_MEDICA",
+        "EGRESO_VOLUNTARIO",
+        "DERIVADO",
+        "ABANDONO",
+      ] as Estado[];
+    }
+
+    return [] as Estado[];
   }, [paciente.estado, rol]);
 
   const notaObligatoria = estadoNuevo
-    ? ESTADOS_NOTA_OBLIGATORIA.has(estadoNuevo)
+    ? ESTADOS_NOTA_OBLIGATORIA.has(estadoNuevo) || ESTADOS_EGRESO.has(paciente.estado)
     : false;
   const esEgreso =
     estadoNuevo &&
-    ["ABANDONO", "ALTA_MEDICA", "EGRESO_VOLUNTARIO"].includes(estadoNuevo);
+    ["ABANDONO", "ALTA_MEDICA", "EGRESO_VOLUNTARIO", "DERIVADO"].includes(estadoNuevo);
 
   async function handleConfirm() {
     if (!estadoNuevo) {

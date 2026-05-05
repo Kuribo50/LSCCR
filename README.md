@@ -2,6 +2,16 @@
 
 Sistema web para gestion de lista de espera, pacientes, calendario de citas, llamados, importaciones mensuales y usuarios.
 
+## Alcance del sistema
+
+ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de lista de espera, contactabilidad, asignacion, seguimiento y reportes del CCR. No reemplaza Trak ni la ficha clinica institucional.
+
+- `RESCATE`: estado previo al ingreso para pacientes con contactabilidad fallida, por ejemplo dos llamados sin respuesta antes de confirmar asistencia.
+- `ABANDONO`: cierre posterior al ingreso cuando el equipo evalua que el paciente abandono el proceso. No corresponde usarlo desde `PENDIENTE` ni desde `RESCATE`.
+- Historial de llamados: registro operativo de cada contacto telefonico, separado del contador de intentos de contacto.
+- Inasistencias: registro de ausencias a sesiones de pacientes `INGRESADOS`; dos inasistencias no justificadas generan alerta para evaluar `ABANDONO`, sin cambiar el estado automaticamente.
+- Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, llamados e inasistencias.
+
 ## Estructura
 
 - `backend/`: API Django + Django REST Framework.

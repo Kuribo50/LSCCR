@@ -51,8 +51,11 @@ class Paciente(models.Model):
     estado = models.CharField(
         max_length=20, choices=Estado.choices, default=Estado.PENDIENTE, db_index=True
     )
-    fecha_cambio_estado = models.DateTimeField(auto_now_add=True)
+    fecha_cambio_estado = models.DateTimeField(null=True, blank=True)
     n_intentos_contacto = models.PositiveIntegerField(default=0)
+    n_inasistencias = models.PositiveIntegerField(default=0)
+    fecha_ultima_inasistencia = models.DateField(null=True, blank=True)
+    motivo_ultima_inasistencia = models.TextField(blank=True, default="")
     n_meses_espera = models.PositiveIntegerField(default=1, help_text="Veces que ha aparecido en listas mensuales")
     observaciones = models.TextField(blank=True)
     # Datos de contacto y seguimiento
@@ -115,6 +118,54 @@ class MovimientoPaciente(models.Model):
 
     def __str__(self):
         return f"{self.paciente_id}: {self.estado_anterior} -> {self.estado_nuevo}"
+
+
+class LlamadoPaciente(models.Model):
+    class Resultado(models.TextChoices):
+        CONTESTA_CONFIRMADO = "CONTESTA_CONFIRMADO", "Contesta y confirma"
+        NO_CONTESTA = "NO_CONTESTA", "No contesta"
+        NUMERO_EQUIVOCADO = "NUMERO_EQUIVOCADO", "Numero equivocado"
+        REAGENDAR_LLAMADO = "REAGENDAR_LLAMADO", "Reagendar llamado"
+        RECHAZA_ATENCION = "RECHAZA_ATENCION", "Rechaza atencion"
+        YA_RESUELTO = "YA_RESUELTO", "Ya resuelto"
+        OTRO = "OTRO", "Otro"
+
+    paciente = models.ForeignKey(
+        Paciente, related_name="llamados", on_delete=models.CASCADE
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    fecha = models.DateTimeField(auto_now_add=True)
+    telefono_usado = models.CharField(max_length=30, blank=True, default="")
+    resultado = models.CharField(max_length=30, choices=Resultado.choices)
+    notas = models.TextField(blank=True, default="")
+    proxima_accion = models.CharField(max_length=160, blank=True, default="")
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self):
+        return f"{self.paciente_id}: {self.resultado}"
+
+
+class InasistenciaPaciente(models.Model):
+    paciente = models.ForeignKey(
+        Paciente, related_name="inasistencias", on_delete=models.CASCADE
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    fecha = models.DateField()
+    justificada = models.BooleanField(default=False)
+    motivo = models.TextField(blank=True, default="")
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self):
+        return f"{self.paciente_id}: {self.fecha}"
 
 
 class DiagnosticoCatalogo(models.Model):

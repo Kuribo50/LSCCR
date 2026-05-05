@@ -75,7 +75,7 @@ export default function PacienteTable({
                   Categoría
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
-                  Kine
+                  Responsable
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Estado

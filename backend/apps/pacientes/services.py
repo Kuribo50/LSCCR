@@ -1,13 +1,28 @@
 from .models import Paciente
 
 
+ESTADOS_FINALES = {
+    Paciente.Estado.ALTA_MEDICA,
+    Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.DERIVADO,
+    Paciente.Estado.ABANDONO,
+}
+
+ESTADOS_REQUIEREN_NOTA = {
+    Paciente.Estado.ALTA_MEDICA,
+    Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.DERIVADO,
+    Paciente.Estado.ABANDONO,
+}
+
 TRANSICIONES_VALIDAS: dict[str, set[str]] = {
     Paciente.Estado.PENDIENTE: {Paciente.Estado.INGRESADO, Paciente.Estado.RESCATE},
-    Paciente.Estado.RESCATE: {Paciente.Estado.INGRESADO},
+    Paciente.Estado.RESCATE: {Paciente.Estado.INGRESADO, Paciente.Estado.PENDIENTE},
     Paciente.Estado.INGRESADO: {
         Paciente.Estado.ABANDONO,
         Paciente.Estado.ALTA_MEDICA,
         Paciente.Estado.EGRESO_VOLUNTARIO,
+        Paciente.Estado.DERIVADO,
     },
     Paciente.Estado.ABANDONO: {
         Paciente.Estado.PENDIENTE,
@@ -40,6 +55,10 @@ def validar_transicion_estado(estado_actual: str, estado_nuevo: str) -> bool:
         return True
     permitidos = TRANSICIONES_VALIDAS.get(estado_actual, set())
     return estado_nuevo in permitidos
+
+
+def estado_requiere_nota(estado: str) -> bool:
+    return estado in ESTADOS_REQUIEREN_NOTA
 
 
 def categoria_por_diagnostico(diagnostico: str, edad: int) -> str:

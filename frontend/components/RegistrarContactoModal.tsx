@@ -16,7 +16,7 @@ function fechaHoraLocalDefault() {
 interface Props {
   paciente: Paciente;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (paciente?: Paciente) => void;
 }
 
 export default function RegistrarContactoModal({
@@ -27,6 +27,7 @@ export default function RegistrarContactoModal({
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   
   const [showScheduler, setShowScheduler] = useState(false);
   const [fechaHora, setFechaHora] = useState(fechaHoraLocalDefault());
@@ -39,21 +40,30 @@ export default function RegistrarContactoModal({
 
     setLoading(true);
     setError("");
+    setSuccess("");
     try {
-      await api.post(`/pacientes/${paciente.id}/registrar-llamado/`, {
+      let actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
         contesto,
         notas,
+        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
       });
 
       if (contesto && fechaHora) {
         const isoValue = new Date(fechaHora).toISOString();
-        await api.post(`/pacientes/${paciente.id}/programar-atencion/`, {
+        actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/programar-atencion/`, {
           fecha_hora: isoValue,
         });
       }
 
-      onSuccess();
-      onClose();
+      const mensaje =
+        actualizado.estado === "INGRESADO"
+          ? "Contacto confirmado. Paciente pasa a INGRESADO."
+          : actualizado.estado === "RESCATE"
+            ? "Segundo intento fallido. Paciente pasa a RESCATE."
+            : "Llamado registrado.";
+      setSuccess(mensaje);
+      onSuccess(actualizado);
+      window.setTimeout(onClose, 900);
     } catch (e: unknown) {
       const msg =
         e && typeof e === "object" && "detail" in e
@@ -101,6 +111,11 @@ export default function RegistrarContactoModal({
               {error}
             </div>
           )}
+          {success && (
+            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+              {success}
+            </div>
+          )}
 
           <div className="mb-5">
             <h3 className="font-semibold text-gray-900 dark:text-white">{paciente.nombre}</h3>
@@ -108,14 +123,20 @@ export default function RegistrarContactoModal({
               RUT: {formatearRut(paciente.rut)} • Teléfono:{" "}
               <span className="font-medium text-gray-700 dark:text-[#ecf5f8]">{paciente.telefono || "No especificado"}</span>
             </p>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
+              Recados:{" "}
+              <span className="font-medium text-gray-700 dark:text-[#ecf5f8]">
+                {paciente.telefono_recados || "No especificado"}
+              </span>
+            </p>
             {intentoUno && (
               <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">
-                ⚠️ 1 intento previo registrado
+                1 intento previo registrado
               </p>
             )}
             {intentoDosOMas && (
               <p className="mt-1 text-xs font-semibold text-red-600 dark:text-red-300">
-                🚨 Próximo intento fallido pasará a Rescate
+                El próximo intento fallido mantiene al paciente en Rescate
               </p>
             )}
           </div>

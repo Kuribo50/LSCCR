@@ -45,11 +45,18 @@ export interface Paciente {
   kine_asignado: number | null;
   kine_asignado_nombre: string | null;
   estado: Estado;
-  fecha_cambio_estado: string;
+  fecha_cambio_estado: string | null;
   n_intentos_contacto: number;
+  n_inasistencias: number;
+  fecha_ultima_inasistencia: string | null;
+  motivo_ultima_inasistencia: string;
   n_meses_espera: number;
   observaciones: string;
   dias_en_lista: number;
+  llamados_count?: number;
+  inasistencias_count?: number;
+  ultimo_llamado?: LlamadoPaciente | null;
+  ultima_inasistencia?: InasistenciaPaciente | null;
   // Contacto y seguimiento
   fecha_nacimiento: string | null;
   telefono: string;
@@ -71,6 +78,46 @@ export interface MovimientoPaciente {
   estado_nuevo: string;
   fecha: string;
   notas: string;
+}
+
+export type ResultadoLlamado =
+  | "CONTESTA_CONFIRMADO"
+  | "NO_CONTESTA"
+  | "NUMERO_EQUIVOCADO"
+  | "REAGENDAR_LLAMADO"
+  | "RECHAZA_ATENCION"
+  | "YA_RESUELTO"
+  | "OTRO";
+
+export interface LlamadoPaciente {
+  id: number;
+  paciente: number;
+  usuario: number | null;
+  usuario_nombre: string | null;
+  fecha: string;
+  telefono_usado: string;
+  resultado: ResultadoLlamado;
+  resultado_label: string;
+  notas: string;
+  proxima_accion: string;
+}
+
+export interface InasistenciaPaciente {
+  id: number;
+  paciente: number;
+  usuario: number | null;
+  usuario_nombre: string | null;
+  fecha: string;
+  justificada: boolean;
+  motivo: string;
+  creado_en: string;
+}
+
+export interface HistorialCompletoPaciente {
+  paciente: Paciente;
+  movimientos: MovimientoPaciente[];
+  llamados: LlamadoPaciente[];
+  inasistencias: InasistenciaPaciente[];
 }
 
 export interface ResumenReporte {

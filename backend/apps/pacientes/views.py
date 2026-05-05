@@ -1,5 +1,6 @@
 from datetime import date, datetime
 
+from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -8,7 +9,7 @@ from rest_framework.response import Response
 
 from apps.usuarios.models import Usuario
 
-from .models import MovimientoPaciente, Paciente
+from .models import InasistenciaPaciente, LlamadoPaciente, MovimientoPaciente, Paciente
 from .permissions import (
     PuedeAsignarPaciente,
     PuedeCambiarEstado,
@@ -17,13 +18,22 @@ from .permissions import (
 )
 from .serializers import (
     CambiarEstadoSerializer,
+    InasistenciaPacienteSerializer,
+    LlamadoPacienteSerializer,
     MovimientoPacienteSerializer,
     PacienteCreateSerializer,
     PacienteSerializer,
     ProgramarAtencionSerializer,
+    RegistrarInasistenciaSerializer,
     RegistrarLlamadoSerializer,
 )
-from .services import categoria_por_diagnostico, prioridad_normalizada, validar_transicion_estado
+from .services import (
+    ESTADOS_FINALES,
+    categoria_por_diagnostico,
+    estado_requiere_nota,
+    prioridad_normalizada,
+    validar_transicion_estado,
+)
 
 
 ORDEN_PRIORIDAD = Case(
@@ -37,7 +47,11 @@ ORDEN_PRIORIDAD = Case(
 
 
 class PacienteViewSet(viewsets.ModelViewSet):
-    queryset = Paciente.objects.select_related("kine_asignado").all()
+    queryset = (
+        Paciente.objects.select_related("kine_asignado")
+        .prefetch_related("llamados", "inasistencias")
+        .all()
+    )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -186,12 +200,29 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 {"detail": f"Transición inválida: {paciente.estado} -> {estado_nuevo}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if estado_nuevo == Paciente.Estado.ABANDONO and paciente.estado != Paciente.Estado.INGRESADO:
+            return Response(
+                {"detail": "ABANDONO solo puede registrarse desde INGRESADO."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if (estado_requiere_nota(estado_nuevo) or paciente.estado in ESTADOS_FINALES) and not notas:
+            return Response(
+                {"detail": "Este cambio de estado requiere notas obligatorias."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         paciente._movimiento_usuario = request.user
         paciente._movimiento_notas = notas
         paciente.estado = estado_nuevo
         paciente.fecha_cambio_estado = timezone.now()
-        paciente.save(update_fields=["estado", "fecha_cambio_estado", "actualizado_en"])
+        campos = ["estado", "fecha_cambio_estado", "actualizado_en"]
+        if estado_nuevo == Paciente.Estado.INGRESADO and paciente.fecha_ingreso is None:
+            paciente.fecha_ingreso = timezone.localdate()
+            campos.append("fecha_ingreso")
+        if estado_nuevo in ESTADOS_FINALES and paciente.fecha_egreso is None:
+            paciente.fecha_egreso = timezone.localdate()
+            campos.append("fecha_egreso")
+        paciente.save(update_fields=campos)
         return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
 
     @action(
@@ -218,22 +249,42 @@ class PacienteViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         contesto = serializer.validated_data["contesto"]
         notas = serializer.validated_data["notas"]
+        telefono_usado = serializer.validated_data.get("telefono_usado", "")
+        proxima_accion = serializer.validated_data.get("proxima_accion", "")
 
-        paciente._movimiento_usuario = request.user
-        paciente._movimiento_notas = notas
+        with transaction.atomic():
+            LlamadoPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                telefono_usado=telefono_usado or paciente.telefono,
+                resultado=(
+                    LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO
+                    if contesto
+                    else LlamadoPaciente.Resultado.NO_CONTESTA
+                ),
+                notas=notas,
+                proxima_accion=proxima_accion,
+            )
 
-        if contesto:
-            paciente.estado = Paciente.Estado.INGRESADO
-        else:
-            paciente.n_intentos_contacto += 1
-            if paciente.n_intentos_contacto >= 2:
-                paciente.estado = Paciente.Estado.RESCATE
+            paciente._movimiento_usuario = request.user
+            paciente._movimiento_notas = notas
 
-        campos = ["n_intentos_contacto", "actualizado_en"]
-        if contesto or paciente.n_intentos_contacto >= 2:
-            paciente.fecha_cambio_estado = timezone.now()
-            campos.extend(["estado", "fecha_cambio_estado"])
-        paciente.save(update_fields=campos)
+            if contesto:
+                paciente.estado = Paciente.Estado.INGRESADO
+                paciente.fecha_cambio_estado = timezone.now()
+                campos = ["estado", "fecha_cambio_estado", "actualizado_en"]
+                if paciente.fecha_ingreso is None:
+                    paciente.fecha_ingreso = timezone.localdate()
+                    campos.append("fecha_ingreso")
+            else:
+                paciente.n_intentos_contacto += 1
+                campos = ["n_intentos_contacto", "actualizado_en"]
+                if paciente.n_intentos_contacto >= 2:
+                    paciente.estado = Paciente.Estado.RESCATE
+                    paciente.fecha_cambio_estado = timezone.now()
+                    campos.extend(["estado", "fecha_cambio_estado"])
+
+            paciente.save(update_fields=campos)
 
         return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
 
@@ -242,6 +293,75 @@ class PacienteViewSet(viewsets.ModelViewSet):
         paciente = self.get_object()
         movimientos = MovimientoPaciente.objects.filter(paciente=paciente).select_related("usuario")
         return Response(MovimientoPacienteSerializer(movimientos, many=True).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="registrar-inasistencia",
+        permission_classes=[PuedeCambiarEstado],
+    )
+    def registrar_inasistencia(self, request, pk=None):
+        paciente = self.get_object()
+        self.check_object_permissions(request, paciente)
+
+        if paciente.estado != Paciente.Estado.INGRESADO:
+            return Response(
+                {"detail": "Solo se pueden registrar inasistencias en pacientes INGRESADOS."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = RegistrarInasistenciaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            inasistencia = InasistenciaPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                fecha=serializer.validated_data["fecha"],
+                justificada=serializer.validated_data["justificada"],
+                motivo=serializer.validated_data["motivo"],
+            )
+            paciente.fecha_ultima_inasistencia = inasistencia.fecha
+            paciente.motivo_ultima_inasistencia = inasistencia.motivo
+            campos = [
+                "fecha_ultima_inasistencia",
+                "motivo_ultima_inasistencia",
+                "actualizado_en",
+            ]
+            if not inasistencia.justificada:
+                paciente.n_inasistencias += 1
+                campos.append("n_inasistencias")
+            paciente.save(update_fields=campos)
+
+        alerta_abandono = paciente.n_inasistencias >= 2
+        return Response(
+            {
+                "inasistencia": InasistenciaPacienteSerializer(inasistencia).data,
+                "paciente": PacienteSerializer(paciente, context=self.get_serializer_context()).data,
+                "alerta_abandono": alerta_abandono,
+                "mensaje": (
+                    "Paciente tiene 2 inasistencias no justificadas. Evaluar marcar como ABANDONO."
+                    if alerta_abandono
+                    else ""
+                ),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"], url_path="historial-completo")
+    def historial_completo(self, request, pk=None):
+        paciente = self.get_object()
+        movimientos = MovimientoPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        llamados = LlamadoPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        inasistencias = InasistenciaPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        return Response(
+            {
+                "paciente": PacienteSerializer(paciente, context=self.get_serializer_context()).data,
+                "movimientos": MovimientoPacienteSerializer(movimientos, many=True).data,
+                "llamados": LlamadoPacienteSerializer(llamados, many=True).data,
+                "inasistencias": InasistenciaPacienteSerializer(inasistencias, many=True).data,
+            }
+        )
 
     @action(
         detail=True,

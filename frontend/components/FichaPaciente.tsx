@@ -1,20 +1,36 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import type {
   Estado,
+  HistorialCompletoPaciente,
+  InasistenciaPaciente,
+  LlamadoPaciente,
   MovimientoPaciente,
   Paciente,
   Usuario,
 } from "@/lib/types";
-import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
+import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
-import { FiActivity, FiClock, FiUser, FiX } from "react-icons/fi";
+import {
+  FiCalendar,
+  FiClock,
+  FiEdit2,
+  FiFileText,
+  FiPhone,
+  FiRefreshCw,
+  FiUser,
+  FiX,
+} from "react-icons/fi";
 import BadgeEstado from "./BadgeEstado";
 import BadgePrioridad from "./BadgePrioridad";
 import CambiarEstadoModal from "./CambiarEstadoModal";
 import EditarPacienteModal from "./EditarPacienteModal";
+import ProximaAtencionModal from "./ProximaAtencionModal";
+import RegistrarContactoModal from "./RegistrarContactoModal";
+import RegistrarInasistenciaModal from "./RegistrarInasistenciaModal";
 
 interface Props {
   paciente: Paciente;
@@ -23,57 +39,29 @@ interface Props {
   onRefresh: () => void;
 }
 
+type TabHistorial = "movimientos" | "llamados" | "inasistencias";
+
 function calcularDiasDesde(fecha: string | null | undefined) {
-  if (!fecha) return null;
-
-  const inicio = new Date(`${fecha}T00:00:00`);
-  if (Number.isNaN(inicio.getTime())) return null;
-
+  if (!fecha) return 0;
+  const inicio = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
+  if (Number.isNaN(inicio.getTime())) return 0;
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
-
-  const diffMs = hoy.getTime() - inicio.getTime();
-  if (diffMs < 0) return 0;
-
-  return Math.floor(diffMs / 86400000);
+  inicio.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((hoy.getTime() - inicio.getTime()) / 86400000));
 }
 
-function calcularDiasEntre(
-  inicio: string | null | undefined,
-  fin: string | null | undefined,
-) {
-  if (!inicio || !fin) return null;
-
-  const inicioFecha = new Date(inicio);
-  const finFecha = new Date(fin);
-  if (Number.isNaN(inicioFecha.getTime()) || Number.isNaN(finFecha.getTime())) {
-    return null;
-  }
-
-  inicioFecha.setHours(0, 0, 0, 0);
-  finFecha.setHours(0, 0, 0, 0);
-
-  const diffMs = finFecha.getTime() - inicioFecha.getTime();
-  if (diffMs < 0) return 0;
-
-  return Math.floor(diffMs / 86400000);
+function formatearFecha(fecha: string | null | undefined) {
+  if (!fecha) return "-";
+  const parsed = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("es-CL");
 }
 
-function formatearDuracion(dias: number | null) {
-  if (dias === null) return "Sin dato";
-  return dias === 1 ? "1 día" : `${dias} días`;
-}
-
-function formatearFechaHora(fecha: string) {
+function formatearFechaHora(fecha: string | null | undefined) {
+  if (!fecha) return "-";
   const parsed = new Date(fecha);
   if (Number.isNaN(parsed.getTime())) return "-";
-  return parsed.toLocaleString("es-CL");
-}
-
-function formatearFechaHoraCorta(fecha: string | null | undefined) {
-  if (!fecha) return "Sin programar";
-  const parsed = new Date(fecha);
-  if (Number.isNaN(parsed.getTime())) return "Sin programar";
   return parsed.toLocaleString("es-CL", {
     day: "2-digit",
     month: "2-digit",
@@ -83,6 +71,41 @@ function formatearFechaHoraCorta(fecha: string | null | undefined) {
   });
 }
 
+function Field({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
+        {label}
+      </p>
+      <div className="mt-1 break-words text-sm font-medium text-slate-800">
+        {value || "-"}
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  icon,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-emerald-100 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center gap-2 text-emerald-800">
+        {icon}
+        <h3 className="text-sm font-semibold uppercase tracking-[0.06em]">
+          {title}
+        </h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export default function FichaPaciente({
   paciente: pacienteInicial,
   usuario,
@@ -90,197 +113,130 @@ export default function FichaPaciente({
   onRefresh,
 }: Props) {
   const [paciente, setPaciente] = useState<Paciente>(pacienteInicial);
-  const [historial, setHistorial] = useState<MovimientoPaciente[]>([]);
+  const [movimientos, setMovimientos] = useState<MovimientoPaciente[]>([]);
+  const [llamados, setLlamados] = useState<LlamadoPaciente[]>([]);
+  const [inasistencias, setInasistencias] = useState<InasistenciaPaciente[]>([]);
+  const [tab, setTab] = useState<TabHistorial>("movimientos");
   const [loadingHistorial, setLoadingHistorial] = useState(true);
   const [error, setError] = useState("");
   const [mostrarCambioEstado, setMostrarCambioEstado] = useState(false);
+  const [mostrarContacto, setMostrarContacto] = useState(false);
+  const [mostrarInasistencia, setMostrarInasistencia] = useState(false);
+  const [mostrarProgramacion, setMostrarProgramacion] = useState(false);
   const [mostrarEdicion, setMostrarEdicion] = useState(false);
 
-  useEffect(() => {
-    setPaciente(pacienteInicial);
-  }, [pacienteInicial]);
+  const diasEnLista = paciente.dias_en_lista ?? calcularDiasDesde(paciente.fecha_derivacion);
+  const ultimoLlamado = llamados[0] ?? paciente.ultimo_llamado ?? null;
+  const ultimaInasistencia =
+    inasistencias[0] ?? paciente.ultima_inasistencia ?? null;
 
   const puedeCambiarEstado = useMemo(() => {
     if (usuario.rol === "KINE" || usuario.rol === "ADMIN") return true;
-    if (usuario.rol === "ADMINISTRATIVO")
-      return Boolean(paciente.kine_asignado);
-    return false;
+    return usuario.rol === "ADMINISTRATIVO" && Boolean(paciente.kine_asignado);
   }, [usuario.rol, paciente.kine_asignado]);
 
-  const fechaInicioIngreso = useMemo(() => {
-    if (paciente.fecha_ingreso) return paciente.fecha_ingreso;
+  const puedeRegistrarLlamado =
+    ["PENDIENTE", "RESCATE"].includes(paciente.estado) &&
+    paciente.kine_asignado !== null &&
+    (usuario.rol === "ADMIN" ||
+      usuario.rol === "ADMINISTRATIVO" ||
+      usuario.rol === "KINE");
 
-    const ultimoIngreso = historial.find(
-      (mov) => mov.estado_nuevo === "INGRESADO",
-    );
+  const puedeProgramar =
+    ["PENDIENTE", "RESCATE", "INGRESADO"].includes(paciente.estado) &&
+    paciente.kine_asignado !== null &&
+    (usuario.rol === "ADMIN" ||
+      (usuario.rol === "KINE" && paciente.kine_asignado === usuario.id));
 
-    if (ultimoIngreso) return ultimoIngreso.fecha;
-    return paciente.fecha_cambio_estado;
-  }, [paciente.fecha_ingreso, paciente.fecha_cambio_estado, historial]);
+  async function cargarHistorial(id = pacienteInicial.id) {
+    setLoadingHistorial(true);
+    setError("");
+    try {
+      const data = await api.get<HistorialCompletoPaciente>(
+        `/pacientes/${id}/historial-completo/`,
+      );
+      setPaciente(data.paciente);
+      setMovimientos(data.movimientos);
+      setLlamados(data.llamados);
+      setInasistencias(data.inasistencias);
+    } catch {
+      setMovimientos([]);
+      setLlamados([]);
+      setInasistencias([]);
+      setError(
+        "No se pudo cargar el historial completo. Se mantienen los datos básicos del paciente.",
+      );
+    } finally {
+      setLoadingHistorial(false);
+    }
+  }
 
-  const diasSeguimiento =
-    paciente.estado === "INGRESADO"
-      ? (calcularDiasDesde(fechaInicioIngreso) ?? 0)
-      : paciente.dias_en_lista;
-
-  const diasSeguimientoLabel =
-    paciente.estado === "INGRESADO" ? "Días de ingreso" : "Días en lista";
-
-  const historialCronologico = useMemo(
-    () => [...historial].reverse(),
-    [historial],
-  );
-
-  const resumenSeguimiento = useMemo(() => {
-    const notas = historialCronologico.map((mov) =>
-      (mov.notas || "").toLowerCase(),
-    );
-
-    const faltas = notas.filter(
-      (nota) =>
-        nota.includes("falta") ||
-        nota.includes("inasist") ||
-        nota.includes("no asiste") ||
-        nota.includes("ausent"),
-    ).length;
-
-    const reprogramaciones = notas.filter(
-      (nota) =>
-        nota.includes("reprogram") ||
-        nota.includes("reagenda") ||
-        nota.includes("cambio de hora"),
-    ).length;
-
-    const rescates = historialCronologico.filter(
-      (mov) => mov.estado_nuevo === "RESCATE",
-    ).length;
-
-    return {
-      faltas,
-      reprogramaciones,
-      rescates,
-      cambiosEstado: historialCronologico.length,
-      intentosContacto: paciente.n_intentos_contacto,
-    };
-  }, [historialCronologico, paciente.n_intentos_contacto]);
-
-  const seguimientoPorEstado = useMemo(() => {
-    const inicioBase =
-      paciente.creado_en ?? `${paciente.fecha_derivacion}T00:00:00`;
-
-    const eventos = [
-      { estado: "PENDIENTE" as Estado, inicio: inicioBase },
-      ...historialCronologico.map((mov) => ({
-        estado: mov.estado_nuevo as Estado,
-        inicio: mov.fecha,
-      })),
-    ];
-
-    return eventos.map((evento, index) => {
-      const siguienteInicio =
-        eventos[index + 1]?.inicio ?? new Date().toISOString();
-      return {
-        ...evento,
-        fin: siguienteInicio,
-        dias: calcularDiasEntre(evento.inicio, siguienteInicio),
-      };
-    });
-  }, [historialCronologico, paciente.creado_en, paciente.fecha_derivacion]);
+  useEffect(() => {
+    setPaciente(pacienteInicial);
+    void cargarHistorial(pacienteInicial.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pacienteInicial.id]);
 
   useEffect(() => {
     const originalBodyOverflow = document.body.style.overflow;
     const originalHtmlOverflow = document.documentElement.style.overflow;
-
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
-
     return () => {
       document.body.style.overflow = originalBodyOverflow;
       document.documentElement.style.overflow = originalHtmlOverflow;
     };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    setLoadingHistorial(true);
-    api
-      .get<MovimientoPaciente[]>(`/pacientes/${paciente.id}/historial/`)
-      .then((data) => {
-        if (!mounted) return;
-        setHistorial(data);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setHistorial([]);
-      })
-      .finally(() => {
-        if (mounted) setLoadingHistorial(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [paciente.id]);
-
   async function handleCambiarEstado(estado: Estado, notas: string) {
-    setError("");
-    try {
-      await api.post(`/pacientes/${paciente.id}/cambiar-estado/`, {
-        estado,
-        notas,
-      });
-      onRefresh();
-      const nuevoHistorial = await api.get<MovimientoPaciente[]>(
-        `/pacientes/${paciente.id}/historial/`,
-      );
-      setHistorial(nuevoHistorial);
-    } catch (e: unknown) {
-      const detail =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "No se pudo cambiar el estado.";
-      setError(detail);
-      throw e;
-    }
+    const actualizado = await api.post<Paciente>(
+      `/pacientes/${paciente.id}/cambiar-estado/`,
+      { estado, notas },
+    );
+    setPaciente(actualizado);
+    onRefresh();
+    await cargarHistorial(paciente.id);
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm dark:bg-black/75"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <aside
-        className="ccr-fade-up h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)] dark:border-[#2a2a2a] dark:bg-[#101010] dark:shadow-[0_30px_80px_-34px_rgba(0,0,0,0.9)]"
+        className="h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-5 py-3.5 backdrop-blur dark:border-[#2a2a2a] dark:bg-[#101010]/95">
-          <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between">
+        <div className="sticky top-0 z-10 border-b border-emerald-100 bg-white/95 px-5 py-4 backdrop-blur">
+          <div className="flex flex-col gap-3 pr-12 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-[#a3a3a3]">
-                Ficha clínica
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
+                Ficha operativa CCR
               </p>
-              <h2 className="mt-1 break-words text-xl font-semibold leading-tight text-gray-900 dark:text-white">
-                {paciente.nombre}
+              <h2 className="mt-1 break-words text-xl font-semibold leading-tight text-slate-950">
+                {paciente.id_ccr} · {paciente.nombre}
               </h2>
-              <p className="mt-1 text-xs text-gray-500 dark:text-[#a3a3a3]">
-                {paciente.id_ccr} · {formatearRut(paciente.rut)}
+              <p className="mt-1 text-xs text-slate-500">
+                RUT {formatearRut(paciente.rut)} · {diasEnLista} días en lista
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
-              <BadgePrioridad prioridad={paciente.prioridad} />
+            <div className="flex flex-wrap items-center gap-2">
               <BadgeEstado estado={paciente.estado} />
+              <BadgePrioridad prioridad={paciente.prioridad} />
               <button
                 type="button"
                 onClick={() => setMostrarEdicion(true)}
-                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-[#2a2a2a] dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Editar
+                <FiEdit2 size={14} />
+                Editar contacto
               </button>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-100 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
+            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100"
             aria-label="Cerrar ficha"
           >
             <FiX size={16} />
@@ -289,270 +245,176 @@ export default function FichaPaciente({
 
         <div className="space-y-4 p-5">
           {error && (
-            <p className="ccr-fade-up rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
               {error}
             </p>
           )}
 
-          <section
-            className="grid grid-cols-1 gap-4 md:grid-cols-3 ccr-fade-up"
-            style={{ animationDelay: "60ms" }}
-          >
-            <div className="ccr-panel rounded-lg p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
-                {diasSeguimientoLabel}
-              </p>
-              <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-white">
-                {diasSeguimiento}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
-                Seguimiento actual
-              </p>
-            </div>
-            <div className="ccr-panel rounded-lg p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
-                Kinesiólogo
-              </p>
-              <p className="mt-2 line-clamp-2 text-sm font-semibold text-gray-800 dark:text-white">
-                {paciente.kine_asignado_nombre ?? "Sin asignar"}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
-                Responsable actual
-              </p>
-            </div>
-            <div className="ccr-panel rounded-lg p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
-                Contacto
-              </p>
-              <p className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
-                {paciente.telefono || "Sin teléfono"}
-              </p>
-              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
-                Teléfono principal
-              </p>
-            </div>
-          </section>
+          <div className="flex flex-wrap gap-2">
+            {puedeCambiarEstado && (
+              <button
+                type="button"
+                onClick={() => setMostrarCambioEstado(true)}
+                className="inline-flex items-center gap-2 rounded-md bg-emerald-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-900"
+              >
+                <FiRefreshCw size={14} />
+                Cambiar estado
+              </button>
+            )}
+            {puedeRegistrarLlamado && (
+              <button
+                type="button"
+                onClick={() => setMostrarContacto(true)}
+                className="inline-flex items-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-800"
+              >
+                <FiPhone size={14} />
+                Registrar llamado
+              </button>
+            )}
+            {paciente.estado === "INGRESADO" && puedeCambiarEstado && (
+              <button
+                type="button"
+                onClick={() => setMostrarInasistencia(true)}
+                className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-700"
+              >
+                <FiCalendar size={14} />
+                Registrar inasistencia
+              </button>
+            )}
+            {puedeProgramar && (
+              <button
+                type="button"
+                onClick={() => setMostrarProgramacion(true)}
+                className="inline-flex items-center gap-2 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
+              >
+                <FiClock size={14} />
+                {paciente.proxima_atencion ? "Reprogramar atención" : "Programar atención"}
+              </button>
+            )}
+          </div>
 
-          <section
-            className="ccr-panel rounded-lg p-5 ccr-fade-up"
-            style={{ animationDelay: "100ms" }}
-          >
-            <div className="mb-4 flex items-center gap-2">
-              <FiUser className="text-blue-600" />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-gray-700 dark:text-white">
-                Resumen del Paciente
-              </h3>
-            </div>
-            <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm md:grid-cols-2">
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">RUT:</span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {formatearRut(paciente.rut)}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Edad:</span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">{paciente.edad}</span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Fecha derivación:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {paciente.fecha_derivacion}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Prioridad:</span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {PRIORIDAD_LABELS[paciente.prioridad]}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Estado:</span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {ESTADO_LABELS[paciente.estado]}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Mayor de 60:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {paciente.mayor_60 ? "Si" : "No"}
-                </span>
-              </p>
-              <p className="md:col-span-2">
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Próxima atención:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {formatearFechaHoraCorta(paciente.proxima_atencion)}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Faltas registradas:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {resumenSeguimiento.faltas}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Reprogramaciones:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {resumenSeguimiento.reprogramaciones}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Veces en rescate:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {resumenSeguimiento.rescates}
-                </span>
-              </p>
-              <p>
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Cambios de estado:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {resumenSeguimiento.cambiosEstado}
-                </span>
-              </p>
-              <p className="md:col-span-2">
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Intentos de contacto:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {resumenSeguimiento.intentosContacto}
-                </span>
-              </p>
-              <p className="md:col-span-2">
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Meses en espera total:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {paciente.n_meses_espera ?? 1}{" "}
-                  {(paciente.n_meses_espera ?? 1) === 1 ? "mes" : "meses"}
-                </span>
-              </p>
-              <p className="md:col-span-2">
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Diagnóstico:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {paciente.diagnostico || "-"}
-                </span>
-              </p>
-              <p className="md:col-span-2">
-                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Observaciones:
-                </span>{" "}
-                <span className="text-gray-600 dark:text-[#b5d8e3]">
-                  {paciente.observaciones || "-"}
-                </span>
-              </p>
-            </div>
-          </section>
-
-          <section
-            className="ccr-panel rounded-lg p-5 ccr-fade-up"
-            style={{ animationDelay: "140ms" }}
-          >
-            <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 text-xs text-gray-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#b5d8e3]">
-              <div className="mb-2 flex items-center gap-2">
-                <FiActivity className="text-blue-600" />
-                <span className="font-semibold text-gray-700 dark:text-white">
-                  Seguimiento por estado
-                </span>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Section icon={<FiUser />} title="Datos generales">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Nombre" value={paciente.nombre} />
+                <Field label="RUT" value={formatearRut(paciente.rut)} />
+                <Field label="Edad" value={`${paciente.edad} años`} />
+                <Field label="Mayor 60" value={paciente.mayor_60 ? "Sí" : "No"} />
+                <Field label="Usuario preferente" value="No registrado" />
+                <Field
+                  label="Responsable"
+                  value={paciente.kine_asignado_nombre ?? "Sin asignar"}
+                />
               </div>
-              <div className="flex flex-wrap gap-2">
-                {seguimientoPorEstado.map((item, index) => (
-                  <span
-                    key={`${item.estado}-${item.inicio}-${index}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 transition hover:-translate-y-0.5 dark:border-[#2a2a2a] dark:bg-[#0f0f10]"
-                    title={`${new Date(item.inicio).toLocaleString("es-CL")} - ${new Date(item.fin).toLocaleString("es-CL")}`}
+            </Section>
+
+            <Section icon={<FiFileText />} title="Derivación">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Fecha derivación" value={formatearFecha(paciente.fecha_derivacion)} />
+                <Field label="Desde" value={paciente.percapita_desde || "-"} />
+                <Field label="Profesional" value={paciente.profesional || "-"} />
+                <Field label="Categoría" value={CATEGORIA_LABELS[paciente.categoria]} />
+                <Field label="Prioridad" value={PRIORIDAD_LABELS[paciente.prioridad]} />
+                <Field label="Diagnóstico" value={paciente.diagnostico || "-"} />
+              </div>
+            </Section>
+
+            <Section icon={<FiPhone />} title="Contacto">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Teléfono" value={paciente.telefono || "Sin teléfono"} />
+                <Field
+                  label="Teléfono recados"
+                  value={paciente.telefono_recados || "Sin teléfono de recados"}
+                />
+                <Field label="Email" value={paciente.email || "Sin email"} />
+                <Field
+                  label="Intentos contacto"
+                  value={paciente.n_intentos_contacto}
+                />
+                <Field
+                  label="Último llamado"
+                  value={
+                    ultimoLlamado
+                      ? `${formatearFechaHora(ultimoLlamado.fecha)} · ${ultimoLlamado.resultado_label}`
+                      : "Sin llamados"
+                  }
+                />
+                <Field
+                  label="Próxima acción"
+                  value={ultimoLlamado?.proxima_accion || "-"}
+                />
+              </div>
+            </Section>
+
+            <Section icon={<FiCalendar />} title="Gestión CCR">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Estado actual" value={ESTADO_LABELS[paciente.estado]} />
+                <Field
+                  label="Fecha cambio estado"
+                  value={formatearFechaHora(paciente.fecha_cambio_estado)}
+                />
+                <Field label="Fecha ingreso" value={formatearFecha(paciente.fecha_ingreso)} />
+                <Field label="Fecha egreso" value={formatearFecha(paciente.fecha_egreso)} />
+                <Field
+                  label="Próxima atención"
+                  value={formatearFechaHora(paciente.proxima_atencion)}
+                />
+                <Field
+                  label="Inasistencias"
+                  value={paciente.n_inasistencias ?? 0}
+                />
+                <Field
+                  label="Última inasistencia"
+                  value={
+                    ultimaInasistencia
+                      ? `${formatearFecha(ultimaInasistencia.fecha)} · ${
+                          ultimaInasistencia.justificada ? "Justificada" : "No justificada"
+                        }`
+                      : "Sin inasistencias"
+                  }
+                />
+                <Field
+                  label="Motivo última inasistencia"
+                  value={paciente.motivo_ultima_inasistencia || ultimaInasistencia?.motivo || "-"}
+                />
+              </div>
+            </Section>
+          </div>
+
+          <Section icon={<FiClock />} title="Historial">
+            <div className="mb-4 flex flex-wrap gap-2">
+              {(["movimientos", "llamados", "inasistencias"] as TabHistorial[]).map(
+                (item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setTab(item)}
+                    className={`rounded-md px-3 py-2 text-xs font-semibold transition ${
+                      tab === item
+                        ? "bg-emerald-800 text-white"
+                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
                   >
-                    <BadgeEstado estado={item.estado} />
-                    <span className="text-[11px] text-gray-500 dark:text-[#a3a3a3]">
-                      {formatearDuracion(item.dias)}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <FiClock className="text-blue-600" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-gray-700 dark:text-white">
-                  Historial de cambios
-                </h3>
-              </div>
-              {puedeCambiarEstado && (
-                <button
-                  type="button"
-                  onClick={() => setMostrarCambioEstado(true)}
-                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_-14px_rgba(37,99,235,0.6)] transition hover:bg-blue-700"
-                >
-                  Cambiar estado
-                </button>
+                    {item === "movimientos"
+                      ? `Movimientos (${movimientos.length})`
+                      : item === "llamados"
+                        ? `Llamados (${llamados.length})`
+                        : `Inasistencias (${inasistencias.length})`}
+                  </button>
+                ),
               )}
             </div>
 
             {loadingHistorial ? (
-              <p className="text-sm text-gray-400 dark:text-[#a3a3a3]">Cargando historial...</p>
-            ) : historial.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-[#a3a3a3]">
-                Sin movimientos registrados.
-              </p>
+              <p className="text-sm text-slate-500">Cargando historial...</p>
+            ) : tab === "movimientos" ? (
+              <HistorialMovimientos items={movimientos} />
+            ) : tab === "llamados" ? (
+              <HistorialLlamados items={llamados} />
             ) : (
-              <ol className="space-y-3">
-                {historialCronologico.map((mov, index) => {
-                  const siguiente = historialCronologico[index + 1];
-                  const diasEnEstado = calcularDiasEntre(
-                    mov.fecha,
-                    siguiente?.fecha ?? new Date().toISOString(),
-                  );
-
-                  return (
-                    <li
-                      key={mov.id}
-                      className="rounded-lg border border-gray-100 bg-white px-3 py-3 transition hover:border-gray-200 dark:border-[#2a2a2a] dark:bg-[#151515] dark:hover:border-[#3a3a3a]"
-                    >
-                      <p className="text-xs font-semibold text-gray-700 dark:text-white">
-                        {mov.estado_anterior === mov.estado_nuevo || !mov.estado_anterior ? (
-                          <span>Actualización de lista oficial</span>
-                        ) : (
-                          <>
-                            {ESTADO_LABELS[mov.estado_anterior as Estado] ?? mov.estado_anterior}{" "}
-                            {"->"}{" "}
-                            {ESTADO_LABELS[mov.estado_nuevo as Estado] ?? mov.estado_nuevo}
-                          </>
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
-                        {formatearFechaHora(mov.fecha)} ·{" "}
-                        {mov.usuario_nombre ?? "Sistema"}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
-                        Duración en este estado:{" "}
-                        {formatearDuracion(diasEnEstado)}
-                      </p>
-                      {mov.notas && (
-                        <p className="mt-1 rounded-lg bg-gray-50 px-2 py-1.5 text-xs text-gray-600 dark:bg-[#101010] dark:text-[#b5d8e3]">
-                          {mov.notas}
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
+              <HistorialInasistencias items={inasistencias} />
             )}
-          </section>
+          </Section>
         </div>
       </aside>
 
@@ -562,6 +424,58 @@ export default function FichaPaciente({
           rol={usuario.rol}
           onClose={() => setMostrarCambioEstado(false)}
           onConfirm={handleCambiarEstado}
+        />
+      )}
+
+      {mostrarContacto && (
+        <RegistrarContactoModal
+          paciente={paciente}
+          onClose={() => setMostrarContacto(false)}
+          onSuccess={(actualizado) => {
+            if (actualizado) setPaciente(actualizado);
+            onRefresh();
+            void cargarHistorial(paciente.id);
+          }}
+        />
+      )}
+
+      {mostrarInasistencia && (
+        <RegistrarInasistenciaModal
+          paciente={paciente}
+          onClose={() => setMostrarInasistencia(false)}
+          onSuccess={(actualizado) => {
+            setPaciente(actualizado);
+            onRefresh();
+            void cargarHistorial(paciente.id);
+          }}
+        />
+      )}
+
+      {mostrarProgramacion && (
+        <ProximaAtencionModal
+          paciente={paciente}
+          onClose={() => setMostrarProgramacion(false)}
+          onConfirm={async (fechaHora) => {
+            const actualizado = await api.post<Paciente>(
+              `/pacientes/${paciente.id}/programar-atencion/`,
+              { fecha_hora: fechaHora },
+            );
+            setPaciente(actualizado);
+            onRefresh();
+            setMostrarProgramacion(false);
+          }}
+          onClear={
+            paciente.proxima_atencion
+              ? async () => {
+                  const actualizado = await api.delete<Paciente>(
+                    `/pacientes/${paciente.id}/programar-atencion/`,
+                  );
+                  setPaciente(actualizado);
+                  onRefresh();
+                  setMostrarProgramacion(false);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -578,5 +492,80 @@ export default function FichaPaciente({
         />
       )}
     </div>
+  );
+}
+
+function HistorialMovimientos({ items }: { items: MovimientoPaciente[] }) {
+  if (items.length === 0) {
+    return <p className="text-sm text-slate-500">Sin movimientos registrados.</p>;
+  }
+  return (
+    <ol className="space-y-3">
+      {items.map((mov) => (
+        <li key={mov.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+          <p className="text-xs font-semibold text-slate-800">
+            {mov.estado_anterior
+              ? `${ESTADO_LABELS[mov.estado_anterior as Estado] ?? mov.estado_anterior} -> ${
+                  ESTADO_LABELS[mov.estado_nuevo as Estado] ?? mov.estado_nuevo
+                }`
+              : ESTADO_LABELS[mov.estado_nuevo as Estado] ?? mov.estado_nuevo}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {formatearFechaHora(mov.fecha)} · {mov.usuario_nombre ?? "Sistema"}
+          </p>
+          {mov.notas && <p className="mt-2 text-xs text-slate-700">{mov.notas}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function HistorialLlamados({ items }: { items: LlamadoPaciente[] }) {
+  if (items.length === 0) {
+    return <p className="text-sm text-slate-500">Sin llamados registrados.</p>;
+  }
+  return (
+    <ol className="space-y-3">
+      {items.map((llamado) => (
+        <li key={llamado.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+          <p className="text-xs font-semibold text-slate-800">
+            {llamado.resultado_label}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {formatearFechaHora(llamado.fecha)} · {llamado.usuario_nombre ?? "Sistema"} ·{" "}
+            {llamado.telefono_usado || "Sin teléfono registrado"}
+          </p>
+          {llamado.notas && <p className="mt-2 text-xs text-slate-700">{llamado.notas}</p>}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function HistorialInasistencias({ items }: { items: InasistenciaPaciente[] }) {
+  if (items.length === 0) {
+    return <p className="text-sm text-slate-500">Sin inasistencias registradas.</p>;
+  }
+  return (
+    <ol className="space-y-3">
+      {items.map((inasistencia) => (
+        <li
+          key={inasistencia.id}
+          className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
+        >
+          <p className="text-xs font-semibold text-slate-800">
+            {formatearFecha(inasistencia.fecha)} ·{" "}
+            {inasistencia.justificada ? "Justificada" : "No justificada"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Registrada por {inasistencia.usuario_nombre ?? "Sistema"} ·{" "}
+            {formatearFechaHora(inasistencia.creado_en)}
+          </p>
+          {inasistencia.motivo && (
+            <p className="mt-2 text-xs text-slate-700">{inasistencia.motivo}</p>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
