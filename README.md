@@ -35,6 +35,10 @@ git status --short
 git check-ignore -v .env backend/db.sqlite3 backend/media
 ```
 
+## Convención de comentarios
+
+Los comentarios nuevos del codigo deben estar en español, con explicaciones simples y orientadas a mantener claras las reglas operativas del CCR.
+
 ## Desarrollo local
 
 ### Backend

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import type {
@@ -16,6 +16,7 @@ import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
 import {
   FiCalendar,
+  FiAlertTriangle,
   FiClock,
   FiEdit2,
   FiFileText,
@@ -129,6 +130,11 @@ export default function FichaPaciente({
   const ultimoLlamado = llamados[0] ?? paciente.ultimo_llamado ?? null;
   const ultimaInasistencia =
     inasistencias[0] ?? paciente.ultima_inasistencia ?? null;
+  const totalLlamados = paciente.llamados_count ?? llamados.length;
+  const totalInasistencias =
+    paciente.inasistencias_count ?? inasistencias.length;
+  const alertaPosibleAbandono =
+    paciente.estado === "INGRESADO" && (paciente.n_inasistencias ?? 0) >= 2;
 
   const puedeCambiarEstado = useMemo(() => {
     if (usuario.rol === "KINE" || usuario.rol === "ADMIN") return true;
@@ -148,7 +154,7 @@ export default function FichaPaciente({
     (usuario.rol === "ADMIN" ||
       (usuario.rol === "KINE" && paciente.kine_asignado === usuario.id));
 
-  async function cargarHistorial(id = pacienteInicial.id) {
+  const cargarHistorial = useCallback(async (id: number) => {
     setLoadingHistorial(true);
     setError("");
     try {
@@ -169,13 +175,15 @@ export default function FichaPaciente({
     } finally {
       setLoadingHistorial(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     setPaciente(pacienteInicial);
+  }, [pacienteInicial]);
+
+  useEffect(() => {
     void cargarHistorial(pacienteInicial.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pacienteInicial.id]);
+  }, [cargarHistorial, pacienteInicial.id]);
 
   useEffect(() => {
     const originalBodyOverflow = document.body.style.overflow;
@@ -248,6 +256,17 @@ export default function FichaPaciente({
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
               {error}
             </p>
+          )}
+          {alertaPosibleAbandono && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              <div className="flex items-start gap-2">
+                <FiAlertTriangle className="mt-0.5 shrink-0" />
+                <span>
+                  Paciente tiene {paciente.n_inasistencias} inasistencias no justificadas.
+                  Evaluar marcar como ABANDONO.
+                </span>
+              </div>
+            </div>
           )}
 
           <div className="flex flex-wrap gap-2">
@@ -339,6 +358,7 @@ export default function FichaPaciente({
                       : "Sin llamados"
                   }
                 />
+                <Field label="Total llamados" value={totalLlamados} />
                 <Field
                   label="Próxima acción"
                   value={ultimoLlamado?.proxima_accion || "-"}
@@ -362,6 +382,10 @@ export default function FichaPaciente({
                 <Field
                   label="Inasistencias"
                   value={paciente.n_inasistencias ?? 0}
+                />
+                <Field
+                  label="Total inasistencias"
+                  value={totalInasistencias}
                 />
                 <Field
                   label="Última inasistencia"

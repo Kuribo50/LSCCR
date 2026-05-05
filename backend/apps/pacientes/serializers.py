@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import serializers
 
 from .models import (
@@ -88,7 +90,7 @@ class PacienteSerializer(serializers.ModelSerializer):
             "ultima_inasistencia",
             "n_meses_espera",
             "creado_en",
-            # Contacto y seguimiento
+            # Datos de contacto y seguimiento operativo.
             "fecha_nacimiento",
             "telefono",
             "telefono_recados",
@@ -115,7 +117,8 @@ class PacienteSerializer(serializers.ModelSerializer):
         )
 
     def get_dias_en_lista(self, obj: Paciente) -> int:
-        return (self.context["today"] - obj.fecha_derivacion).days
+        today = self.context.get("today") or date.today()
+        return (today - obj.fecha_derivacion).days
 
     def get_llamados_count(self, obj: Paciente) -> int:
         return obj.llamados.count()

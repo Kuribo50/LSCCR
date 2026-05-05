@@ -152,7 +152,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
         paciente.kine_asignado = request.user
 
-        # Ensure state transitions to PENDIENTE when kine takes the patient
+        # Si se asigna desde un estado final, vuelve a PENDIENTE para retomar seguimiento.
         campos = ["kine_asignado", "actualizado_en"]
         if paciente.estado not in {
             Paciente.Estado.PENDIENTE,

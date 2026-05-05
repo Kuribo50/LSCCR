@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Estado, Paciente, Rol } from "@/lib/types";
 import { ESTADO_LABELS } from "@/lib/types";
+import { formatearRut } from "@/lib/rut";
 import BadgeEstado from "./BadgeEstado";
 
 const ESTADOS_NOTA_OBLIGATORIA = new Set<Estado>([
@@ -19,15 +20,14 @@ const ESTADOS_EGRESO = new Set<Estado>([
   "DERIVADO",
 ]);
 
-const ESTADO_DESCRIPTIONS: Partial<Record<Estado, string>> = {
-  PENDIENTE: "Paciente en espera de contacto.",
-  INGRESADO: "Paciente asistió a la CCR.",
-  RESCATE: "Se requiere un nuevo esfuerzo de contacto.",
-  ABANDONO: "El paciente abandonó el tratamiento. Requiere notas.",
-  ALTA_MEDICA: "Alta médica dada por el profesional. Requiere notas.",
-  EGRESO_VOLUNTARIO:
-    "El paciente decidió terminar por voluntad propia. Requiere notas.",
-  DERIVADO: "Cierre por derivación a otro dispositivo. Requiere notas.",
+const ESTADO_DESCRIPCIONES: Partial<Record<Estado, string>> = {
+  PENDIENTE: "Retoma seguimiento para nuevo intento de contacto.",
+  INGRESADO: "Paciente confirma asistencia e inicia seguimiento CCR.",
+  RESCATE: "Contactabilidad fallida antes del ingreso.",
+  ABANDONO: "Cierre posterior al ingreso por abandono evaluado.",
+  ALTA_MEDICA: "Cierre por alta indicada por el profesional.",
+  EGRESO_VOLUNTARIO: "Cierre porque el paciente decide terminar el proceso.",
+  DERIVADO: "Cierre por derivacion a otro dispositivo o nivel de atencion.",
 };
 
 interface Props {
@@ -77,20 +77,19 @@ export default function CambiarEstadoModal({
     return [] as Estado[];
   }, [paciente.estado, rol]);
 
-  const notaObligatoria = estadoNuevo
-    ? ESTADOS_NOTA_OBLIGATORIA.has(estadoNuevo) || ESTADOS_EGRESO.has(paciente.estado)
+  const requiereNota = estadoNuevo
+    ? ESTADOS_NOTA_OBLIGATORIA.has(estadoNuevo) ||
+      ESTADOS_EGRESO.has(paciente.estado)
     : false;
-  const esEgreso =
-    estadoNuevo &&
-    ["ABANDONO", "ALTA_MEDICA", "EGRESO_VOLUNTARIO", "DERIVADO"].includes(estadoNuevo);
+  const puedeConfirmar = Boolean(estadoNuevo) && (!requiereNota || Boolean(notas.trim()));
 
   async function handleConfirm() {
     if (!estadoNuevo) {
       setError("Selecciona un estado para continuar.");
       return;
     }
-    if (notaObligatoria && !notas.trim()) {
-      setError("Las notas son obligatorias para este tipo de egreso.");
+    if (requiereNota && !notas.trim()) {
+      setError("Las notas son obligatorias para este cambio de estado.");
       return;
     }
     setLoading(true);
@@ -111,121 +110,148 @@ export default function CambiarEstadoModal({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-4 backdrop-blur-sm dark:bg-black/75"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-[#2a2a2a] dark:bg-[#111111]"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#D4E4D4] bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
-          <h3 className="text-base font-bold text-gray-900 dark:text-white">
-            Cambiar Estado del Paciente
-          </h3>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
-            <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
-              {paciente.nombre}
-            </span>
-            {" — "}
-            <span className="font-mono">{paciente.id_ccr}</span>
-          </p>
+        {/* Encabezado del modal */}
+        <div className="shrink-0 border-b border-[#D4E4D4] bg-[#E7F3EC] px-6 py-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1B5E3B]">
+                Cambiar estado operativo
+              </p>
+              <h3 className="mt-1 text-lg font-bold text-slate-950">
+                {paciente.id_ccr} · {paciente.nombre}
+              </h3>
+              <p className="mt-1 text-xs font-medium text-slate-600">
+                RUT {paciente.rut ? formatearRut(paciente.rut) : "No registrado"}
+              </p>
+            </div>
+            <BadgeEstado estado={paciente.estado} />
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
-          {/* Current state */}
-          <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-[#a3a3a3]">
-              Estado actual
-            </span>
-            <BadgeEstado estado={paciente.estado} />
-          </div>
-
-          {/* State selector */}
-          <div>
-            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-[#ecf5f8]">
-              Nuevo Estado
-            </label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {estadosPermitidos
-                .filter((e) => e !== paciente.estado)
-                .map((estado) => (
-                  <button
-                    key={estado}
-                    type="button"
-                    onClick={() => setEstadoNuevo(estado)}
-                    className={`rounded-xl px-4 py-3 text-left text-sm font-semibold transition border-2 ${
-                      estadoNuevo === estado
-                        ? "border-[#335fdb] bg-[#335fdb] text-white shadow-sm"
-                        : "border-gray-100 bg-white text-gray-600 hover:border-[#2694d9] hover:bg-blue-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:border-[#335fdb] dark:hover:bg-[#202020]"
-                    }`}
-                  >
-                    {ESTADO_LABELS[estado]}
-                    {ESTADOS_NOTA_OBLIGATORIA.has(estado) && (
-                      <span className="ml-1 text-[10px] font-normal text-orange-500 dark:text-amber-300">
-                        * notas requeridas
-                      </span>
-                    )}
-                  </button>
-                ))}
-            </div>
-            {estadoNuevo && ESTADO_DESCRIPTIONS[estadoNuevo] && (
-              <p className="mt-2 text-[11px] italic text-gray-500 dark:text-[#a3a3a3]">
-                {ESTADO_DESCRIPTIONS[estadoNuevo]}
-              </p>
-            )}
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-[#ecf5f8]">
-              Notas{" "}
-              {notaObligatoria ? (
-                <span className="text-orange-500 dark:text-amber-300">*</span>
+          {/* Estado actual del paciente */}
+          <div className="rounded-lg border border-[#D4E4D4] bg-white px-4 py-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+              Vista previa
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <BadgeEstado estado={paciente.estado} />
+              <span className="text-sm font-semibold text-slate-400">→</span>
+              {estadoNuevo ? (
+                <BadgeEstado estado={estadoNuevo} />
               ) : (
-                <span className="text-gray-300 dark:text-[#6b7280]">(opcional)</span>
+                <span className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500">
+                  Selecciona nuevo estado
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Opciones de cambio permitidas */}
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-600">
+              Nuevo estado
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {estadosPermitidos
+                .filter((estado) => estado !== paciente.estado)
+                .map((estado) => {
+                  const notaEstado =
+                    ESTADOS_NOTA_OBLIGATORIA.has(estado) ||
+                    ESTADOS_EGRESO.has(paciente.estado);
+                  const seleccionado = estadoNuevo === estado;
+
+                  return (
+                    <button
+                      key={estado}
+                      type="button"
+                      onClick={() => {
+                        setEstadoNuevo(estado);
+                        setError("");
+                      }}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        seleccionado
+                          ? "border-[#1B5E3B] bg-[#E7F3EC] shadow-sm"
+                          : "border-[#D4E4D4] bg-white hover:border-[#256B47] hover:bg-[#F4FAF6]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {ESTADO_LABELS[estado]}
+                        </span>
+                        {notaEstado && (
+                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                            Requiere nota
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-600">
+                        {ESTADO_DESCRIPCIONES[estado] ?? "Cambio de estado operativo."}
+                      </p>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Notas del cambio */}
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.06em] text-slate-600">
+              Notas{" "}
+              {requiereNota ? (
+                <span className="text-amber-700">*</span>
+              ) : (
+                <span className="text-slate-400">(opcional)</span>
               )}
             </label>
             <textarea
               value={notas}
-              onChange={(e) => setNotas(e.target.value)}
-              rows={3}
+              onChange={(e) => {
+                setNotas(e.target.value);
+                if (error) setError("");
+              }}
+              rows={4}
               placeholder={
-                notaObligatoria
-                  ? `Describe el motivo del ${esEgreso ? "egreso" : "cambio de estado"}…`
-                  : "Notas adicionales (opcional)"
+                requiereNota
+                  ? "Describe el motivo del cambio para mantener trazabilidad."
+                  : "Notas adicionales del cambio."
               }
-              className={`w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 dark:placeholder:text-[#6b7280] ${
-                notaObligatoria && !notas.trim()
-                  ? "border-orange-300 bg-orange-50 text-gray-900 focus:border-orange-500 dark:border-amber-700/70 dark:bg-amber-950/25 dark:text-white"
-                  : "border-gray-200 bg-white text-gray-900 focus:border-[#2694d9] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
+              className={`w-full resize-none rounded-lg border px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 ${
+                requiereNota && !notas.trim()
+                  ? "border-amber-300 bg-amber-50 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
+                  : "border-slate-200 bg-white focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC]"
               }`}
             />
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
-              ⚠️ {error}
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {error}
             </div>
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:flex-row">
+        {/* Acciones del modal */}
+        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#D4E4D4] bg-slate-50 px-6 py-4 sm:flex-row">
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={loading || !estadoNuevo}
-            className="flex-1 rounded-xl bg-[#335fdb] py-2.5 text-sm font-bold text-white transition hover:bg-[#284fc0] disabled:cursor-not-allowed disabled:bg-[#263f88] disabled:text-white/65"
+            disabled={loading || !puedeConfirmar}
+            className="flex-1 rounded-lg bg-[#1B5E3B] py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
           >
-            {loading
-              ? "Guardando…"
-              : `Confirmar → ${estadoNuevo ? ESTADO_LABELS[estadoNuevo] : "..."}`}
+            {loading ? "Guardando..." : "Confirmar cambio"}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
+            className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
           >
             Cancelar
           </button>
