@@ -22,11 +22,13 @@ Usar solo datos ficticios. No cargar Excel reales, RUT reales, bases locales ni 
 4. Abrir ficha operativa de un paciente.
 5. Asignar responsable CCR a un paciente pendiente.
 6. Registrar contacto con resultado contestó y confirmar que pasa a `INGRESADO`.
-7. Registrar contacto no contestó dos veces y confirmar que pasa a `RESCATE`.
-8. Registrar inasistencia en paciente `INGRESADO`.
-9. Registrar dos inasistencias no justificadas y confirmar alerta de posible `ABANDONO`.
-10. Cambiar estado a `ALTA_MEDICA`, `EGRESO_VOLUNTARIO`, `DERIVADO` o `ABANDONO` con observación operativa.
-11. Confirmar que `ABANDONO` solo se permite desde `INGRESADO`.
+7. Registrar contacto no contestó desde `PENDIENTE` y confirmar que pasa a `RESCATE`.
+8. Registrar segundo contacto no contestó desde `RESCATE` sin observación y confirmar que falla.
+9. Registrar segundo contacto no contestó desde `RESCATE` con observación y confirmar que pasa a `EGRESO_ADMINISTRATIVO`.
+10. Registrar inasistencia en paciente `INGRESADO`.
+11. Registrar dos inasistencias no justificadas y confirmar alerta de posible `ABANDONO`.
+12. Cambiar estado a `ALTA_MEDICA`, `EGRESO_VOLUNTARIO`, `DERIVADO` o `ABANDONO` con observación operativa.
+13. Confirmar que `ABANDONO` solo se permite desde `INGRESADO`.
 
 ## Importación y revisión
 
