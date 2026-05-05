@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { FiPrinter, FiRefreshCw, FiSearch } from "react-icons/fi";
+import type { ReactNode } from "react";
+import {
+  FiCheckCircle,
+  FiMessageSquare,
+  FiPhoneCall,
+  FiPhoneMissed,
+  FiPrinter,
+  FiRefreshCw,
+  FiSearch,
+} from "react-icons/fi";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
@@ -127,6 +136,16 @@ export default function LlamadosPage() {
     });
   }, [pacientes, searchQuery, prioridadFilter, estadoFilter]);
 
+  const resumenContactabilidad = useMemo(
+    () => ({
+      total: pacientes.length,
+      pendientes: pacientes.filter((p) => p.estado === "PENDIENTE").length,
+      rescate: pacientes.filter((p) => p.estado === "RESCATE").length,
+      sinTelefono: pacientes.filter((p) => !p.telefono && !p.telefono_recados).length,
+    }),
+    [pacientes],
+  );
+
   function clearFilters() {
     setSearchQuery("");
     setPrioridadFilter("TODAS");
@@ -141,7 +160,12 @@ export default function LlamadosPage() {
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Contactabilidad</h1>
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <FiPhoneCall size={18} />
+                </span>
+                <h1 className="text-lg font-bold text-gray-900">Contactabilidad</h1>
+              </div>
               <p className="mt-0.5 text-xs font-medium text-slate-500">
                 Gestión operativa de contactos para pacientes pendientes o en rescate.
               </p>
@@ -164,10 +188,37 @@ export default function LlamadosPage() {
             </button>
           </div>
 
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <ContactStat
+              icon={<FiPhoneCall size={16} />}
+              label="En cola"
+              value={resumenContactabilidad.total}
+              tone="blue"
+            />
+            <ContactStat
+              icon={<FiMessageSquare size={16} />}
+              label="Pendientes"
+              value={resumenContactabilidad.pendientes}
+              tone="slate"
+            />
+            <ContactStat
+              icon={<FiPhoneMissed size={16} />}
+              label="Rescate"
+              value={resumenContactabilidad.rescate}
+              tone="orange"
+            />
+            <ContactStat
+              icon={<FiPhoneMissed size={16} />}
+              label="Sin teléfono"
+              value={resumenContactabilidad.sinTelefono}
+              tone="red"
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
             <div className="relative">
               <FiSearch
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9585]"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
                 size={15}
               />
               <input
@@ -216,6 +267,21 @@ export default function LlamadosPage() {
             >
               Limpiar filtros
             </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-[11px] font-semibold text-blue-800 md:grid-cols-3">
+            <span className="inline-flex items-center gap-2">
+              <FiPhoneMissed size={14} />
+              PENDIENTE sin respuesta pasa a RESCATE
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <FiMessageSquare size={14} />
+              RESCATE sin respuesta requiere observación
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <FiCheckCircle size={14} />
+              Contacto confirmado pasa a INGRESADO
+            </span>
           </div>
         </div>
       </header>
@@ -324,6 +390,35 @@ export default function LlamadosPage() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+function ContactStat({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: number;
+  tone: "blue" | "slate" | "orange" | "red";
+}) {
+  const tones = {
+    blue: "border-blue-100 bg-blue-50 text-blue-700",
+    slate: "border-slate-100 bg-slate-50 text-slate-700",
+    orange: "border-orange-100 bg-orange-50 text-orange-700",
+    red: "border-red-100 bg-red-50 text-red-700",
+  };
+
+  return (
+    <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tones[tone]}`}>
+      <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em]">
+        {icon}
+        {label}
+      </span>
+      <strong className="text-base">{value}</strong>
     </div>
   );
 }

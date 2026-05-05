@@ -162,7 +162,7 @@ export default function EstadisticasPage() {
               <select
                 value={mes}
                 onChange={(event) => setMes(Number(event.target.value))}
-                className="mt-1 block w-full rounded-md border border-[#D4E4D4] bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC]"
+                className="mt-1 block w-full rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
               >
                 {MESES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -178,14 +178,14 @@ export default function EstadisticasPage() {
                 type="number"
                 value={anio}
                 onChange={(event) => setAnio(Number(event.target.value))}
-                className="mt-1 block w-28 rounded-md border border-[#D4E4D4] bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC]"
+                className="mt-1 block w-28 rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
               />
             </label>
 
             <button
               type="button"
               onClick={() => void cargarReportes()}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#1B5E3B] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#256B47]"
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#284FC0]"
             >
               <FiRefreshCw size={14} />
               Actualizar
@@ -221,18 +221,18 @@ export default function EstadisticasPage() {
             <button
               type="button"
               onClick={exportarCsv}
-              className="inline-flex items-center gap-2 rounded-md border border-[#D4E4D4] bg-white px-4 py-2 text-sm font-bold text-[#1B5E3B] transition hover:bg-[#E7F3EC]"
+              className="ccr-export-button inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition"
             >
-              <FiDownload size={14} />
+              <FiDownload className="text-[#1B5E3B]" size={14} />
               Exportar resumen CSV
             </button>
             <button
               type="button"
               onClick={() => void exportarExcelResponsables()}
               disabled={exportandoResponsables}
-              className="inline-flex items-center gap-2 rounded-md border border-[#D4E4D4] bg-white px-4 py-2 text-sm font-bold text-[#1B5E3B] transition hover:bg-[#E7F3EC] disabled:opacity-60"
+              className="ccr-export-button inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition disabled:opacity-60"
             >
-              <FiDownload size={14} />
+              <FiDownload className="text-[#1B5E3B]" size={14} />
               {exportandoResponsables ? "Exportando..." : "Exportar Excel por responsable"}
             </button>
           </div>

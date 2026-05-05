@@ -203,7 +203,7 @@ export default function InicioPage() {
           </div>
           <Button
             onPress={() => void cargarDashboard()}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1B5E3B] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#256B47]"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0]"
           >
             <FiRefreshCw size={14} />
             Refrescar
@@ -267,8 +267,11 @@ export default function InicioPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <BadgePrioridad prioridad={paciente.prioridad} />
                     <BadgeEstado estado={paciente.estado} />
-                    <span className="rounded-full border border-[#D4E4D4] bg-white px-2 py-1 text-[11px] font-bold text-[#1B5E3B]">
+                    <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
                       {accion}
+                    </span>
+                    <span className="rounded-full bg-[#1B5E3B] px-2 py-1 text-[11px] font-bold text-white">
+                      Ver ficha operativa
                     </span>
                   </div>
                 </button>
@@ -298,14 +301,14 @@ export default function InicioPage() {
                   href={card.href}
                   className="group flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 transition hover:border-[#D4E4D4] hover:bg-white"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#D4E4D4] bg-white text-[#1B5E3B]">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-700">
                     <card.icon size={18} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-black text-slate-900">{card.title}</p>
                     <p className="line-clamp-1 text-xs text-slate-500">{card.description}</p>
                   </div>
-                  <FiArrowRight className="text-slate-300 transition group-hover:text-[#1B5E3B]" />
+                  <FiArrowRight className="text-slate-300 transition group-hover:text-blue-700" />
                 </Link>
               ))}
             </div>

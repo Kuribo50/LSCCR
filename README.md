@@ -131,6 +131,13 @@ Los comentarios nuevos del codigo deben estar en español, con explicaciones sim
 - Observación operativa: nota interna de gestión; no es evolución clínica oficial.
 - Los nombres internos antiguos, como `kine_asignado`, pueden mantenerse en código por compatibilidad técnica.
 
+## Convención visual
+
+- Azul: acciones generales, edición, filtros, guardar, aceptar y confirmar.
+- Verde: acceso a ficha operativa y exportaciones Excel.
+- Amarillo o naranjo: alertas operativas suaves.
+- Rojo: acciones destructivas o alertas críticas.
+
 ## Ajustes fase 2 inicial
 
 - Contactabilidad: primer contacto sin respuesta pasa a `RESCATE`; segundo contacto sin respuesta desde `RESCATE` pasa a `EGRESO_ADMINISTRATIVO` con observacion obligatoria.

@@ -201,7 +201,7 @@ function AlertaCard({
       <button
         type="button"
         onClick={() => onVerGrupo(config.key)}
-        className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-[#D4E4D4] bg-white px-3 py-2 text-xs font-bold text-[#1B5E3B] transition hover:bg-[#E7F3EC]"
+        className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
       >
         Ver todos
         <FiArrowRight size={14} />

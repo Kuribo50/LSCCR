@@ -121,10 +121,10 @@ export default function CambiarEstadoModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Encabezado del modal */}
-        <div className="shrink-0 border-b border-[#D4E4D4] bg-[#E7F3EC] px-6 py-5">
+        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-6 py-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1B5E3B]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700">
                 Cambiar estado operativo
               </p>
               <h3 className="mt-1 text-lg font-bold text-slate-950">
@@ -140,7 +140,7 @@ export default function CambiarEstadoModal({
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
           {/* Estado actual del paciente */}
-          <div className="rounded-lg border border-[#D4E4D4] bg-white px-4 py-3">
+          <div className="rounded-lg border border-blue-100 bg-white px-4 py-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
               Vista previa
             </p>
@@ -181,8 +181,8 @@ export default function CambiarEstadoModal({
                       }}
                       className={`rounded-lg border p-4 text-left transition ${
                         seleccionado
-                          ? "border-[#1B5E3B] bg-[#E7F3EC] shadow-sm"
-                          : "border-[#D4E4D4] bg-white hover:border-[#256B47] hover:bg-[#F4FAF6]"
+                          ? "border-[#335FDB] bg-blue-50 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-[#335FDB] hover:bg-blue-50"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -229,7 +229,7 @@ export default function CambiarEstadoModal({
               className={`w-full resize-none rounded-lg border px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 ${
                 requiereNota && !notas.trim()
                   ? "border-amber-300 bg-amber-50 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
-                  : "border-slate-200 bg-white focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC]"
+                  : "border-slate-200 bg-white focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
               }`}
             />
           </div>
@@ -242,12 +242,12 @@ export default function CambiarEstadoModal({
         </div>
 
         {/* Acciones del modal */}
-        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#D4E4D4] bg-slate-50 px-6 py-4 sm:flex-row">
+        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-blue-100 bg-slate-50 px-6 py-4 sm:flex-row">
           <button
             type="button"
             onClick={handleConfirm}
             disabled={loading || !puedeConfirmar}
-            className="flex-1 rounded-lg bg-[#1B5E3B] py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+            className="flex-1 rounded-lg bg-[#335FDB] py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
           >
             {loading ? "Guardando..." : "Confirmar cambio"}
           </button>

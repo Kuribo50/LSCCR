@@ -778,14 +778,35 @@ h6 {
 }
 
 .ccr-action-view {
-  background: #111827 !important;
-  border-color: #111827 !important;
+  background: #1b5e3b !important;
+  border-color: #1b5e3b !important;
   color: #ffffff !important;
 }
 
 .ccr-action-view:hover {
-  background: #020617 !important;
-  border-color: #020617 !important;
+  background: #256b47 !important;
+  border-color: #256b47 !important;
+}
+
+.ccr-export-button {
+  border: 1px solid #d4e4d4 !important;
+  border-radius: 0.75rem;
+  background: #ffffff !important;
+  color: #1b5e3b !important;
+  font-weight: 800;
+  outline: none;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.ccr-export-button:hover {
+  transform: translateY(-1px);
+  border-color: #1b5e3b !important;
+  background: #e7f3ec !important;
+  box-shadow: 0 10px 22px -18px rgba(27, 94, 59, 0.5);
+}
+
+.ccr-export-button svg {
+  color: #1b5e3b !important;
 }
 
 .ccr-action-call {

@@ -386,10 +386,9 @@ export default function HistorialMensualPage() {
                       type="button"
                       onClick={() => void exportarCorte(grupo)}
                       disabled={exportandoKey === grupo.key}
-                      className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600 disabled:opacity-60"
-                      style={{ borderColor: "#a8d4f0" }}
+                      className="ccr-export-button inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-60"
                     >
-                      <FiDownload size={12} />
+                      <FiDownload className="text-[#1B5E3B]" size={12} />
                       {exportandoKey === grupo.key ? "Exportando..." : "Exportar corte"}
                     </button>
                     <button

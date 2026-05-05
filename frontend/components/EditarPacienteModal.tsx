@@ -174,7 +174,7 @@ export default function EditarPacienteModal({
         className="ccr-edit-patient-modal max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="ccr-edit-patient-modal-header flex items-start justify-between border-b border-[#D4E4D4] bg-[#E7F3EC] px-6 py-4">
+        <div className="ccr-edit-patient-modal-header flex items-start justify-between border-b border-blue-100 bg-blue-50 px-6 py-4">
           <div>
             <h2 className="text-base font-bold text-gray-800">
               {isContactOnly
@@ -212,7 +212,7 @@ export default function EditarPacienteModal({
                   onChange={(e) =>
                     set("categoria", e.target.value as Categoria)
                   }
-                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1B5E3B] focus:outline-none focus:ring-2 focus:ring-[#E7F3EC]"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   {Object.entries(CATEGORIA_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -230,7 +230,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono}
                   onChange={(e) => set("telefono", e.target.value)}
-                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1B5E3B] focus:outline-none focus:ring-2 focus:ring-[#E7F3EC]"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -242,7 +242,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono_recados}
                   onChange={(e) => set("telefono_recados", e.target.value)}
-                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1B5E3B] focus:outline-none focus:ring-2 focus:ring-[#E7F3EC]"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -254,7 +254,7 @@ export default function EditarPacienteModal({
                   type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#1B5E3B] focus:outline-none focus:ring-2 focus:ring-[#E7F3EC]"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
@@ -437,7 +437,7 @@ export default function EditarPacienteModal({
             type="submit"
             onClick={handleSubmit}
             disabled={loading}
-            className="flex-1 rounded-md bg-[#1B5E3B] py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:opacity-50"
+            className="flex-1 rounded-md bg-[#335FDB] py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
           >
             {loading ? "Guardando…" : "Guardar cambios"}
           </button>

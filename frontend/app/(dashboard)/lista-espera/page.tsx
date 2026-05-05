@@ -29,8 +29,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import { usePersistentTableState } from "@/lib/tables/usePersistentTableState";
-import type { Categoria, Paciente, Prioridad } from "@/lib/types";
-import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
+import type { Categoria, Estado, Paciente, Prioridad } from "@/lib/types";
+import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import FichaPaciente from "@/components/FichaPaciente";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import BadgeDias from "@/components/BadgeDias";
@@ -77,6 +77,12 @@ type AssignContactDraft = {
   telefono_recados: string;
   email: string;
 };
+type QuickFilterState = {
+  estado: Estado | "TODOS";
+  prioridad: Prioridad | "TODAS";
+  categoria: Categoria | "TODAS";
+  responsable: string;
+};
 
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
@@ -100,6 +106,14 @@ function toCapitalizedWords(value: string) {
     const [first = "", ...rest] = Array.from(word);
     return `${first.toLocaleUpperCase("es-CL")}${rest.join("")}`;
   });
+}
+
+function getResponsableLabel(paciente: Paciente) {
+  return (
+    paciente.responsable_nombre ??
+    paciente.kine_asignado_nombre ??
+    "Sin responsable"
+  );
 }
 
 function descargarBlob(blob: Blob, filename: string) {
@@ -250,6 +264,12 @@ export default function ListaEsperaPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; nombre: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [quickFilters, setQuickFilters] = useState<QuickFilterState>({
+    estado: "TODOS",
+    prioridad: "TODAS",
+    categoria: "TODAS",
+    responsable: "TODOS",
+  });
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const initialTableState = useMemo(
     () => ({
@@ -372,9 +392,12 @@ export default function ListaEsperaPage() {
     setExportando(true);
     try {
       const params = new URLSearchParams();
+      const usaResponsableEspecifico =
+        quickFilters.responsable !== "TODOS" &&
+        quickFilters.responsable !== "SIN_RESPONSABLE";
       if (alertaActiva) {
         params.set("alerta", alertaActiva);
-      } else {
+      } else if (!usaResponsableEspecifico) {
         params.set("sin_asignar", "1");
       }
       if (mes) params.set("mes", mes);
@@ -382,6 +405,16 @@ export default function ListaEsperaPage() {
       if (importacionId) params.set("importacion", importacionId);
       if (tableState.globalSearch.trim()) {
         params.set("search", tableState.globalSearch.trim());
+      }
+      if (quickFilters.estado !== "TODOS") params.set("estado", quickFilters.estado);
+      if (quickFilters.prioridad !== "TODAS") params.set("prioridad", quickFilters.prioridad);
+      if (quickFilters.categoria !== "TODAS") params.set("categoria", quickFilters.categoria);
+      if (quickFilters.responsable !== "TODOS") {
+        if (quickFilters.responsable === "SIN_RESPONSABLE") {
+          params.set("sin_asignar", "1");
+        } else {
+          params.set("kine", quickFilters.responsable);
+        }
       }
       const blob = await api.getBlob(`/pacientes/exportar/?${params.toString()}`);
       descargarBlob(blob, `lista-espera-ccr-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}.xlsx`);
@@ -407,9 +440,86 @@ export default function ListaEsperaPage() {
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [openFilter]);
 
+  const quickFilterOptions = useMemo(() => {
+    const responsables = new Map<string, string>();
+    let tieneSinResponsable = false;
+
+    pacientes.forEach((paciente) => {
+      if (paciente.kine_asignado) {
+        responsables.set(String(paciente.kine_asignado), getResponsableLabel(paciente));
+      } else {
+        tieneSinResponsable = true;
+      }
+    });
+
+    return {
+      estados: (Object.keys(ESTADO_LABELS) as Estado[]).filter((estado) =>
+        pacientes.some((paciente) => paciente.estado === estado),
+      ),
+      prioridades: (Object.keys(PRIORIDAD_LABELS) as Prioridad[]).filter(
+        (prioridad) => pacientes.some((paciente) => paciente.prioridad === prioridad),
+      ),
+      categorias: (Object.keys(CATEGORIA_LABELS) as Categoria[]).filter(
+        (categoria) => pacientes.some((paciente) => paciente.categoria === categoria),
+      ),
+      responsables: [
+        ...(tieneSinResponsable
+          ? [{ value: "SIN_RESPONSABLE", label: "Sin responsable" }]
+          : []),
+        ...Array.from(responsables.entries())
+          .map(([value, label]) => ({ value, label }))
+          .sort((a, b) => a.label.localeCompare(b.label, "es")),
+      ],
+    };
+  }, [pacientes]);
+
+  const quickFilterCount = useMemo(
+    () =>
+      [
+        quickFilters.estado !== "TODOS",
+        quickFilters.prioridad !== "TODAS",
+        quickFilters.categoria !== "TODAS",
+        quickFilters.responsable !== "TODOS",
+      ].filter(Boolean).length,
+    [quickFilters],
+  );
+
+  const pacientesFiltradosRapidos = useMemo(
+    () =>
+      pacientes.filter((paciente) => {
+        if (quickFilters.estado !== "TODOS" && paciente.estado !== quickFilters.estado) {
+          return false;
+        }
+        if (
+          quickFilters.prioridad !== "TODAS" &&
+          paciente.prioridad !== quickFilters.prioridad
+        ) {
+          return false;
+        }
+        if (
+          quickFilters.categoria !== "TODAS" &&
+          paciente.categoria !== quickFilters.categoria
+        ) {
+          return false;
+        }
+        if (quickFilters.responsable === "SIN_RESPONSABLE" && paciente.kine_asignado) {
+          return false;
+        }
+        if (
+          quickFilters.responsable !== "TODOS" &&
+          quickFilters.responsable !== "SIN_RESPONSABLE" &&
+          String(paciente.kine_asignado) !== quickFilters.responsable
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [pacientes, quickFilters],
+  );
+
   const rowsData = useMemo<WaitlistRow[]>(
     () =>
-      pacientes.map((patient) => {
+      pacientesFiltradosRapidos.map((patient) => {
         const rut = formatearRut(patient.rut);
         const rutRaw = normalizeRut(patient.rut);
         const nombreNormalizado = normalizeSearchText(patient.nombre);
@@ -434,7 +544,7 @@ export default function ListaEsperaPage() {
           searchIndex: `${nombreNormalizado} ${rutRaw} ${diagnosticoNormalizado}`,
         };
       }),
-    [pacientes],
+    [pacientesFiltradosRapidos],
   );
 
   const columns = useMemo(
@@ -635,6 +745,7 @@ export default function ListaEsperaPage() {
   const tableRows = table.getRowModel().rows;
   const activeFilterCount =
     tableState.columnFilters.length +
+    quickFilterCount +
     (tableState.globalSearch.trim() ? 1 : 0) +
     (alertaActiva ? 1 : 0);
   const columnTemplate = useMemo(
@@ -770,6 +881,12 @@ export default function ListaEsperaPage() {
       setFilterPosition(null);
       setDraftFilters({});
       setFilterQueries({});
+      setQuickFilters({
+        estado: "TODOS",
+        prioridad: "TODAS",
+        categoria: "TODAS",
+        responsable: "TODOS",
+      });
     });
   }
 
@@ -790,7 +907,7 @@ export default function ListaEsperaPage() {
               <div className="grid grid-cols-3 gap-2 sm:flex">
                 <span className="ccr-waitlist-stat">
                   <span>Total</span>
-                  <strong>{rowsData.length}</strong>
+                  <strong>{pacientes.length}</strong>
                 </span>
                 <span className="ccr-waitlist-stat">
                   <span>Vista</span>
@@ -804,7 +921,7 @@ export default function ListaEsperaPage() {
               <button
                 type="button"
                 onClick={() => void cargar()}
-                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-[#1B5E3B] sm:w-auto sm:justify-start"
+                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-auto sm:justify-start"
               >
                 <FiRefreshCw size={13} />
                 Recargar
@@ -813,7 +930,7 @@ export default function ListaEsperaPage() {
                 type="button"
                 onClick={() => void exportarExcel()}
                 disabled={exportando}
-                className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
+                className="ccr-export-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold disabled:opacity-60 sm:w-auto"
               >
                 <FiDownload size={13} />
                 {exportando ? "Exportando..." : "Exportar Excel"}
@@ -852,19 +969,115 @@ export default function ListaEsperaPage() {
             </button>
           </div>
 
+          <div className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                Filtros de tabla
+              </p>
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+                {filteredRows} resultado{filteredRows !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <label className="text-[11px] font-semibold text-slate-500">
+                Estado
+                <select
+                  value={quickFilters.estado}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      estado: event.target.value as QuickFilterState["estado"],
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODOS">Todos</option>
+                  {quickFilterOptions.estados.map((estado) => (
+                    <option key={estado} value={estado}>
+                      {ESTADO_LABELS[estado]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-[11px] font-semibold text-slate-500">
+                Prioridad
+                <select
+                  value={quickFilters.prioridad}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      prioridad: event.target.value as QuickFilterState["prioridad"],
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODAS">Todas</option>
+                  {quickFilterOptions.prioridades.map((prioridad) => (
+                    <option key={prioridad} value={prioridad}>
+                      {PRIORIDAD_LABELS[prioridad]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-[11px] font-semibold text-slate-500">
+                Categoría
+                <select
+                  value={quickFilters.categoria}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      categoria: event.target.value as QuickFilterState["categoria"],
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODAS">Todas</option>
+                  {quickFilterOptions.categorias.map((categoria) => (
+                    <option key={categoria} value={categoria}>
+                      {CATEGORIA_LABELS[categoria]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-[11px] font-semibold text-slate-500">
+                Responsable
+                <select
+                  value={quickFilters.responsable}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      responsable: event.target.value,
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODOS">Todos</option>
+                  {quickFilterOptions.responsables.map((responsable) => (
+                    <option key={responsable.value} value={responsable.value}>
+                      {responsable.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
           {isPending && (
             <p className="text-[11px] text-gray-400">Actualizando tabla...</p>
           )}
 
           {alertaActivaLabel && (
-            <div className="flex flex-col gap-2 rounded-lg border border-[#D4E4D4] bg-[#E7F3EC] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs font-semibold text-[#1B5E3B]">
+            <div className="flex flex-col gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-blue-700">
                 Filtro activo: {alertaActivaLabel}
               </p>
               <button
                 type="button"
                 onClick={() => router.push("/lista-espera")}
-                className="inline-flex items-center justify-center rounded-md border border-[#D4E4D4] bg-white px-3 py-1.5 text-xs font-bold text-[#1B5E3B] transition hover:bg-[#f4faf6]"
+                className="inline-flex items-center justify-center rounded-md border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
               >
                 Limpiar filtro
               </button>
@@ -887,7 +1100,7 @@ export default function ListaEsperaPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#daebf1]">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#1B5E3B]" />
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#335FDB]" />
                   Actualizando...
                 </div>
               )}
@@ -1046,7 +1259,7 @@ export default function ListaEsperaPage() {
                           onDoubleClick={() => header.column.resetSize()}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className={`ccr-column-resizer absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-emerald-200/50 ${header.column.getIsResizing() ? "bg-emerald-300/60" : ""}`}
+                          className={`ccr-column-resizer absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-blue-200/50 ${header.column.getIsResizing() ? "bg-blue-300/60" : ""}`}
                           aria-label={`Redimensionar columna ${meta.label}`}
                         />
                       )}
@@ -1072,7 +1285,7 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={row.id}
-                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-[#E7F3EC]/60 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       style={{
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
@@ -1318,7 +1531,7 @@ function AsignarContactoModal({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded-xl bg-[#1B5E3B] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:opacity-50"
+            className="rounded-xl bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
           >
             {loading ? "Asignando..." : "Guardar y tomar"}
           </button>
@@ -1408,14 +1621,14 @@ function FilterPopover({
           <button
             type="button"
             onClick={onSortAsc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-[#E7F3EC] text-[#1B5E3B] dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de menor a mayor
           </button>
           <button
             type="button"
             onClick={onSortDesc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-[#E7F3EC] text-[#1B5E3B] dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de mayor a menor
           </button>
@@ -1436,7 +1649,7 @@ function FilterPopover({
           if (event.key === "Enter") event.preventDefault();
         }}
         placeholder="Buscar opción"
-        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC] dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
+        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100 dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
       />
 
       <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px]">
@@ -1455,7 +1668,7 @@ function FilterPopover({
               Array.from(new Set([...selectedValues, ...visibleOptions])),
             );
           }}
-          className="font-semibold text-[#1B5E3B] hover:underline"
+          className="font-semibold text-blue-700 hover:underline"
         >
           Seleccionar todo
         </button>
@@ -1485,7 +1698,7 @@ function FilterPopover({
                       onSelectionChange([...selectedValues, option]);
                     }
                   }}
-                  className="h-3.5 w-3.5 accent-[#1B5E3B]"
+                  className="h-3.5 w-3.5 accent-[#335FDB]"
                 />
                 <span className="truncate text-gray-700 dark:text-[#b5d8e3]" title={option}>
                   {option}
@@ -1509,7 +1722,7 @@ function FilterPopover({
           onClick={() =>
             onApply(shouldApplyVisibleOnly ? visibleOptions : undefined)
           }
-          className="ccr-filter-apply rounded-md bg-[#1B5E3B] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#256B47]"
+          className="ccr-filter-apply rounded-md bg-[#335FDB] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#284FC0]"
         >
           Aplicar
         </button>

@@ -260,7 +260,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarEdicion(true)}
-                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
               >
                 <FiEdit2 size={14} />
                 Editar contacto
@@ -308,7 +308,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarCambioEstado(true)}
-                className="inline-flex items-center gap-2 rounded-md bg-emerald-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-900"
+                className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#284FC0]"
               >
                 <FiRefreshCw size={14} />
                 Cambiar estado
@@ -318,7 +318,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarContacto(true)}
-                className="inline-flex items-center gap-2 rounded-md bg-[#1B5E3B] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#256B47]"
+                className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#284FC0]"
               >
                 <FiPhone size={14} />
                 Registrar contacto
@@ -338,7 +338,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarProgramacion(true)}
-                className="inline-flex items-center gap-2 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
               >
                 <FiClock size={14} />
                 {paciente.proxima_atencion ? "Reprogramar atención" : "Programar atención"}
