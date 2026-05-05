@@ -60,7 +60,7 @@ export async function middleware(request: NextRequest) {
 
     const response = NextResponse.next()
     const secure = process.env.NODE_ENV !== 'development'
-    const sameSite: 'lax' = 'lax'
+    const sameSite = 'lax' as const
     response.cookies.set('access-token', refreshed.access!, {
       httpOnly: true,
       secure,

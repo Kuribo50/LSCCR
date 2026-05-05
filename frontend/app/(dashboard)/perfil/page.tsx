@@ -90,10 +90,11 @@ export default function PerfilPage() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorData = err as { detail?: string }
       const values = err && typeof err === 'object' ? Object.values(err) : []
       const firstArray = values.find((v) => Array.isArray(v) && v.length > 0) as string[] | undefined
-      const fallback = err?.detail || firstArray?.[0] || 'No se pudo actualizar la contraseña.'
+      const fallback = errorData.detail || firstArray?.[0] || 'No se pudo actualizar la contraseña.'
       setPasswordError(String(fallback))
     } finally {
       setPasswordLoading(false)

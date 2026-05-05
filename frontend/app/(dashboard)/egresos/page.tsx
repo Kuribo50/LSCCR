@@ -61,8 +61,6 @@ const PriorityBadge = (BadgePrioridad ??
       {toCapitalizedWords(prioridad)}
     </span>
   ))) as ComponentType<{ prioridad: Paciente['prioridad'] }>
-const PatientSheet = FichaPaciente as ComponentType<any> | undefined
-
 function calcularDiasDesde(fecha: string | null | undefined) {
   if (!fecha) return null
   const inicio = new Date(`${fecha}T00:00:00`)
@@ -393,8 +391,8 @@ export default function EgresosPage() {
         </section>
       )}
 
-      {seleccionado && PatientSheet && (
-        <PatientSheet
+      {seleccionado && (
+        <FichaPaciente
           paciente={seleccionado}
           usuario={user}
           onClose={() => setSeleccionado(null)}

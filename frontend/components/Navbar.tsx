@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FiMenu, FiLogOut, FiMoon, FiSun, FiUser } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
@@ -21,7 +21,12 @@ export default function Navbar({
 }) {
   const { logout } = useAuth()
   const router = useRouter()
-  const [isDark, setIsDark] = useState(false)
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof document === 'undefined') return false
+    const root = document.documentElement
+    const fromDataset = root.getAttribute('data-theme')
+    return fromDataset === 'dark' || root.classList.contains('dark')
+  })
   const fechaActual = useMemo(
     () =>
       new Intl.DateTimeFormat('es-CL', {
@@ -31,16 +36,6 @@ export default function Navbar({
       }).format(new Date()),
     [],
   )
-
-  useEffect(() => {
-    const root = document.documentElement
-    const fromDataset = root.getAttribute('data-theme')
-    if (fromDataset === 'dark' || root.classList.contains('dark')) {
-      setIsDark(true)
-      return
-    }
-    setIsDark(false)
-  }, [])
 
   async function handleLogout() {
     await logout()

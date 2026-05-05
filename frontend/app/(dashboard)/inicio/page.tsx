@@ -206,13 +206,14 @@ export default function InicioPage() {
   const handleVerGrupo = useCallback(
     (grupo: keyof AlertasOperativas) => {
       const rutas: Record<keyof AlertasOperativas, string> = {
-        alta_sin_responsable: "/lista-espera?prioridad=ALTA&estado=PENDIENTE&sin_asignar=1",
-        sobre_90_dias: "/lista-espera?ordering=dias",
-        pendientes_con_1_intento: "/lista-espera?estado=PENDIENTE",
-        rescates_activos: "/lista-espera?estado=RESCATE",
-        ingresados_sin_proxima_atencion: "/mis-pacientes",
-        posible_abandono: "/mis-pacientes",
-        telefonos_incompletos: "/lista-espera",
+        alta_sin_responsable: "/lista-espera?alerta=alta_sin_responsable",
+        sobre_90_dias: "/lista-espera?alerta=sobre_90_dias",
+        pendientes_con_1_intento: "/lista-espera?alerta=pendientes_con_1_intento",
+        rescates_activos: "/lista-espera?alerta=rescates_activos",
+        ingresados_sin_proxima_atencion:
+          "/lista-espera?alerta=ingresados_sin_proxima_atencion",
+        posible_abandono: "/lista-espera?alerta=posible_abandono",
+        telefonos_incompletos: "/lista-espera?alerta=telefonos_incompletos",
       };
       router.push(rutas[grupo]);
     },

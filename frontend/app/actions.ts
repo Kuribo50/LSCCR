@@ -5,20 +5,20 @@ import { cookies } from 'next/headers'
 export async function setAuthCookies(access: string, refresh: string) {
   const cookieStore = await cookies()
   const secure = process.env.NODE_ENV !== 'development'
-  const sameSite: 'lax' = 'lax'
+  const sameSite = 'lax' as const
   cookieStore.set('access-token', access, {
     httpOnly: true,
     secure,
     sameSite,
     path: '/',
-    maxAge: 60 * 60 * 24 * 7 // 7 days
+    maxAge: 60 * 60 * 24 * 7 // 7 días
   })
   cookieStore.set('refresh-token', refresh, {
     httpOnly: true,
     secure,
     sameSite,
     path: '/',
-    maxAge: 60 * 60 * 24 * 14 // 14 days
+    maxAge: 60 * 60 * 24 * 14 // 14 días
   })
 }
 
@@ -48,7 +48,7 @@ export async function refreshAuthToken() {
     if (res.ok) {
       const data = await res.json()
       const secure = process.env.NODE_ENV !== 'development'
-      const sameSite: 'lax' = 'lax'
+      const sameSite = 'lax' as const
       cookieStore.set('access-token', data.access, {
         httpOnly: true,
         secure,

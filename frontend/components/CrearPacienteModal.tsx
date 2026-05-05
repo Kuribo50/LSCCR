@@ -104,7 +104,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
         observaciones: observaciones.trim(),
       });
 
-      // 2. Auto Assign if requested
+      // Autoasigna al usuario actual si se pidió desde el formulario.
       if (autoAsignar && isKine) {
         try {
           await api.post(`/pacientes/${res.id}/asignar/`, {});
@@ -116,11 +116,20 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
       resetForm();
       onOpenChange(false);
       onSuccess(res);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorData = err as {
+        response?: {
+          data?: {
+            detail?: string;
+            rut?: string[];
+            email?: string[];
+          };
+        };
+      };
       setError(
-        err?.response?.data?.detail ??
-        err?.response?.data?.rut?.[0] ??
-        err?.response?.data?.email?.[0] ??
+        errorData.response?.data?.detail ??
+        errorData.response?.data?.rut?.[0] ??
+        errorData.response?.data?.email?.[0] ??
         "Ocurrió un error al intentar registrar el paciente. Verifique los datos."
       );
     } finally {

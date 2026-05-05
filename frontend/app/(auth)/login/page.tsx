@@ -110,8 +110,12 @@ export default function LoginPage() {
     try {
       await login(rutParaApi(rut), password);
       router.replace("/inicio");
-    } catch (err: any) {
-      const rawMessage = err?.non_field_errors?.[0] || err?.detail || "Error al iniciar sesión.";
+    } catch (err: unknown) {
+      const errorData = err as { non_field_errors?: string[]; detail?: string };
+      const rawMessage =
+        errorData.non_field_errors?.[0] ||
+        errorData.detail ||
+        "Error al iniciar sesión.";
       setError(rawMessage.toLowerCase().includes("no active account") 
         ? "No se encontró una cuenta activa para estas credenciales."
         : rawMessage);

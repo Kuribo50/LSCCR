@@ -45,6 +45,16 @@ ORDEN_PRIORIDAD = Case(
     output_field=IntegerField(),
 )
 
+ALERTAS_OPERATIVAS = (
+    "alta_sin_responsable",
+    "sobre_90_dias",
+    "pendientes_con_1_intento",
+    "rescates_activos",
+    "ingresados_sin_proxima_atencion",
+    "posible_abandono",
+    "telefonos_incompletos",
+)
+
 
 class PacienteViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -75,6 +85,51 @@ class PacienteViewSet(viewsets.ModelViewSet):
             ).data,
         }
 
+    def _filtrar_alerta_operativa(self, queryset, alerta):
+        hoy = timezone.localdate()
+        corte_90_dias = hoy - timedelta(days=90)
+        estados_activos = [
+            Paciente.Estado.PENDIENTE,
+            Paciente.Estado.RESCATE,
+            Paciente.Estado.INGRESADO,
+        ]
+
+        if alerta == "alta_sin_responsable":
+            return queryset.filter(
+                prioridad=Paciente.Prioridad.ALTA,
+                kine_asignado__isnull=True,
+                estado=Paciente.Estado.PENDIENTE,
+            )
+        if alerta == "sobre_90_dias":
+            return queryset.filter(
+                fecha_derivacion__lt=corte_90_dias,
+                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
+            )
+        if alerta == "pendientes_con_1_intento":
+            return queryset.filter(
+                estado=Paciente.Estado.PENDIENTE,
+                n_intentos_contacto=1,
+            )
+        if alerta == "rescates_activos":
+            return queryset.filter(estado=Paciente.Estado.RESCATE)
+        if alerta == "ingresados_sin_proxima_atencion":
+            return queryset.filter(
+                estado=Paciente.Estado.INGRESADO,
+                proxima_atencion__isnull=True,
+            )
+        if alerta == "posible_abandono":
+            return queryset.filter(
+                estado=Paciente.Estado.INGRESADO,
+                n_inasistencias__gte=2,
+            )
+        if alerta == "telefonos_incompletos":
+            return queryset.filter(
+                estado__in=estados_activos,
+                telefono="",
+                telefono_recados="",
+            )
+        return queryset
+
     def destroy(self, request, *args, **kwargs):
         if request.user.rol != Usuario.Rol.ADMIN:
             return Response(
@@ -98,6 +153,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
         mes = params.get("mes")
         anio = params.get("anio")
         importacion = params.get("importacion")
+        alerta = params.get("alerta")
 
         if categoria:
             queryset = queryset.filter(categoria=categoria)
@@ -109,6 +165,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(kine_asignado_id=kine)
         if importacion:
             queryset = queryset.filter(importacion_origen_id=importacion)
+        if alerta in ALERTAS_OPERATIVAS:
+            queryset = self._filtrar_alerta_operativa(queryset, alerta)
         if mes:
             queryset = queryset.filter(fecha_derivacion__month=mes)
         if anio:
@@ -377,45 +435,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="alertas-operativas")
     def alertas_operativas(self, request):
-        hoy = timezone.localdate()
-        corte_90_dias = hoy - timedelta(days=90)
         base = Paciente.objects.select_related("kine_asignado").prefetch_related(
             "llamados", "inasistencias"
         )
-        estados_activos = [
-            Paciente.Estado.PENDIENTE,
-            Paciente.Estado.RESCATE,
-            Paciente.Estado.INGRESADO,
-        ]
-
         grupos = {
-            "alta_sin_responsable": base.filter(
-                prioridad=Paciente.Prioridad.ALTA,
-                kine_asignado__isnull=True,
-                estado=Paciente.Estado.PENDIENTE,
-            ),
-            "sobre_90_dias": base.filter(
-                fecha_derivacion__lt=corte_90_dias,
-                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
-            ),
-            "pendientes_con_1_intento": base.filter(
-                estado=Paciente.Estado.PENDIENTE,
-                n_intentos_contacto=1,
-            ),
-            "rescates_activos": base.filter(estado=Paciente.Estado.RESCATE),
-            "ingresados_sin_proxima_atencion": base.filter(
-                estado=Paciente.Estado.INGRESADO,
-                proxima_atencion__isnull=True,
-            ),
-            "posible_abandono": base.filter(
-                estado=Paciente.Estado.INGRESADO,
-                n_inasistencias__gte=2,
-            ),
-            "telefonos_incompletos": base.filter(
-                estado__in=estados_activos,
-                telefono="",
-                telefono_recados="",
-            ),
+            alerta: self._filtrar_alerta_operativa(base, alerta)
+            for alerta in ALERTAS_OPERATIVAS
         }
 
         return Response(

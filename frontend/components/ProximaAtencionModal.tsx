@@ -74,8 +74,9 @@ export default function ProximaAtencionModal({
     try {
       await onConfirm(isoValue);
       onClose();
-    } catch (e: any) {
-      setError(e?.detail || "Error al programar.");
+    } catch (e: unknown) {
+      const errorData = e as { detail?: string };
+      setError(errorData.detail || "Error al programar.");
     } finally {
       setLoading(false);
     }

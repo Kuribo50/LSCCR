@@ -264,3 +264,123 @@ class PacienteWorkflowTests(APITestCase):
     def assertInPaciente(self, grupo, paciente):
         ids = {item["id"] for item in grupo["pacientes"]}
         self.assertIn(paciente.id, ids)
+
+    def test_filtro_alerta_alta_sin_responsable(self):
+        esperado = self.crear_paciente(
+            prioridad=Paciente.Prioridad.ALTA,
+            kine_asignado=None,
+            estado=Paciente.Estado.PENDIENTE,
+        )
+        self.crear_paciente(
+            prioridad=Paciente.Prioridad.ALTA,
+            estado=Paciente.Estado.PENDIENTE,
+        )
+
+        response = self.client.get("/api/pacientes/?alerta=alta_sin_responsable")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_sobre_90_dias(self):
+        esperado = self.crear_paciente(
+            fecha_derivacion=timezone.localdate() - timedelta(days=91),
+            estado=Paciente.Estado.RESCATE,
+        )
+        self.crear_paciente(
+            fecha_derivacion=timezone.localdate() - timedelta(days=91),
+            estado=Paciente.Estado.INGRESADO,
+        )
+        self.crear_paciente(
+            fecha_derivacion=timezone.localdate() - timedelta(days=20),
+            estado=Paciente.Estado.PENDIENTE,
+        )
+
+        response = self.client.get("/api/pacientes/?alerta=sobre_90_dias")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_pendientes_con_1_intento(self):
+        esperado = self.crear_paciente(
+            estado=Paciente.Estado.PENDIENTE,
+            n_intentos_contacto=1,
+        )
+        self.crear_paciente(
+            estado=Paciente.Estado.PENDIENTE,
+            n_intentos_contacto=2,
+        )
+
+        response = self.client.get("/api/pacientes/?alerta=pendientes_con_1_intento")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_rescates_activos(self):
+        esperado = self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+
+        response = self.client.get("/api/pacientes/?alerta=rescates_activos")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_ingresados_sin_proxima_atencion(self):
+        esperado = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            proxima_atencion=None,
+        )
+        self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            proxima_atencion=timezone.now(),
+        )
+
+        response = self.client.get(
+            "/api/pacientes/?alerta=ingresados_sin_proxima_atencion"
+        )
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_posible_abandono(self):
+        esperado = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            n_inasistencias=2,
+        )
+        self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            n_inasistencias=1,
+        )
+
+        response = self.client.get("/api/pacientes/?alerta=posible_abandono")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_telefonos_incompletos(self):
+        esperado = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            telefono="",
+            telefono_recados="",
+        )
+        self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            telefono="123456789",
+            telefono_recados="",
+        )
+        self.crear_paciente(
+            estado=Paciente.Estado.ALTA_MEDICA,
+            telefono="",
+            telefono_recados="",
+        )
+
+        response = self.client.get("/api/pacientes/?alerta=telefonos_incompletos")
+
+        self.assertResponseSoloPacientes(response, [esperado])
+
+    def test_filtro_alerta_desconocida_no_rompe(self):
+        paciente = self.crear_paciente()
+
+        response = self.client.get("/api/pacientes/?alerta=no_existe")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertResponseSoloPacientes(response, [paciente])
+
+    def assertResponseSoloPacientes(self, response, pacientes):
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        expected_ids = {paciente.id for paciente in pacientes}
+        response_ids = {item["id"] for item in response.data}
+        self.assertEqual(response_ids, expected_ids)

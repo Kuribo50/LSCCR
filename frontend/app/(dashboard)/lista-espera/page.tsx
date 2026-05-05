@@ -10,7 +10,7 @@ import {
   useTransition,
 } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   createColumnHelper,
   flexRender,
@@ -180,6 +180,16 @@ const BASE_COLUMN_VISIBILITY: VisibilityState = {
   acciones: true,
 };
 
+const ALERTA_LABELS: Record<string, string> = {
+  alta_sin_responsable: "Alta sin responsable",
+  sobre_90_dias: "Más de 90 días",
+  pendientes_con_1_intento: "Pendientes con 1 intento",
+  rescates_activos: "Rescates activos",
+  ingresados_sin_proxima_atencion: "Ingresados sin próxima atención",
+  posible_abandono: "Posible abandono",
+  telefonos_incompletos: "Teléfonos incompletos",
+};
+
 function getResponsiveColumnVisibility(width: number): VisibilityState {
   if (width < 768) {
     return {
@@ -205,6 +215,7 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
 export default function ListaEsperaPage() {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
@@ -258,12 +269,20 @@ export default function ListaEsperaPage() {
   const mes = searchParams.get("mes");
   const anio = searchParams.get("anio");
   const importacionId = searchParams.get("importacion");
+  const alertaParam = searchParams.get("alerta");
+  const alertaActiva = alertaParam && ALERTA_LABELS[alertaParam] ? alertaParam : null;
+  const alertaActivaLabel = alertaActiva ? ALERTA_LABELS[alertaActiva] : null;
 
   const cargar = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ sin_asignar: "1" });
+      const params = new URLSearchParams();
+      if (alertaActiva) {
+        params.set("alerta", alertaActiva);
+      } else {
+        params.set("sin_asignar", "1");
+      }
       if (mes) params.set("mes", mes);
       if (anio) params.set("anio", anio);
       if (importacionId) params.set("importacion", importacionId);
@@ -277,7 +296,7 @@ export default function ListaEsperaPage() {
     } finally {
       setLoading(false);
     }
-  }, [mes, anio, importacionId]);
+  }, [alertaActiva, mes, anio, importacionId]);
 
   useEffect(() => {
     void cargar();
@@ -579,7 +598,9 @@ export default function ListaEsperaPage() {
   const filteredRows = table.getFilteredRowModel().rows.length;
   const tableRows = table.getRowModel().rows;
   const activeFilterCount =
-    tableState.columnFilters.length + (tableState.globalSearch.trim() ? 1 : 0);
+    tableState.columnFilters.length +
+    (tableState.globalSearch.trim() ? 1 : 0) +
+    (alertaActiva ? 1 : 0);
   const columnTemplate = useMemo(
     () =>
       table
@@ -788,6 +809,21 @@ export default function ListaEsperaPage() {
 
           {isPending && (
             <p className="text-[11px] text-gray-400">Actualizando tabla...</p>
+          )}
+
+          {alertaActivaLabel && (
+            <div className="flex flex-col gap-2 rounded-lg border border-[#D4E4D4] bg-[#E7F3EC] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-[#1B5E3B]">
+                Filtro activo: {alertaActivaLabel}
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push("/lista-espera")}
+                className="inline-flex items-center justify-center rounded-md border border-[#D4E4D4] bg-white px-3 py-1.5 text-xs font-bold text-[#1B5E3B] transition hover:bg-[#f4faf6]"
+              >
+                Limpiar filtro
+              </button>
+            </div>
           )}
         </div>
       </header>
