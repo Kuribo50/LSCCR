@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import type { ComponentType } from 'react'
-import { FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiCalendar, FiFileText, FiRefreshCw, FiSearch } from 'react-icons/fi'
 import { formatearRut } from '@/lib/rut'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
@@ -19,6 +19,22 @@ const EGRESO_STATES: EgresoState[] = [
   'EGRESO_ADMINISTRATIVO',
   'ABANDONO',
   'DERIVADO',
+]
+
+const MESES = [
+  { value: '', label: 'Todos los meses' },
+  { value: '1', label: 'Enero' },
+  { value: '2', label: 'Febrero' },
+  { value: '3', label: 'Marzo' },
+  { value: '4', label: 'Abril' },
+  { value: '5', label: 'Mayo' },
+  { value: '6', label: 'Junio' },
+  { value: '7', label: 'Julio' },
+  { value: '8', label: 'Agosto' },
+  { value: '9', label: 'Septiembre' },
+  { value: '10', label: 'Octubre' },
+  { value: '11', label: 'Noviembre' },
+  { value: '12', label: 'Diciembre' },
 ]
 
 const EGRESO_COLORS: Record<EgresoState, { bg: string; text: string; border: string }> = {
@@ -109,6 +125,8 @@ export default function EgresosPage() {
   const [search, setSearch] = useState('')
   const [filtroEstado, setFiltroEstado] = useState<EgresoState | ''>('')
   const [filtroKine, setFiltroKine] = useState('')
+  const [filtroMes, setFiltroMes] = useState('')
+  const [filtroAnio, setFiltroAnio] = useState(String(new Date().getFullYear()))
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null)
 
   const cargar = useCallback(async () => {
@@ -154,24 +172,43 @@ export default function EgresosPage() {
       .filter((p) => {
         if (filtroEstado && p.estado !== filtroEstado) return false
         if (filtroKine && (p.kine_asignado_nombre ?? '') !== filtroKine) return false
+        if (filtroMes || filtroAnio) {
+          if (!p.fecha_egreso) return false
+          const fechaEgreso = new Date(`${p.fecha_egreso}T00:00:00`)
+          if (Number.isNaN(fechaEgreso.getTime())) return false
+          if (filtroMes && fechaEgreso.getMonth() + 1 !== Number(filtroMes)) return false
+          if (filtroAnio && fechaEgreso.getFullYear() !== Number(filtroAnio)) return false
+        }
 
         if (!queryText && !queryRut) return true
 
         const matchesText =
           normalizeSearchText(p.nombre).includes(queryText) ||
           normalizeSearchText(p.diagnostico).includes(queryText) ||
-          normalizeSearchText(p.kine_asignado_nombre ?? '').includes(queryText)
+          normalizeSearchText(p.kine_asignado_nombre ?? '').includes(queryText) ||
+          normalizeSearchText(p.observaciones ?? '').includes(queryText)
         const matchesRut = normalizeRut(p.rut).includes(queryRut)
 
         return matchesText || matchesRut
       })
       .sort((a, b) => calcularDiasAtendido(b) - calcularDiasAtendido(a))
-  }, [pacientes, filtroEstado, filtroKine, search])
+  }, [pacientes, filtroAnio, filtroEstado, filtroKine, filtroMes, search])
+
+  const resumenEgresos = useMemo(
+    () =>
+      EGRESO_STATES.map((estado) => ({
+        estado,
+        total: pacientesFiltrados.filter((paciente) => paciente.estado === estado).length,
+      })),
+    [pacientesFiltrados],
+  )
 
   function clearFilters() {
     setSearch('')
     setFiltroEstado('')
     setFiltroKine('')
+    setFiltroMes('')
+    setFiltroAnio(String(new Date().getFullYear()))
   }
 
   if (!user) return null
@@ -197,7 +234,7 @@ export default function EgresosPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_auto]">
+          <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_auto]">
             <div className="relative">
               <SearchIcon
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 dark:text-[#8fc4d6]"
@@ -244,6 +281,29 @@ export default function EgresosPage() {
               </select>
             </div>
 
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <select
+                value={filtroMes}
+                onChange={(event) => setFiltroMes(event.target.value)}
+                className="ccr-control-input px-3 py-2.5 text-xs"
+              >
+                {MESES.map((mes) => (
+                  <option key={mes.value || 'todos'} value={mes.value}>
+                    {mes.label}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="number"
+                value={filtroAnio}
+                onChange={(event) => setFiltroAnio(event.target.value)}
+                className="ccr-control-input px-3 py-2.5 text-xs"
+                placeholder="Año"
+                aria-label="Año de egreso"
+              />
+            </div>
+
             <button
               type="button"
               onClick={clearFilters}
@@ -255,6 +315,12 @@ export default function EgresosPage() {
 
         </div>
       </header>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {resumenEgresos.map(({ estado, total }) => (
+          <EgresoStat key={estado} estado={estado} total={total} />
+        ))}
+      </section>
 
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
@@ -277,31 +343,19 @@ export default function EgresosPage() {
               <thead className="sticky top-0 z-10">
                 <tr className="ccr-table-head border-b border-blue-200 bg-blue-50 dark:!border-[#262626] dark:!bg-[#202020]">
                   <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Nombre
-                  </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    RUT
-                  </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Edad
-                  </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Diagnóstico
-                  </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Prioridad
-                  </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Categoría
+                    Paciente
                   </th>
                   <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
                     Responsable CCR
                   </th>
                   <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Tipo de egreso
+                    Fecha egreso
+                  </th>
+                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                    Observación operativa
                   </th>
                   <th className="border-r border-blue-200 px-4 py-2.5 text-center font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Días atendido
+                    Días
                   </th>
                   <th className="px-4 py-2.5 text-right font-bold text-blue-950 dark:!text-white">
                     Ficha
@@ -320,27 +374,19 @@ export default function EgresosPage() {
                       className="ccr-table-row cursor-pointer border-b border-blue-100 bg-white transition hover:bg-blue-50 dark:!border-[#262626] dark:!bg-[#151515] dark:hover:!bg-[#202020]"
                       onClick={() => setSeleccionado(paciente)}
                     >
-                      <td className="max-w-[180px] border-r border-blue-100 px-4 py-2.5 font-semibold text-slate-900 dark:!border-[#262626] dark:!text-white">
-                        <div className="truncate">{toCapitalizedWords(paciente.nombre)}</div>
-                      </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 font-mono text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
-                        {formatearRut(paciente.rut)}
-                      </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
-                        {paciente.edad}
-                      </td>
-                      <td className="max-w-[200px] border-r border-blue-100 px-4 py-2.5 text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
-                        <div className="truncate">
-                          {toCapitalizedWords(paciente.diagnostico)}
+                      <td className="max-w-[260px] border-r border-blue-100 px-4 py-2.5 dark:!border-[#262626]">
+                        <div className="truncate font-bold text-slate-900 dark:!text-white">
+                          {toCapitalizedWords(paciente.nombre)}
                         </div>
-                      </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 dark:!border-[#262626]">
-                        <PriorityBadge prioridad={paciente.prioridad} />
-                      </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
-                        {toCapitalizedWords(
-                          CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria,
-                        )}
+                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                          {paciente.id_ccr} · {formatearRut(paciente.rut)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <PriorityBadge prioridad={paciente.prioridad} />
+                          <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                            {toCapitalizedWords(CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria)}
+                          </span>
+                        </div>
                       </td>
                       <td className="max-w-[170px] border-r border-blue-100 px-4 py-2.5 text-slate-700 dark:!border-[#262626] dark:!text-[#daebf1]">
                         <div className="truncate">
@@ -359,6 +405,16 @@ export default function EgresosPage() {
                           {toCapitalizedWords(ESTADO_LABELS[paciente.estado] ?? paciente.estado)}
                         </span>
                       </td>
+                      <td className="whitespace-nowrap border-r border-blue-100 px-4 py-2.5 font-semibold text-slate-700 dark:!border-[#262626] dark:!text-white">
+                        {paciente.fecha_egreso
+                          ? new Date(`${paciente.fecha_egreso}T00:00:00`).toLocaleDateString('es-CL')
+                          : 'Sin fecha'}
+                      </td>
+                      <td className="max-w-[260px] border-r border-blue-100 px-4 py-2.5 text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
+                        <div className="line-clamp-2">
+                          {paciente.observaciones || paciente.diagnostico || 'Sin observación registrada'}
+                        </div>
+                      </td>
                       <td className="border-r border-blue-100 px-4 py-2.5 text-center font-semibold text-slate-700 dark:!border-[#262626] dark:!text-white">
                         {diasAtendido}d
                       </td>
@@ -369,7 +425,7 @@ export default function EgresosPage() {
                         <button
                           type="button"
                           onClick={() => setSeleccionado(paciente)}
-                          className="ccr-control-button px-2.5 py-1.5 text-[11px]"
+                          className="ccr-table-action ccr-action-view px-2.5 py-1.5 text-[11px]"
                         >
                           Ver ficha operativa
                         </button>
@@ -405,5 +461,31 @@ export default function EgresosPage() {
         />
       )}
     </div>
+  )
+}
+
+function EgresoStat({ estado, total }: { estado: EgresoState; total: number }) {
+  const colors = EGRESO_COLORS[estado]
+  return (
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
+            {ESTADO_LABELS[estado]}
+          </p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{total}</p>
+        </div>
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-lg border"
+          style={{
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            color: colors.text,
+          }}
+        >
+          {estado === 'EGRESO_ADMINISTRATIVO' ? <FiFileText /> : <FiCalendar />}
+        </div>
+      </div>
+    </article>
   )
 }

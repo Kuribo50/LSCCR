@@ -4,18 +4,28 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import {
   FiCheckCircle,
+  FiClock,
+  FiEdit2,
+  FiEye,
   FiMessageSquare,
+  FiPhone,
   FiPhoneCall,
   FiPhoneMissed,
   FiPrinter,
   FiRefreshCw,
   FiSearch,
+  FiUser,
 } from "react-icons/fi";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { formatearRut } from "@/lib/rut";
 import type { Paciente } from "@/lib/types";
 import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import PacienteTable from "@/components/PacienteTable";
+import BadgeEstado from "@/components/BadgeEstado";
+import BadgePrioridad from "@/components/BadgePrioridad";
+import EditarPacienteModal from "@/components/EditarPacienteModal";
+import FichaPaciente from "@/components/FichaPaciente";
+import RegistrarContactoModal from "@/components/RegistrarContactoModal";
 
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
@@ -55,11 +65,38 @@ function formatearFechaImpresion() {
   });
 }
 
+function formatearFechaHora(fecha: string | null | undefined) {
+  if (!fecha) return "Sin registro";
+  const parsed = new Date(fecha);
+  if (Number.isNaN(parsed.getTime())) return "Sin registro";
+  return parsed.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function responsablePaciente(paciente: Paciente) {
+  return paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable";
+}
+
+function accionSugerida(paciente: Paciente) {
+  if (paciente.estado === "RESCATE") {
+    return "Registrar segundo contacto con observación si no contesta.";
+  }
+  return "Registrar contacto; si no contesta pasa a RESCATE.";
+}
+
 export default function LlamadosPage() {
   const { user } = useAuth();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
+  const [pacienteContacto, setPacienteContacto] = useState<Paciente | null>(null);
+  const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
 
   // Filtros locales del módulo de contactabilidad.
   const [searchQuery, setSearchQuery] = useState("");
@@ -259,7 +296,14 @@ export default function LlamadosPage() {
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setOrdering((prev) => (prev === "dias" ? "-dias" : "dias"))}
+              className="ccr-control-button inline-flex h-[34px] w-full items-center justify-center px-3 text-[11px] sm:w-auto"
+            >
+              {ordering === "dias" ? "Menor antigüedad primero" : "Mayor antigüedad primero"}
+            </button>
             <button
               type="button"
               onClick={clearFilters}
@@ -300,15 +344,62 @@ export default function LlamadosPage() {
           Cargando…
         </div>
       ) : (
-        <PacienteTable 
-          pacientes={pacientesFiltrados} 
-          usuario={user} 
-          onRefresh={cargar} 
-          ordering={ordering}
-          daysMode="llamados"
-          showProximaAtencion={false}
-          onToggleDiasOrder={() => {
-            setOrdering((prev) => (prev === "dias" ? "-dias" : "dias"));
+        <section className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+          {pacientesFiltrados.length === 0 ? (
+            <div className="ccr-panel rounded-2xl p-10 text-center text-sm font-semibold text-slate-500 xl:col-span-2">
+              Sin pacientes para los filtros seleccionados.
+            </div>
+          ) : (
+            pacientesFiltrados.map((paciente) => (
+              <ContactabilidadCard
+                key={paciente.id}
+                paciente={paciente}
+                onVerFicha={() => setPacienteFicha(paciente)}
+                onRegistrarContacto={() => setPacienteContacto(paciente)}
+                onEditarContacto={() => setPacienteEdicion(paciente)}
+              />
+            ))
+          )}
+        </section>
+      )}
+
+      {pacienteFicha && (
+        <FichaPaciente
+          paciente={pacienteFicha}
+          usuario={user}
+          onClose={() => setPacienteFicha(null)}
+          onRefresh={() => {
+            void cargar();
+            setPacienteFicha(null);
+          }}
+        />
+      )}
+
+      {pacienteContacto && (
+        <RegistrarContactoModal
+          paciente={pacienteContacto}
+          onClose={() => setPacienteContacto(null)}
+          onSuccess={(actualizado) => {
+            if (actualizado) {
+              setPacientes((prev) =>
+                prev.map((item) => (item.id === actualizado.id ? actualizado : item)),
+              );
+            }
+            void cargar();
+          }}
+        />
+      )}
+
+      {pacienteEdicion && (
+        <EditarPacienteModal
+          paciente={pacienteEdicion}
+          mode="contact-only"
+          onClose={() => setPacienteEdicion(null)}
+          onGuardado={(actualizado) => {
+            setPacientes((prev) =>
+              prev.map((item) => (item.id === actualizado.id ? actualizado : item)),
+            );
+            setPacienteEdicion(null);
           }}
         />
       )}
@@ -419,6 +510,116 @@ function ContactStat({
         {label}
       </span>
       <strong className="text-base">{value}</strong>
+    </div>
+  );
+}
+
+function ContactabilidadCard({
+  paciente,
+  onVerFicha,
+  onRegistrarContacto,
+  onEditarContacto,
+}: {
+  paciente: Paciente;
+  onVerFicha: () => void;
+  onRegistrarContacto: () => void;
+  onEditarContacto: () => void;
+}) {
+  const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
+  const ultimoContacto = paciente.ultimo_llamado;
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
+            {paciente.id_ccr}
+          </p>
+          <h2 className="mt-1 truncate text-lg font-black text-slate-950">
+            {paciente.nombre}
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            {formatearRut(paciente.rut)}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <BadgePrioridad prioridad={paciente.prioridad} />
+          <BadgeEstado estado={paciente.estado} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <ContactInfo icon={<FiPhone />} label="Teléfono" value={telefonoPrincipal} emphasis />
+        <ContactInfo icon={<FiPhoneMissed />} label="Intentos" value={paciente.n_intentos_contacto} />
+        <ContactInfo icon={<FiUser />} label="Responsable CCR" value={responsablePaciente(paciente)} />
+        <ContactInfo
+          icon={<FiClock />}
+          label="Último contacto"
+          value={
+            ultimoContacto
+              ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
+              : "Sin contactos registrados"
+          }
+        />
+      </div>
+
+      <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+        <p className="flex items-start gap-2 text-xs font-semibold leading-5 text-blue-800">
+          <FiMessageSquare className="mt-0.5 shrink-0" />
+          {accionSugerida(paciente)}
+        </p>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onEditarContacto}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+        >
+          <FiEdit2 size={14} />
+          Editar contacto
+        </button>
+        <button
+          type="button"
+          onClick={onRegistrarContacto}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0]"
+        >
+          <FiPhoneCall size={14} />
+          Registrar contacto
+        </button>
+        <button
+          type="button"
+          onClick={onVerFicha}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1B5E3B] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#256B47]"
+        >
+          <FiEye size={14} />
+          Ver ficha operativa
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function ContactInfo({
+  icon,
+  label,
+  value,
+  emphasis = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  emphasis?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+        {icon}
+        {label}
+      </p>
+      <p className={`mt-1 break-words text-sm ${emphasis ? "font-black text-slate-950" : "font-semibold text-slate-700"}`}>
+        {value}
+      </p>
     </div>
   );
 }

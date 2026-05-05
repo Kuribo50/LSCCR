@@ -110,8 +110,8 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-emerald-100 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center gap-2 text-emerald-800">
+    <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center gap-2 text-blue-700">
         {icon}
         <h3 className="text-sm font-semibold uppercase tracking-[0.06em]">
           {title}
@@ -237,14 +237,14 @@ export default function FichaPaciente({
       onClick={onClose}
     >
       <aside
-        className="ccr-ficha-printable h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
+        className="ccr-ficha-printable h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="ccr-ficha-screen">
-        <div className="sticky top-0 z-10 border-b border-emerald-100 bg-white/95 px-5 py-4 backdrop-blur">
+        <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur">
           <div className="flex flex-col gap-3 pr-12 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">
                 Ficha operativa CCR
               </p>
               <h2 className="mt-1 break-words text-xl font-semibold leading-tight text-slate-950">
@@ -285,7 +285,7 @@ export default function FichaPaciente({
           </button>
         </div>
 
-        <div className="space-y-4 p-5">
+        <div className="space-y-4 bg-slate-50/60 p-5">
           {error && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
               {error}
@@ -439,13 +439,24 @@ export default function FichaPaciente({
             </Section>
           </div>
 
-          <Section icon={<FiClock />} title="Historial de acciones">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-blue-700">
+                <FiClock />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.06em]">
+                  Historial de acciones
+                </h3>
+              </div>
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+                {acciones.length} evento{acciones.length !== 1 ? "s" : ""}
+              </span>
+            </div>
             {loadingHistorial ? (
               <p className="text-sm text-slate-500">Cargando historial...</p>
             ) : (
               <HistorialAcciones items={acciones} />
             )}
-          </Section>
+          </section>
         </div>
         </div>
 
@@ -617,7 +628,7 @@ function badgeAccion(tipo: HistorialAccionPaciente["tipo"]) {
   if (tipo === "INASISTENCIA") {
     return "border-amber-100 bg-amber-50 text-amber-800";
   }
-  return "border-emerald-100 bg-emerald-50 text-emerald-800";
+  return "border-slate-100 bg-slate-50 text-slate-700";
 }
 
 function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
@@ -631,11 +642,11 @@ function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
     return <p className="text-sm text-slate-500">Sin acciones registradas.</p>;
   }
   return (
-    <ol className="relative space-y-4 border-l border-emerald-100 pl-4">
+    <ol className="relative space-y-4 border-l border-blue-100 pl-4">
       {items.map((accion, index) => (
         <li key={`${accion.tipo}-${accion.fecha}-${index}`} className="relative">
-          <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#1B5E3B] shadow" />
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+          <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#335FDB] shadow" />
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold text-slate-900">

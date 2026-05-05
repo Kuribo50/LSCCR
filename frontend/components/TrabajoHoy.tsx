@@ -93,10 +93,10 @@ export default function TrabajoHoy({
   onVerGrupo,
 }: Props) {
   return (
-    <section className="rounded-xl border border-[#D4E4D4] bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#1B5E3B]">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
             Gestión diaria
           </p>
           <h2 className="text-xl font-black text-slate-950">Trabajo de hoy</h2>
@@ -149,7 +149,7 @@ function AlertaCard({
   ).slice(0, 3);
 
   return (
-    <article className="flex min-h-[260px] flex-col rounded-lg border border-[#D4E4D4] bg-white p-4 shadow-sm">
+    <article className="flex min-h-[230px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${config.tone.border} ${config.tone.bg}`}
@@ -185,7 +185,7 @@ function AlertaCard({
               key={paciente.id}
               type="button"
               onClick={() => onVerPaciente(paciente)}
-              className="block w-full rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-left transition hover:border-[#D4E4D4] hover:bg-white"
+              className="block w-full rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-left transition hover:border-blue-100 hover:bg-white"
             >
               <p className="truncate text-xs font-bold text-slate-800">
                 {paciente.nombre}

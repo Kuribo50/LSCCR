@@ -16,6 +16,9 @@ import {
   Legend,
   Line,
   LineChart,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -45,6 +48,7 @@ const MESES = [
 ];
 
 const CARD_BORDER = "border-[#D4E4D4]";
+const CHART_COLORS = ["#335FDB", "#1B5E3B", "#ED8121", "#B91C1C", "#64748B", "#7C3AED", "#0F766E"];
 
 export default function EstadisticasPage() {
   const hoy = useMemo(() => new Date(), []);
@@ -89,6 +93,18 @@ export default function EstadisticasPage() {
         egresos: item.egresos_total,
       })) ?? [],
     [serie],
+  );
+
+  const estadoActualData = useMemo(
+    () =>
+      resumen?.por_estado
+        .filter((item) => item.total > 0)
+        .map((item, index) => ({
+          name: item.label,
+          value: item.total,
+          color: CHART_COLORS[index % CHART_COLORS.length],
+        })) ?? [],
+    [resumen],
   );
 
   const exportarCsv = useCallback(() => {
@@ -237,6 +253,76 @@ export default function EstadisticasPage() {
             </button>
           </div>
 
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            <ChartPanel
+              title="Distribución por estado actual"
+              subtitle="Estado actual de los pacientes del corte."
+              className="xl:col-span-2"
+            >
+              {estadoActualData.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
+                  <div className="h-[190px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={estadoActualData}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={48}
+                          outerRadius={76}
+                          paddingAngle={2}
+                        >
+                          {estadoActualData.map((entry) => (
+                            <Cell key={entry.name} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 self-center">
+                    {estadoActualData.map((item) => (
+                      <div key={item.name} className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+                        <span className="inline-flex min-w-0 items-center gap-2">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span className="truncate">{item.name}</span>
+                        </span>
+                        <span className="font-black text-slate-950">{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <EmptyState text="Sin datos para graficar este corte." compact />
+              )}
+            </ChartPanel>
+
+            <ChartPanel
+              title="Tendencia anual de actividad"
+              subtitle={`Derivaciones, ingresos y egresos durante ${serie.anio}.`}
+              className="xl:col-span-3"
+            >
+              {tendencia.some((item) => item.derivados || item.ingresos || item.egresos) ? (
+                <div className="h-[240px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={tendencia} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                      <CartesianGrid stroke="#E2E8F0" strokeDasharray="4 4" />
+                      <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Legend />
+                      <Line type="monotone" dataKey="derivados" name="Derivados" stroke="#335FDB" strokeWidth={3} />
+                      <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#1B5E3B" strokeWidth={3} />
+                      <Line type="monotone" dataKey="egresos" name="Egresos" stroke="#B91C1C" strokeWidth={3} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Sin datos para graficar este año." compact />
+              )}
+            </ChartPanel>
+          </section>
+
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <DistributionCard title="Resumen del corte por estado" items={resumen.por_estado} labelKey="label" />
             <DistributionCard title="Prioridad operativa" items={resumen.por_prioridad} labelKey="label" />
@@ -279,35 +365,33 @@ export default function EstadisticasPage() {
             </div>
           </section>
 
-          <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
-            <div className="mb-4">
-              <h2 className="text-lg font-black text-slate-900">Tendencia anual</h2>
-              <p className="text-xs font-semibold text-slate-500">Derivaciones, ingresos y egresos durante {serie.anio}.</p>
-            </div>
-            {tendencia.some((item) => item.derivados || item.ingresos || item.egresos) ? (
-              <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={tendencia} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="4 4" />
-                    <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="derivados" name="Derivados" stroke="#1B5E3B" strokeWidth={3} />
-                    <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#256B47" strokeWidth={3} />
-                    <Line type="monotone" dataKey="egresos" name="Egresos" stroke="#B91C1C" strokeWidth={3} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <EmptyState text="Sin datos para graficar este año." />
-            )}
-          </section>
         </>
       ) : (
         <EmptyState text="Sin datos disponibles para el periodo seleccionado." />
       )}
     </main>
+  );
+}
+
+function ChartPanel({
+  title,
+  subtitle,
+  className = "",
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm ${className}`}>
+      <div className="mb-4">
+        <h2 className="text-lg font-black text-slate-900">{title}</h2>
+        <p className="text-xs font-semibold text-slate-500">{subtitle}</p>
+      </div>
+      {children}
+    </section>
   );
 }
 
