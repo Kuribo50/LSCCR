@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
 
 from django.core.files.base import ContentFile
@@ -12,11 +12,12 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.pacientes.models import Paciente
+from apps.pacientes.models import MovimientoPaciente, Paciente
+from apps.pacientes.services import categoria_por_diagnostico, prioridad_normalizada
 from apps.usuarios.permissions import IsAdminOrAdministrativoRole
 
 from .models import ImportacionMensual
-from .parser import parsear_derivaciones, previsualizar_derivaciones
+from .parser import parsear_derivaciones, parsear_fecha, previsualizar_derivaciones
 from .serializers import ImportacionDerivacionesSerializer
 
 
@@ -95,8 +96,268 @@ def _serialize_importacion(importacion: ImportacionMensual) -> dict:
         "registros_importados": importacion.registros_importados,
         "duplicados": importacion.duplicados,
         "errores": importacion.errores,
+        "observaciones_revision": importacion.observaciones_revision,
+        "observaciones_revision_count": len(importacion.observaciones_revision or []),
         "reemplazada_por": importacion.reemplazada_por_id,
     }
+
+
+def _vaciar_importaciones(importaciones: list[ImportacionMensual], *, borrar_importacion: bool) -> dict:
+    pacientes_eliminados = 0
+    importaciones_eliminadas = 0
+    archivos_eliminados = 0
+
+    for importacion in importaciones:
+        pacientes_qs = importacion.pacientes_creados.filter(
+            kine_asignado__isnull=True,
+            estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
+        )
+        pacientes_eliminados += pacientes_qs.count()
+        pacientes_qs.delete()
+
+        if borrar_importacion:
+            if importacion.archivo:
+                importacion.archivo.delete(save=False)
+                archivos_eliminados += 1
+            importacion.delete()
+            importaciones_eliminadas += 1
+
+    return {
+        "pacientes_eliminados": pacientes_eliminados,
+        "importaciones_eliminadas": importaciones_eliminadas,
+        "archivos_eliminados": archivos_eliminados,
+    }
+
+
+def _normalizar_rut(rut: str | None) -> str:
+    return (rut or "").replace(".", "").replace("-", "").upper().strip()
+
+
+def _mes_desde_fecha_preview(valor: str | None) -> int | None:
+    if not valor:
+        return None
+    for fmt in ("%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(valor).strip(), fmt).month
+        except ValueError:
+            continue
+    return None
+
+
+def _mes_desde_registro(registro: dict, mes_fallback: int | None = None) -> int | None:
+    hoja = str(registro.get("hoja") or "").upper()
+    for nombre, numero in MESES_SHEET.items():
+        if nombre in hoja:
+            return numero
+    return _mes_desde_fecha_preview(registro.get("fecha_derivacion")) or mes_fallback
+
+
+def _paciente_vinculado_por_registro(registro: dict) -> Paciente | None:
+    rut = _normalizar_rut(registro.get("rut"))
+    if not rut:
+        return None
+    return (
+        Paciente.objects.select_related("kine_asignado")
+        .filter(rut=rut)
+        .order_by("-fecha_derivacion", "-id")
+        .first()
+    )
+
+
+def _build_observacion_revision(
+    *,
+    registro: dict,
+    tipo: str,
+    importacion: ImportacionMensual,
+    paciente: Paciente | None,
+) -> dict:
+    motivo = registro.get("error") or registro.get("motivo") or ""
+    if tipo == "RECURRENTE":
+        accion = (
+            "El paciente ya existía en lista de espera. Se mantiene su ficha y "
+            "se registra la aparición de este corte para seguimiento."
+        )
+        motivo = motivo or "Registro repetido en el sistema."
+    else:
+        accion = (
+            "No se creó una ficha nueva porque el registro trae datos incompletos "
+            "o inconsistentes. Si el RUT coincide con una ficha existente, queda vinculado para revisión."
+        )
+
+    return {
+        "tipo": tipo,
+        "tipo_label": "Recurrente" if tipo == "RECURRENTE" else "Error de datos",
+        "importacion_id": importacion.id,
+        "periodo_label": f"{MESES_LABEL.get(importacion.mes_datos or importacion.mes, importacion.mes)} {importacion.anio_datos or importacion.anio}",
+        "archivo_nombre": importacion.archivo_nombre or importacion.archivo.name.rsplit("/", 1)[-1],
+        "hoja": registro.get("hoja") or "",
+        "fila": registro.get("fila"),
+        "motivo": motivo,
+        "accion": accion,
+        "nombre": registro.get("nombre") or "",
+        "rut": _normalizar_rut(registro.get("rut")),
+        "fecha_derivacion": registro.get("fecha_derivacion") or "",
+        "fecha_original": registro.get("fecha_original") or "",
+        "edad": registro.get("edad") or 0,
+        "diagnostico": registro.get("diagnostico") or "",
+        "prioridad": registro.get("prioridad") or "",
+        "percapita_desde": registro.get("percapita_desde") or "",
+        "profesional": registro.get("profesional") or "",
+        "observaciones": registro.get("observaciones") or "",
+        "paciente_id": paciente.id if paciente else None,
+        "paciente_rut": paciente.rut if paciente else None,
+        "paciente_nombre": paciente.nombre if paciente else None,
+        "paciente_estado": paciente.estado if paciente else None,
+        "paciente_id_ccr": paciente.id_ccr if paciente else None,
+        "kine_asignado_nombre": paciente.kine_asignado.nombre if paciente and paciente.kine_asignado else None,
+        "requiere_revision": tipo == "ERROR" and paciente is None,
+        "estado_revision": registro.get("estado_revision") or "PENDIENTE",
+        "resolucion": registro.get("resolucion") or "",
+        "resuelto_en": registro.get("resuelto_en"),
+        "resuelto_por_id": registro.get("resuelto_por_id"),
+        "resuelto_por_nombre": registro.get("resuelto_por_nombre"),
+    }
+
+
+def _registrar_observaciones_revision(
+    *,
+    registros: list[dict],
+    importaciones: dict[int, ImportacionMensual],
+    mes_fallback: int | None,
+    usuario,
+) -> None:
+    if not registros or not importaciones:
+        return
+
+    observaciones_por_importacion: dict[int, list[dict]] = {
+        importacion.id: [] for importacion in importaciones.values()
+    }
+    movimientos_error: list[MovimientoPaciente] = []
+    movimientos_error_keys: set[tuple[int, str, int | None]] = set()
+
+    for registro in registros:
+        estado_registro = registro.get("estado")
+        if estado_registro not in {"ERROR", "DUPLICADO"}:
+            continue
+
+        mes_registro = _mes_desde_registro(registro, mes_fallback)
+        importacion = (
+            importaciones.get(mes_registro)
+            if mes_registro is not None
+            else None
+        ) or next(iter(importaciones.values()))
+        tipo = "RECURRENTE" if estado_registro == "DUPLICADO" else "ERROR"
+        paciente = _paciente_vinculado_por_registro(registro)
+        observacion = _build_observacion_revision(
+            registro=registro,
+            tipo=tipo,
+            importacion=importacion,
+            paciente=paciente,
+        )
+        observaciones_por_importacion.setdefault(importacion.id, []).append(observacion)
+
+        if tipo == "ERROR" and paciente:
+            key = (paciente.id, str(registro.get("hoja") or ""), registro.get("fila"))
+            if key in movimientos_error_keys:
+                continue
+            movimientos_error_keys.add(key)
+            motivo = observacion["motivo"]
+            movimientos_error.append(
+                MovimientoPaciente(
+                    paciente=paciente,
+                    usuario=usuario,
+                    estado_anterior=None,
+                    estado_nuevo=paciente.estado,
+                    notas=(
+                        f"Observación del corte {observacion['periodo_label']}: "
+                        f"se mantiene ficha existente para revisión. Motivo: {motivo}"
+                    ),
+                )
+            )
+
+    for importacion in importaciones.values():
+        importacion.observaciones_revision = observaciones_por_importacion.get(importacion.id, [])
+        importacion.save(update_fields=["observaciones_revision"])
+
+    if movimientos_error:
+        MovimientoPaciente.objects.bulk_create(movimientos_error, batch_size=200)
+
+
+def _observaciones_revision_persistidas(importacion: ImportacionMensual) -> list[dict]:
+    observaciones = list(importacion.observaciones_revision or [])
+    if observaciones:
+        normalizadas = []
+        changed = False
+        for observacion in observaciones:
+            if "estado_revision" not in observacion:
+                observacion = {**observacion, "estado_revision": "PENDIENTE"}
+                changed = True
+            normalizadas.append(observacion)
+        if changed:
+            importacion.observaciones_revision = normalizadas
+            importacion.save(update_fields=["observaciones_revision"])
+        return normalizadas
+
+    if not importacion.errores:
+        return []
+
+    observaciones = [
+        _build_observacion_revision(
+            registro={**error, "estado": "ERROR"},
+            tipo="ERROR",
+            importacion=importacion,
+            paciente=_paciente_vinculado_por_registro(error),
+        )
+        for error in importacion.errores
+    ]
+    importacion.observaciones_revision = observaciones
+    importacion.save(update_fields=["observaciones_revision"])
+    return observaciones
+
+
+def _resolve_observacion(importacion: ImportacionMensual, index: int) -> tuple[list[dict], dict] | None:
+    observaciones = _observaciones_revision_persistidas(importacion)
+    if index < 0 or index >= len(observaciones):
+        return None
+    return observaciones, observaciones[index]
+
+
+def _parse_fecha_revisada(valor: str | None):
+    fecha = parsear_fecha(valor)
+    if fecha is None:
+        raise ValueError("Debe ingresar una fecha de derivación válida.")
+    return fecha
+
+
+def _actualizar_observacion_resuelta(
+    *,
+    observacion: dict,
+    accion: str,
+    usuario,
+    resolucion: str,
+    paciente: Paciente | None = None,
+) -> dict:
+    actualizada = {
+        **observacion,
+        "estado_revision": "DESCARTADO" if accion == "DESCARTAR" else "RESUELTO",
+        "resolucion": resolucion,
+        "resuelto_en": datetime.now().isoformat(),
+        "resuelto_por_id": usuario.id if usuario and usuario.is_authenticated else None,
+        "resuelto_por_nombre": usuario.nombre if usuario and usuario.is_authenticated else None,
+        "requiere_revision": False,
+    }
+    if paciente:
+        actualizada.update(
+            {
+                "paciente_id": paciente.id,
+                "paciente_rut": paciente.rut,
+                "paciente_nombre": paciente.nombre,
+                "paciente_estado": paciente.estado,
+                "paciente_id_ccr": paciente.id_ccr,
+                "kine_asignado_nombre": paciente.kine_asignado.nombre if paciente.kine_asignado else None,
+            }
+        )
+    return actualizada
 
 
 class ImportarDerivacionesView(APIView):
@@ -108,6 +369,7 @@ class ImportarDerivacionesView(APIView):
         serializer.is_valid(raise_exception=True)
         archivo = serializer.validated_data["archivo"]
         hoy = date.today()
+        mes_solicitado = serializer.validated_data.get("mes")
         anio_datos = serializer.validated_data.get("anio", hoy.year)
         resultado = parsear_derivaciones(archivo)
         meses_detectados = resultado["meses_detectados"]
@@ -156,6 +418,12 @@ class ImportarDerivacionesView(APIView):
             )
 
         with transaction.atomic():
+            if forzar_reemplazo and conflictos:
+                _vaciar_importaciones(list(importaciones_previas.values()), borrar_importacion=False)
+                archivo.seek(0)
+                resultado = parsear_derivaciones(archivo)
+                meses_detectados = resultado["meses_detectados"]
+
             archivo.seek(0)
             archivo_bytes = archivo.read()
             archivo_nombre = archivo.name
@@ -185,6 +453,23 @@ class ImportarDerivacionesView(APIView):
                     errores=resultado["errores"],
                 )
                 nuevas_importaciones[mes_num] = nueva_importacion
+
+            if not nuevas_importaciones and resultado["total"] > 0 and mes_solicitado:
+                nueva_importacion = ImportacionMensual.objects.create(
+                    archivo=ContentFile(archivo_bytes, name=archivo_nombre),
+                    archivo_nombre=archivo_nombre,
+                    mes=hoy.month,
+                    anio=hoy.year,
+                    mes_datos=mes_solicitado,
+                    anio_datos=anio_datos,
+                    usuario=request.user,
+                    estado=ImportacionMensual.Estado.CON_ERRORES,
+                    total_registros=resultado["total"],
+                    registros_importados=0,
+                    duplicados=resultado["duplicados"],
+                    errores=resultado["errores"],
+                )
+                nuevas_importaciones[mes_solicitado] = nueva_importacion
 
             if forzar_reemplazo and conflictos:
                 for mes_num, importacion_previa in importaciones_previas.items():
@@ -261,12 +546,20 @@ class ImportarDerivacionesView(APIView):
                     ]
                     MovimientoPaciente.objects.bulk_create(movimientos, batch_size=200)
 
+            _registrar_observaciones_revision(
+                registros=resultado.get("registros", []),
+                importaciones=nuevas_importaciones,
+                mes_fallback=mes_solicitado,
+                usuario=request.user,
+            )
+
             # Update the success counts locally
             for importacion in nuevas_importaciones.values():
                 importacion.registros_importados = resultado["importados"]
                 importacion.save(update_fields=["registros_importados"])
 
             resultado.pop("pacientes", None)
+            resultado.pop("registros", None)
             return Response(resultado, status=status.HTTP_201_CREATED)
 
 
@@ -291,6 +584,216 @@ class HistorialImportacionesView(APIView):
             .all()
         )
         return Response([_serialize_importacion(item) for item in historial])
+
+
+class ObservacionesRevisionImportacionView(APIView):
+    permission_classes = [IsAdminOrAdministrativoRole]
+
+    def get(self, request):
+        tipo = request.query_params.get("tipo")
+        estado_revision = request.query_params.get("estado", "PENDIENTE")
+        mes = request.query_params.get("mes")
+        anio = request.query_params.get("anio")
+
+        importaciones = (
+            ImportacionMensual.objects.select_related("usuario")
+            .exclude(estado=ImportacionMensual.Estado.REEMPLAZADO)
+            .order_by("-fecha_subida")
+        )
+        if mes and anio:
+            try:
+                importaciones = importaciones.filter(_periodo_q(int(mes), int(anio)))
+            except ValueError:
+                return Response(
+                    {"detail": "Mes o año inválido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        items: list[dict] = []
+        total_pendientes = 0
+        total_resueltos = 0
+        total_descartados = 0
+        for importacion in importaciones:
+            periodo_mes, periodo_anio = _mes_y_anio_referencia(importacion)
+            observaciones = _observaciones_revision_persistidas(importacion)
+
+            for index, observacion in enumerate(observaciones):
+                estado_item = observacion.get("estado_revision") or "PENDIENTE"
+                if estado_item == "PENDIENTE":
+                    total_pendientes += 1
+                elif estado_item == "RESUELTO":
+                    total_resueltos += 1
+                elif estado_item == "DESCARTADO":
+                    total_descartados += 1
+                if tipo and observacion.get("tipo") != tipo:
+                    continue
+                if estado_revision != "TODOS" and estado_item != estado_revision:
+                    continue
+                items.append(
+                    {
+                        "id": f"{importacion.id}-{index}",
+                        "importacion_id": importacion.id,
+                        "revision_index": index,
+                        "fecha_subida": importacion.fecha_subida.isoformat(),
+                        "usuario_nombre": importacion.usuario.nombre if importacion.usuario else None,
+                        "mes": periodo_mes,
+                        "anio": periodo_anio,
+                        "mes_label": MESES_LABEL.get(periodo_mes, str(periodo_mes)),
+                        **observacion,
+                    }
+                )
+
+        return Response(
+            {
+                "total": len(items),
+                "pendientes": total_pendientes,
+                "resueltos": total_resueltos,
+                "descartados": total_descartados,
+                "items": items,
+            }
+        )
+
+
+class ObservacionRevisionDetalleView(APIView):
+    permission_classes = [IsAdminOrAdministrativoRole]
+
+    @transaction.atomic
+    def patch(self, request, importacion_id: int, index: int):
+        try:
+            index_int = int(index)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Índice de observación inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            importacion = ImportacionMensual.objects.get(pk=importacion_id)
+        except ImportacionMensual.DoesNotExist:
+            return Response(
+                {"detail": "La importación no existe."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        resolved = _resolve_observacion(importacion, index_int)
+        if not resolved:
+            return Response(
+                {"detail": "La observación no existe."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        observaciones, observacion = resolved
+        accion = str(request.data.get("accion") or "").upper().strip()
+        resolucion = str(request.data.get("resolucion") or "").strip()
+        paciente = None
+
+        if accion not in {"DESCARTAR", "COMPLETAR"}:
+            return Response(
+                {"detail": "Acción inválida."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if accion == "DESCARTAR":
+            if not resolucion:
+                resolucion = "Descartado por funcionario."
+            observaciones[index_int] = _actualizar_observacion_resuelta(
+                observacion=observacion,
+                accion=accion,
+                usuario=request.user,
+                resolucion=resolucion,
+            )
+            importacion.observaciones_revision = observaciones
+            importacion.save(update_fields=["observaciones_revision"])
+            return Response({"item": observaciones[index_int]}, status=status.HTTP_200_OK)
+
+        if accion == "COMPLETAR":
+            paciente_data = request.data.get("paciente") or {}
+            nombre = str(paciente_data.get("nombre") or observacion.get("nombre") or "").strip()
+            rut = _normalizar_rut(paciente_data.get("rut") or observacion.get("rut"))
+            diagnostico = str(paciente_data.get("diagnostico") or observacion.get("diagnostico") or "").strip()
+            fecha_raw = str(
+                paciente_data.get("fecha_derivacion")
+                or observacion.get("fecha_derivacion")
+                or observacion.get("fecha_original")
+                or ""
+            ).strip()
+            profesional = str(paciente_data.get("profesional") or observacion.get("profesional") or "No informado").strip()
+            percapita_desde = str(paciente_data.get("percapita_desde") or observacion.get("percapita_desde") or "").strip()
+            prioridad = prioridad_normalizada(str(paciente_data.get("prioridad") or observacion.get("prioridad") or "MODERADA"))
+            observaciones_texto = str(paciente_data.get("observaciones") or observacion.get("observaciones") or "").strip()
+            try:
+                edad = int(float(paciente_data.get("edad") or observacion.get("edad") or 0))
+                fecha_derivacion = _parse_fecha_revisada(fecha_raw)
+            except (TypeError, ValueError) as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not nombre or not rut or not diagnostico:
+                return Response(
+                    {"detail": "Debe completar nombre, RUT y diagnóstico."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            paciente = (
+                Paciente.objects.filter(
+                    rut=rut,
+                    fecha_derivacion=fecha_derivacion,
+                    diagnostico__iexact=diagnostico,
+                )
+                .order_by("-id")
+                .first()
+            )
+
+            if not paciente:
+                paciente = Paciente.objects.create(
+                    fecha_derivacion=fecha_derivacion,
+                    percapita_desde=percapita_desde,
+                    nombre=nombre.upper(),
+                    rut=rut,
+                    edad=edad,
+                    diagnostico=diagnostico,
+                    profesional=profesional,
+                    prioridad=prioridad,
+                    categoria=categoria_por_diagnostico(diagnostico, edad),
+                    observaciones=observaciones_texto,
+                    importacion_origen=importacion,
+                )
+                movimiento_nota = "Ficha creada desde revisión de importación."
+            else:
+                movimiento_nota = "Observación vinculada a ficha existente desde revisión de importación."
+
+            observacion = {
+                **observacion,
+                "nombre": nombre.upper(),
+                "rut": rut,
+                "fecha_derivacion": fecha_derivacion.strftime("%d/%m/%Y"),
+                "edad": edad,
+                "diagnostico": diagnostico,
+                "prioridad": prioridad,
+                "percapita_desde": percapita_desde,
+                "profesional": profesional,
+                "observaciones": observaciones_texto,
+            }
+            if not resolucion:
+                resolucion = "Datos completados y ficha vinculada."
+
+            MovimientoPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                estado_anterior=None,
+                estado_nuevo=paciente.estado,
+                notas=f"{movimiento_nota} Corte {observacion.get('periodo_label')}. Resolución: {resolucion}",
+            )
+
+        observaciones[index_int] = _actualizar_observacion_resuelta(
+            observacion=observacion,
+            accion=accion,
+            usuario=request.user,
+            resolucion=resolucion,
+            paciente=paciente,
+        )
+        importacion.observaciones_revision = observaciones
+        importacion.save(update_fields=["observaciones_revision"])
+        return Response({"item": observaciones[index_int]}, status=status.HTTP_200_OK)
 
 
 class HistorialImportacionesMesView(APIView):
@@ -340,36 +843,40 @@ class HistorialImportacionesMesView(APIView):
             )
 
         importaciones = list(historial_qs)
-        archivos_eliminados = 0
-        pacientes_eliminados = 0
-        
-        for importacion in importaciones:
-            # Solo eliminamos pacientes de esta importación que:
-            # 1. No tengan kinesiólogo asignado
-            # 2. Estén en estado PENDIENTE o RESCATE
-            pats_a_borrar = importacion.pacientes_creados.filter(
-                kine_asignado__isnull=True,
-                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE]
-            )
-            pacientes_eliminados += pats_a_borrar.count()
-            pats_a_borrar.delete()
-            
-            # Los pacientes que ya están asignados o en otro estado (INGRESADO, etc.)
-            # NO se borran. Al borrar la importación abajo, su campo 'importacion_origen'
-            # pasará a ser NULL (gracias al on_delete=SET_NULL en el modelo).
-            
-            if importacion.archivo:
-                importacion.archivo.delete(save=False)
-                archivos_eliminados += 1
-            importacion.delete()
+        resumen = _vaciar_importaciones(importaciones, borrar_importacion=True)
 
         return Response(
             {
                 "mes": mes,
                 "anio": anio,
-                "pacientes_eliminados": pacientes_eliminados,
-                "importaciones_eliminadas": len(importaciones),
-                "archivos_eliminados": archivos_eliminados,
+                **resumen,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ImportacionMensualDetalleView(APIView):
+    permission_classes = [IsAdminOrAdministrativoRole]
+
+    @transaction.atomic
+    def delete(self, request, pk: int):
+        try:
+            importacion = ImportacionMensual.objects.get(pk=pk)
+        except ImportacionMensual.DoesNotExist:
+            return Response(
+                {"detail": "El corte no existe."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        mes, anio = _mes_y_anio_referencia(importacion)
+        resumen = _vaciar_importaciones([importacion], borrar_importacion=True)
+
+        return Response(
+            {
+                "id": int(pk),
+                "mes": mes,
+                "anio": anio,
+                **resumen,
             },
             status=status.HTTP_200_OK,
         )

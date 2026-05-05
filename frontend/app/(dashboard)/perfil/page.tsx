@@ -20,7 +20,7 @@ const ROL_ICONS: Record<Rol, string> = {
 
 const ROL_COLORS: Record<Rol, { bg: string; text: string; border: string }> = {
   KINE: { bg: '#ECFDF5', text: '#065F46', border: '#6EE7B7' },
-  ADMINISTRATIVO: { bg: '#EFF6FF', text: '#1E40AF', border: '#BFDBFE' },
+  ADMINISTRATIVO: { bg: '#ecf5f8', text: '#335fdb', border: '#BFDBFE' },
   ADMIN: { bg: '#F5F3FF', text: '#5B21B6', border: '#C4B5FD' },
 }
 
@@ -29,6 +29,12 @@ export default function PerfilPage() {
   const [todosUsuarios, setTodosUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(false)
   const [contadores, setContadores] = useState<{total: number; mios: number; egresos: number} | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
 
   const cargarContadores = useCallback(async () => {
     if (!user) return
@@ -53,6 +59,47 @@ export default function PerfilPage() {
 
   useEffect(() => { cargarContadores() }, [cargarContadores])
 
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError('Completa todos los campos.')
+      return
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('La confirmación no coincide.')
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      await api.post<{ detail: string }>('/auth/change-password/', {
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      })
+      setPasswordSuccess('Contraseña actualizada correctamente.')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err: any) {
+      const values = err && typeof err === 'object' ? Object.values(err) : []
+      const firstArray = values.find((v) => Array.isArray(v) && v.length > 0) as string[] | undefined
+      const fallback = err?.detail || firstArray?.[0] || 'No se pudo actualizar la contraseña.'
+      setPasswordError(String(fallback))
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
   if (!user) return null
 
   const colors = ROL_COLORS[user.rol]
@@ -66,7 +113,7 @@ export default function PerfilPage() {
 
       {/* Profile Card */}
       <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E6EEE6' }}>
-        <div className="h-24" style={{ background: 'linear-gradient(135deg, #1B5E3B 0%, #4CAF7D 100%)' }} />
+        <div className="h-24" style={{ background: 'linear-gradient(135deg, #335fdb 0%, #2694d9 100%)' }} />
         <div className="bg-white px-6 pb-6">
           <div className="-mt-10 flex items-end justify-between gap-4 mb-6">
             <div className="w-20 h-20 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-3xl"
@@ -112,14 +159,14 @@ export default function PerfilPage() {
           <div className={`grid gap-4 ${user.rol === 'KINE' ? 'grid-cols-2' : 'grid-cols-3'}`}>
             {user.rol === 'KINE' && <>
               <Stat label="Mis pacientes activos" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
-              <Stat label="Lista de espera global" value={contadores.total} color="#1E40AF" bg="#EFF6FF" />
+              <Stat label="Lista de espera global" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
             </>}
             {user.rol === 'ADMINISTRATIVO' && <>
-              <Stat label="En lista de espera" value={contadores.total} color="#1E40AF" bg="#EFF6FF" />
+              <Stat label="En lista de espera" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
               <Stat label="Egresos registrados" value={contadores.egresos} color="#065F46" bg="#ECFDF5" />
             </>}
             {user.rol === 'ADMIN' && <>
-              <Stat label="En lista de espera" value={contadores.total} color="#1E40AF" bg="#EFF6FF" />
+              <Stat label="En lista de espera" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
               <Stat label="Egresos registrados" value={contadores.egresos} color="#065F46" bg="#ECFDF5" />
             </>}
           </div>
@@ -131,11 +178,11 @@ export default function PerfilPage() {
         <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-gray-700">Resumen del equipo</h3>
-            <a href="/usuarios" className="text-xs font-semibold text-[#1B5E3B] hover:underline">Gestionar usuarios →</a>
+            <a href="/usuarios" className="text-xs font-semibold text-[#335fdb] hover:underline">Gestionar usuarios →</a>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <Stat label="Kinesiólogos activos" value={kinesActivos} color="#065F46" bg="#ECFDF5" />
-            <Stat label="Administrativos" value={adminstrativosActivos} color="#1E40AF" bg="#EFF6FF" />
+            <Stat label="Administrativos" value={adminstrativosActivos} color="#335fdb" bg="#ecf5f8" />
             <Stat label="Administradores" value={adminActivos} color="#5B21B6" bg="#F5F3FF" />
           </div>
           <div className="space-y-2">
@@ -170,7 +217,7 @@ export default function PerfilPage() {
               { label: 'Estadísticas', href: '/analisis/estadisticas', icon: '📊' },
             ].map(link => (
               <a key={link.href} href={link.href}
-                className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 hover:bg-[#F7FBF8] hover:border-[#C8E6C9] transition">
+                className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 hover:bg-[#ecf5f8] hover:border-[#C8E6C9] transition">
                 <span className="text-xl">{link.icon}</span>
                 <span className="text-sm font-semibold text-gray-700">{link.label}</span>
               </a>
@@ -178,6 +225,58 @@ export default function PerfilPage() {
           </div>
         </div>
       )}
+
+      <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
+        <h3 className="text-sm font-bold text-gray-700 mb-4">Cambiar contraseña</h3>
+        <form onSubmit={handleChangePassword} className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Contraseña actual</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Nueva contraseña</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-600">Confirmar nueva contraseña</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          {passwordError && (
+            <p className="md:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+              {passwordError}
+            </p>
+          )}
+          {passwordSuccess && (
+            <p className="md:col-span-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-700">
+              {passwordSuccess}
+            </p>
+          )}
+          <div className="md:col-span-2 flex justify-end pt-1">
+            <button
+              type="submit"
+              disabled={passwordLoading}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              {passwordLoading ? 'Guardando...' : 'Actualizar contraseña'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

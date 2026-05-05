@@ -23,4 +23,4 @@ FROM base AS runner
 ENV NODE_ENV=production
 COPY --from=builder /app /app
 EXPOSE 3000
-CMD ["npm", "run", "start", "--", "-H", "0.0.0.0", "-p", "3000"]
+CMD ["sh", "-c", "npm run start -- -H 0.0.0.0 -p ${PORT:-3000}"]

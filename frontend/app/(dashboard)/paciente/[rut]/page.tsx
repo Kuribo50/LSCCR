@@ -51,7 +51,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
     return (
       <div className="flex flex-col items-center justify-center space-y-4 pt-12">
         <p className="text-sm font-semibold text-red-600">{error || 'Paciente no encontrado.'}</p>
-        <Link href="/lista-espera" className="text-sm text-[#4CAF7D] hover:underline">
+        <Link href="/lista-espera" className="text-sm text-[#2694d9] hover:underline">
           Volver a Lista de Espera
         </Link>
       </div>
@@ -61,7 +61,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Header with Basic Info */}
-      <div className="rounded-[10px] bg-white p-6" style={{ border: '0.5px solid #D4E4D4' }}>
+      <div className="rounded-[10px] bg-white p-6" style={{ border: '0.5px solid #a8d4f0' }}>
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">
@@ -163,7 +163,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
                 <div className="relative pl-4 space-y-4 before:absolute before:left-1.5 before:top-2 before:-bottom-2 before:w-[2px] before:bg-gray-200">
                   {derivacion.movimientos.map((mov) => (
                     <div key={mov.id} className="relative text-sm">
-                      <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-[#4CAF7D]" />
+                      <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-[#2694d9]" />
                       <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-semibold text-gray-800 text-xs">

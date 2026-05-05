@@ -171,6 +171,16 @@ def _fecha_preview(fecha_derivacion: date | None) -> str:
     return fecha_derivacion.strftime("%d/%m/%Y") if fecha_derivacion else ""
 
 
+def _valor_preview(valor) -> str:
+    if valor is None:
+        return ""
+    if isinstance(valor, datetime):
+        return valor.strftime("%d/%m/%Y")
+    if isinstance(valor, date):
+        return valor.strftime("%d/%m/%Y")
+    return str(valor).strip()
+
+
 def _registro_preview(
     *,
     hoja: str,
@@ -263,8 +273,9 @@ def _procesar_hoja(ws, sheet_name: str, columnas: dict, header_row: int,
         categoria = categoria_por_diagnostico(diagnostico, 0)
 
         try:
+            fecha_raw = ws.cell(row_idx, columnas["fecha"]).value if "fecha" in columnas else None
             if "fecha" in columnas:
-                fecha_derivacion = _parsear_fecha(ws.cell(row_idx, columnas["fecha"]).value)
+                fecha_derivacion = _parsear_fecha(fecha_raw)
             if fecha_derivacion is None:
                 raise ValueError(
                     f"Fecha inválida o ausente: {ws.cell(row_idx, columnas.get('fecha', 1)).value!r}"
@@ -326,7 +337,22 @@ def _procesar_hoja(ws, sheet_name: str, columnas: dict, header_row: int,
             ))
         except Exception as exc:
             error_msg = str(exc)
-            errores.append({"hoja": sheet_name, "fila": row_idx, "motivo": error_msg})
+            errores.append({
+                "hoja": sheet_name,
+                "fila": row_idx,
+                "motivo": error_msg,
+                "nombre": nombre,
+                "rut": rut,
+                "fecha_derivacion": _fecha_preview(fecha_derivacion),
+                "fecha_original": _valor_preview(ws.cell(row_idx, columnas["fecha"]).value) if "fecha" in columnas else "",
+                "edad": edad,
+                "diagnostico": diagnostico,
+                "prioridad": prioridad,
+                "percapita_desde": desde,
+                "profesional": profesional,
+                "observaciones": observaciones,
+                "categoria": categoria,
+            })
             registros.append(_registro_preview(
                 hoja=sheet_name, fila=row_idx, nombre=nombre, rut=rut,
                 fecha_derivacion=fecha_derivacion, edad=edad,
@@ -404,15 +430,15 @@ def _procesar_derivaciones(archivo) -> dict:
         errores.extend(resultado_hoja["errores"])
         registros.extend(resultado_hoja["registros"])
         pacientes_a_crear.extend(resultado_hoja["pacientes_a_crear"])
-        validos_hoja = len(resultado_hoja["pacientes_a_crear"])
+        registros_hoja = resultado_hoja["total"]
 
         # Determinar el mes de la hoja:
-        # 1. Por nombre de hoja (ENERO, FEBRERO, etc.) → todos los validos van a ese mes
+        # 1. Por nombre de hoja (ENERO, FEBRERO, etc.) → todos los registros van a ese mes
         # 2. Archivo base mezclado → distribuir por mes real de derivación
         mes_hoja = _mes_desde_hoja(sheet_name)
         if mes_hoja:
-            # Hoja de un mes fijo: sumar todos los válidos a ese mes
-            meses_detectados[mes_hoja] = meses_detectados.get(mes_hoja, 0) + validos_hoja
+            # Hoja de un mes fijo: sumar todos los registros leídos, incluyendo recurrentes.
+            meses_detectados[mes_hoja] = meses_detectados.get(mes_hoja, 0) + registros_hoja
         else:
             # Archivo base mezclado: distribuir cada paciente por su mes real
             for f in resultado_hoja["fechas_hoja"]:
@@ -453,6 +479,7 @@ def parsear_derivaciones(archivo) -> dict:
         "importados": 0,  # Will be populated by view
         "duplicados": procesado["duplicados"],
         "errores": procesado["errores"],
+        "registros": procesado["registros"],
         "meses_detectados": procesado["meses_detectados"],
         "pacientes": procesado["pacientes"],
     }

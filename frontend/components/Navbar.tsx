@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FiMenu, FiLogOut, FiUser } from 'react-icons/fi'
+import { FiMenu, FiLogOut, FiMoon, FiSun, FiUser } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
 import type { Usuario } from '@/lib/types'
 
@@ -21,6 +21,7 @@ export default function Navbar({
 }) {
   const { logout } = useAuth()
   const router = useRouter()
+  const [isDark, setIsDark] = useState(false)
   const fechaActual = useMemo(
     () =>
       new Intl.DateTimeFormat('es-CL', {
@@ -31,48 +32,78 @@ export default function Navbar({
     [],
   )
 
+  useEffect(() => {
+    const root = document.documentElement
+    const fromDataset = root.getAttribute('data-theme')
+    if (fromDataset === 'dark' || root.classList.contains('dark')) {
+      setIsDark(true)
+      return
+    }
+    setIsDark(false)
+  }, [])
+
   async function handleLogout() {
     await logout()
     router.replace('/login')
   }
 
+  function handleToggleTheme() {
+    const nextDark = !isDark
+    setIsDark(nextDark)
+    const theme = nextDark ? 'dark' : 'light'
+    const root = document.documentElement
+    root.classList.toggle('dark', nextDark)
+    root.setAttribute('data-theme', theme)
+    localStorage.setItem('ccr-theme', theme)
+  }
+
   return (
-    <header className="sticky top-0 z-30 flex h-16 flex-shrink-0 items-center justify-between border-b border-[#D7E5D9] bg-white/80 px-4 backdrop-blur-md sm:px-6 lg:px-8 shadow-sm">
+    <header className="ccr-navbar sticky top-0 z-30 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm transition-colors dark:!border-[#262626] dark:!bg-[#111111] sm:px-6 lg:px-8">
       <div className="flex items-center gap-4">
         <button
           type="button"
           onClick={onOpenSidebar}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#D6E4D8] bg-white text-[#234E39] transition hover:bg-[#F0F7F2] hover:shadow-md lg:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 hover:shadow-md dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#ecf5f8] dark:hover:!bg-[#262626] lg:hidden"
           aria-label="Abrir menú lateral"
         >
           <FiMenu size={20} />
         </button>
         <div className="hidden sm:block">
-          <p className="text-sm font-extrabold text-[#1B5E3B] tracking-tight">CCR Sistema de Gestión</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#6A8372] opacity-70">
+          <p className="text-sm font-extrabold tracking-tight text-gray-800 dark:!text-white">CCR Sistema de Gestión</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-400 opacity-70 dark:!text-[#b5d8e3]">
             {fechaActual}
           </p>
         </div>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-6">
-        <div className="flex items-center gap-3 px-3 py-1.5 rounded-2xl bg-[#F0F7F2]/50 border border-[#D7E5D9]/50 transition-all hover:bg-[#F0F7F2]">
-          <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center shadow-sm border border-[#D7E5D9] text-[#1B5E3B]">
+        <button
+          type="button"
+          onClick={handleToggleTheme}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-yellow-300 dark:hover:!bg-[#262626]"
+          aria-label={isDark ? 'Activar modo claro' : 'Activar modo oscuro'}
+          title={isDark ? 'Modo claro' : 'Modo oscuro'}
+        >
+          {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
+        </button>
+
+        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-1.5 transition-all hover:bg-gray-100 dark:!border-[#262626] dark:!bg-[#202020] dark:hover:!bg-[#262626]">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm dark:!border-[#262626] dark:!bg-[#262626] dark:!text-[#ecf5f8]">
             <FiUser size={16} />
           </div>
           <div className="hidden md:block text-right">
-            <p className="text-xs font-bold text-gray-800 leading-none">{user.nombre}</p>
-            <p className="text-[10px] font-bold text-[#4CAF7D] uppercase tracking-wider mt-0.5">
+            <p className="text-xs font-bold leading-none text-gray-800 dark:!text-white">{user.nombre}</p>
+            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mt-0.5 dark:!text-[#8fc4d6]">
               {ROL_LABELS[user.rol] ?? user.rol}
             </p>
           </div>
         </div>
 
-        <div className="h-8 w-px bg-[#D7E5D9] mx-1 hidden sm:block" />
+        <div className="mx-1 hidden h-8 w-px bg-gray-200 dark:!bg-[#262626] sm:block" />
 
         <button
           onClick={handleLogout}
-          className="group flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-gray-500 border border-[#D7E5D9] transition-all hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:shadow-sm"
+          className="ccr-logout-button group flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all hover:shadow-sm"
         >
           <span className="hidden sm:inline">Cerrar sesión</span>
           <FiLogOut size={16} className="transition-transform group-hover:translate-x-0.5" />

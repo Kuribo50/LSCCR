@@ -29,6 +29,7 @@ class ImportacionMensual(models.Model):
     registros_importados = models.PositiveIntegerField(default=0)
     duplicados = models.PositiveIntegerField(default=0)
     errores = models.JSONField(default=list, blank=True)
+    observaciones_revision = models.JSONField(default=list, blank=True)
     mes_datos = models.PositiveSmallIntegerField(null=True, blank=True)
     anio_datos = models.PositiveSmallIntegerField(null=True, blank=True)
     reemplazada_por = models.ForeignKey(

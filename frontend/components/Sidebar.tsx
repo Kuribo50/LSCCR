@@ -6,178 +6,69 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
 import {
   FiActivity,
+  FiAlertTriangle,
   FiBarChart2,
-  FiBriefcase,
   FiCalendar,
   FiChevronLeft,
   FiClock,
-  FiHome,
-  FiInbox,
+  FiGrid,
+  FiClipboard,
   FiPhone,
   FiSearch,
   FiUpload,
   FiUsers,
   FiX,
-  FiLogOut,
   FiUser,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { api } from "@/lib/api";
-import type { Paciente, Rol, Usuario } from "@/lib/types";
-import { ESTADO_LABELS } from "@/lib/types";
+import type { ImportacionRevisionResultado, Paciente, Rol } from "@/lib/types";
 import { formatearRut, limpiarRut } from "@/lib/rut";
-import { useAuth } from "@/lib/auth-context";
+
+type CountKey = "total" | "mios" | "rescates" | "cola" | "revision";
+type SidebarCounts = Record<CountKey, number>;
 
 interface Item {
   href: string;
   label: string;
   icon: IconType;
   section: "principal" | "gestion" | "analisis" | "admin";
-  countKey?: "total" | "mios" | "rescates" | "cola";
+  tone: string;
+  countKey?: CountKey;
 }
 
 const BASE_ITEMS: Record<Rol, Item[]> = {
   KINE: [
-    { href: "/inicio", label: "Dashboard", icon: FiHome, section: "principal" },
-    {
-      href: "/calendario",
-      label: "Calendario de citas",
-      icon: FiCalendar,
-      section: "principal",
-    },
-    {
-      href: "/lista-espera",
-      label: "Lista de espera",
-      icon: FiInbox,
-      section: "principal",
-      countKey: "total",
-    },
-    {
-      href: "/mis-pacientes",
-      label: "Mis pacientes",
-      icon: FiUsers,
-      section: "principal",
-      countKey: "mios",
-    },
-    {
-      href: "/llamados",
-      label: "Cola de llamadas",
-      icon: FiPhone,
-      section: "gestion",
-      countKey: "cola",
-    },
-    {
-      href: "/egresos",
-      label: "Historial de egresos",
-      icon: FiClock,
-      section: "gestion",
-    },
-    {
-      href: "/analisis/estadisticas",
-      label: "Estadísticas",
-      icon: FiBarChart2,
-      section: "analisis",
-    },
+    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
+    { href: "/mis-pacientes", label: "Mis pacientes", icon: FiUsers, section: "principal", tone: "text-sky-700", countKey: "mios" },
+    { href: "/llamados", label: "Cola de llamadas", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
+    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMINISTRATIVO: [
-    { href: "/inicio", label: "Dashboard", icon: FiHome, section: "principal" },
-    {
-      href: "/calendario",
-      label: "Calendario de citas",
-      icon: FiCalendar,
-      section: "principal",
-    },
-    {
-      href: "/llamados",
-      label: "Cola de llamadas",
-      icon: FiPhone,
-      section: "gestion",
-      countKey: "cola",
-    },
-    {
-      href: "/importar",
-      label: "Importar derivaciones",
-      icon: FiUpload,
-      section: "gestion",
-    },
-    {
-      href: "/historial-mensual",
-      label: "Historial de cortes",
-      icon: FiClock,
-      section: "gestion",
-    },
-    {
-      href: "/egresos",
-      label: "Historial de egresos",
-      icon: FiClock,
-      section: "gestion",
-    },
-    {
-      href: "/analisis/estadisticas",
-      label: "Estadísticas",
-      icon: FiBarChart2,
-      section: "analisis",
-    },
+    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/llamados", label: "Cola de llamadas", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
+    { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
+    { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
+    { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMIN: [
-    { href: "/inicio", label: "Dashboard", icon: FiHome, section: "principal" },
-    {
-      href: "/calendario",
-      label: "Calendario de citas",
-      icon: FiCalendar,
-      section: "principal",
-    },
-    {
-      href: "/lista-espera",
-      label: "Lista de espera",
-      icon: FiInbox,
-      section: "principal",
-      countKey: "total",
-    },
-    {
-      href: "/mis-pacientes",
-      label: "Pacientes asignados",
-      icon: FiUsers,
-      section: "principal",
-      countKey: "mios",
-    },
-    {
-      href: "/llamados",
-      label: "Cola de llamadas",
-      icon: FiPhone,
-      section: "gestion",
-      countKey: "cola",
-    },
-    {
-      href: "/importar",
-      label: "Importar derivaciones",
-      icon: FiUpload,
-      section: "gestion",
-    },
-    {
-      href: "/historial-mensual",
-      label: "Historial de cortes",
-      icon: FiClock,
-      section: "gestion",
-    },
-    {
-      href: "/egresos",
-      label: "Historial de egresos",
-      icon: FiClock,
-      section: "gestion",
-    },
-    {
-      href: "/analisis/estadisticas",
-      label: "Estadísticas",
-      icon: FiBarChart2,
-      section: "analisis",
-    },
-    {
-      href: "/usuarios",
-      label: "Usuarios",
-      icon: FiBriefcase,
-      section: "admin",
-    },
+    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
+    { href: "/mis-pacientes", label: "Pacientes asignados", icon: FiUsers, section: "principal", tone: "text-sky-700", countKey: "mios" },
+    { href: "/llamados", label: "Cola de llamadas", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
+    { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
+    { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
+    { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
+    { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
   ],
 };
 
@@ -186,12 +77,6 @@ const SECTION_LABELS: Record<Item["section"], string> = {
   gestion: "Gestión",
   analisis: "Análisis",
   admin: "Administración",
-};
-
-const ROL_LABELS: Record<string, string> = {
-  KINE: "Kinesiólogo/a",
-  ADMINISTRATIVO: "Administrativo/a",
-  ADMIN: "Administrador/a",
 };
 
 function classes(...values: Array<string | false | null | undefined>) {
@@ -207,37 +92,38 @@ function SidebarNav({
 }: {
   items: Item[];
   pathname: string;
-  counts: { total: number; mios: number; rescates: number; cola: number };
+  counts: SidebarCounts;
   compact: boolean;
   onNavigate?: () => void;
 }) {
-  const sectionOrder: Item["section"][] = [
-    "principal",
-    "gestion",
-    "analisis",
-    "admin",
-  ];
+  const sectionOrder: Item["section"][] = ["principal", "gestion", "analisis", "admin"];
 
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-4">
-      {sectionOrder.map((section) => {
+      {sectionOrder.map((section, sectionIndex) => {
         const sectionItems = items.filter((item) => item.section === section);
         if (sectionItems.length === 0) return null;
 
         return (
-          <div key={section} className="mb-4 last:mb-0">
+          <div
+            key={section}
+            className={classes(
+              "mb-3 last:mb-0",
+              sectionIndex > 0 && !compact && "mt-2 pt-2",
+            )}
+          >
             {!compact && (
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9FCCB1]">
+              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
                 {SECTION_LABELS[section]}
               </p>
             )}
 
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {sectionItems.map((item) => {
                 const Icon = item.icon;
                 const active =
                   pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
+                  (item.href !== "/importar" && pathname.startsWith(`${item.href}/`));
                 const count = item.countKey ? counts[item.countKey] : null;
 
                 return (
@@ -247,17 +133,19 @@ function SidebarNav({
                       onClick={onNavigate}
                       title={compact ? item.label : undefined}
                       className={classes(
-                        "group flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-sm transition",
+                        "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition",
                         compact && "justify-center px-2",
                         active
-                          ? "border-[#79D4A6]/50 bg-[#2A6F4C] text-white"
-                          : "border-transparent text-[#D2EADC] hover:border-white/15 hover:bg-[#1E5A3F]",
+                          ? "bg-[#335fdb] text-white shadow-sm"
+                          : "text-zinc-800 hover:bg-[#eceef3] hover:text-zinc-950",
                       )}
                     >
                       <span
                         className={classes(
-                          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[15px]",
-                          active ? "bg-white/15" : "bg-white/10 text-[#D4E8DA]",
+                          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[15px]",
+                          active
+                            ? "bg-white/15 text-white"
+                            : "bg-transparent text-zinc-700 group-hover:text-zinc-950",
                         )}
                       >
                         <Icon />
@@ -265,16 +153,14 @@ function SidebarNav({
 
                       {!compact && (
                         <>
-                          <span className="min-w-0 flex-1 truncate">
-                            {item.label}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
                           {typeof count === "number" && (
                             <span
                               className={classes(
-                                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                "rounded-md px-2 py-0.5 text-[11px] font-semibold",
                                 active
                                   ? "bg-white/20 text-white"
-                                  : "bg-white/15 text-[#DCEFE3]",
+                                  : "bg-[#e9edf5] text-zinc-700",
                               )}
                             >
                               {count}
@@ -305,19 +191,12 @@ export default function Sidebar({
   mobileOpen: boolean;
   onMobileOpenChange: (open: boolean) => void;
 }) {
-  const { logout, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [compact, setCompact] = useState(false);
-  const [counts, setCounts] = useState({
-    total: 0,
-    mios: 0,
-    rescates: 0,
-    cola: 0,
-  });
+  const [counts, setCounts] = useState<SidebarCounts>({ total: 0, mios: 0, rescates: 0, cola: 0, revision: 0 });
   const items = useMemo(() => BASE_ITEMS[rol], [rol]);
 
-  // Search state
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Paciente[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
@@ -334,9 +213,7 @@ export default function Sidebar({
     }
     setLoadingSearch(true);
     try {
-      const data = await api.get<Paciente[]>(
-        `/pacientes/?search=${encodeURIComponent(limpio)}`
-      );
+      const data = await api.get<Paciente[]>(`/pacientes/?search=${encodeURIComponent(limpio)}`);
       const seen = new Set<string>();
       const uniq = data.filter((p) => {
         if (seen.has(p.rut)) return false;
@@ -368,11 +245,6 @@ export default function Sidebar({
     onMobileOpenChange(false);
   }
 
-  async function handleLogout() {
-    await logout();
-    router.replace("/login");
-  }
-
   useEffect(() => {
     function onOutside(e: MouseEvent) {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -388,17 +260,21 @@ export default function Sidebar({
 
     async function loadCounts() {
       try {
-        const [total, mios, rescates, pendientes] = await Promise.all([
+        const puedeVerRevision = rol === "ADMIN" || rol === "ADMINISTRATIVO";
+        const [total, mios, rescates, pendientes, revision] = await Promise.all([
           api.get<Paciente[]>("/pacientes/?sin_asignar=1"),
           api.get<Paciente[]>(rol === "ADMIN" ? "/pacientes/?asignados=1" : `/pacientes/?kine=${userId}`),
           api.get<Paciente[]>("/pacientes/?estado=RESCATE"),
           api.get<Paciente[]>("/pacientes/?estado=PENDIENTE"),
+          puedeVerRevision
+            ? api.get<ImportacionRevisionResultado>("/importar/revision/?estado=PENDIENTE").catch(() => null)
+            : Promise.resolve(null),
         ]);
 
         if (!mounted) return;
 
-        const cola = [...pendientes, ...rescates].filter(
-          (p) => rol === "KINE" ? p.kine_asignado === userId : p.kine_asignado !== null,
+        const cola = [...pendientes, ...rescates].filter((p) =>
+          rol === "KINE" ? p.kine_asignado === userId : p.kine_asignado !== null,
         ).length;
 
         setCounts({
@@ -406,10 +282,11 @@ export default function Sidebar({
           mios: mios.filter((p) => !["ALTA_MEDICA", "EGRESO_VOLUNTARIO", "ABANDONO", "DERIVADO"].includes(p.estado)).length,
           rescates: rescates.length,
           cola,
+          revision: revision?.pendientes ?? 0,
         });
       } catch {
         if (!mounted) return;
-        setCounts({ total: 0, mios: 0, rescates: 0, cola: 0 });
+        setCounts({ total: 0, mios: 0, rescates: 0, cola: 0, revision: 0 });
       }
     }
 
@@ -420,12 +297,11 @@ export default function Sidebar({
     }
 
     window.addEventListener("ccr:refresh-sidebar", onRefreshEvent);
-
     return () => {
       mounted = false;
       window.removeEventListener("ccr:refresh-sidebar", onRefreshEvent);
     };
-  }, [userId]);
+  }, [rol, userId]);
 
   useEffect(() => {
     onMobileOpenChange(false);
@@ -435,59 +311,54 @@ export default function Sidebar({
     <>
       <aside
         className={classes(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-black/10 bg-[linear-gradient(180deg,#173F2D_0%,#102D20_100%)] text-white transition-all duration-300 lg:flex shadow-2xl",
-          compact ? "w-[88px]" : "w-[280px]"
+          "ccr-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col bg-[#f4f4f5] text-zinc-950 transition-all duration-300 lg:flex",
+          compact ? "w-[86px]" : "w-[286px]",
         )}
       >
-        <div className="flex items-center justify-between px-4 py-6">
+        <div className="flex items-center justify-between px-4 py-5">
           {!compact && (
             <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-white/15 flex items-center justify-center shadow-lg border border-white/10">
-                <FiActivity className="text-[#79D4A6]" size={18} />
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
+                <FiActivity size={17} />
               </div>
-              <span className="font-bold tracking-tight text-white/90">CCR Panel</span>
+              <span className="font-bold tracking-tight text-zinc-950">CCR Panel</span>
             </div>
           )}
 
           <Button
             aria-label={compact ? "Expandir menú" : "Contraer menú"}
             onPress={() => setCompact((prev) => !prev)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/70 outline-none transition hover:bg-white/15 hover:text-white focus-visible:ring-2 focus-visible:ring-[#A8E0C2]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 outline-none transition hover:bg-zinc-100"
           >
-            <FiChevronLeft
-              className={classes("transition-transform duration-300", compact && "rotate-180")}
-              size={14}
-            />
+            <FiChevronLeft className={classes("transition-transform duration-300", compact && "rotate-180")} size={14} />
           </Button>
         </div>
 
         {!compact && (
-          <div ref={searchRef} className="px-4 mb-4 relative">
+          <div ref={searchRef} className="relative mb-2 px-4 pb-3 pt-1">
             <div className="relative group">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-[#79D4A6] transition-colors" size={14} />
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-[#335fdb]" size={14} />
               <input
                 type="text"
                 placeholder="Buscar RUT..."
                 value={query}
                 onChange={handleSearchChange}
-                className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-xs outline-none focus:ring-1 focus:ring-[#79D4A6]/50 focus:bg-white/10 transition-all placeholder:text-white/30"
+                className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs text-zinc-950 outline-none transition-all placeholder:text-zinc-500 focus:border-[#335fdb] focus:bg-white focus:ring-2 focus:ring-blue-100"
               />
-              {loadingSearch && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 border-2 border-[#79D4A6] border-t-transparent animate-spin rounded-full" />
-              )}
+              {loadingSearch && <div className="absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />}
             </div>
 
             {searchOpen && suggestions.length > 0 && (
-              <div className="absolute top-full left-4 right-4 mt-2 bg-[#1B4B36] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-md">
+              <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-lg bg-white shadow-lg">
                 <ul className="max-h-60 overflow-y-auto">
                   {suggestions.map((p) => (
                     <li key={p.id}>
                       <button
                         onClick={() => handleSelect(p)}
-                        className="w-full text-left px-3 py-2 hover:bg-white/10 transition flex flex-col gap-0.5 border-b border-white/5 last:border-0"
+                        className="flex w-full flex-col gap-0.5 bg-white px-3 py-2 text-left transition hover:bg-slate-100"
                       >
-                        <span className="text-[11px] font-semibold truncate leading-tight">{p.nombre}</span>
-                        <span className="text-[10px] text-white/50 font-mono">{formatearRut(p.rut)}</span>
+                        <span className="truncate text-[11px] font-semibold leading-tight text-slate-950">{p.nombre}</span>
+                        <span className="font-mono text-[10px] text-slate-600">{formatearRut(p.rut)}</span>
                       </button>
                     </li>
                   ))}
@@ -497,18 +368,11 @@ export default function Sidebar({
           </div>
         )}
 
-        <SidebarNav
-          items={items}
-          pathname={pathname}
-          counts={counts}
-          compact={compact}
-        />
+        <SidebarNav items={items} pathname={pathname} counts={counts} compact={compact} />
 
-        <div className="mt-auto border-t border-white/10 p-4">
-          <div className="flex items-center justify-center">
-             <div className="h-8 w-8 rounded-lg bg-white/5 flex items-center justify-center border border-white/10">
-                <FiActivity className="text-white/20" size={14} />
-             </div>
+        <div className="mt-auto p-4">
+          <div className="flex items-center justify-center rounded-md bg-[#e9edf5] py-2 text-[10px] font-semibold uppercase tracking-wide text-[#335fdb]">
+            CCR
           </div>
         </div>
       </aside>
@@ -516,57 +380,52 @@ export default function Sidebar({
       <ModalOverlay
         isOpen={mobileOpen}
         onOpenChange={onMobileOpenChange}
-        className="fixed inset-0 z-50 bg-[#102D20]/55 p-3 backdrop-blur-[1px] lg:hidden"
+        className="fixed inset-0 z-50 bg-slate-900/30 p-3 backdrop-blur-[1px] lg:hidden"
       >
-        <Modal className="h-full w-[92vw] max-w-[320px] rounded-2xl border border-[#1E5840] bg-[linear-gradient(180deg,#173F2D_0%,#102D20_100%)] text-white shadow-2xl outline-none">
-          <Dialog
-            aria-label="Menú principal"
-            className="flex h-full flex-col outline-none"
-          >
+        <Modal className="ccr-sidebar-surface h-full w-[92vw] max-w-[320px] rounded-xl bg-[#f4f4f5] text-zinc-950 shadow-2xl outline-none">
+          <Dialog aria-label="Menú principal" className="flex h-full flex-col outline-none">
             {({ close }) => (
               <>
-                <div className="flex items-center justify-between px-4 py-6 border-b border-white/10">
+                <div className="flex items-center justify-between px-4 py-5">
                   <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-lg bg-white/15 flex items-center justify-center shadow-lg border border-white/10">
-                      <FiActivity className="text-[#79D4A6]" size={18} />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
+                      <FiActivity size={17} />
                     </div>
-                    <span className="font-bold tracking-tight">CCR Panel</span>
+                    <span className="font-bold tracking-tight text-zinc-950">CCR Panel</span>
                   </div>
                   <Button
                     onPress={close}
                     aria-label="Cerrar menú"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white outline-none transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#A8E0C2]"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 outline-none transition hover:bg-zinc-100"
                   >
                     <FiX size={16} />
                   </Button>
                 </div>
 
-                <div className="px-4 mt-4 relative">
+                <div className="relative mt-1 px-4 pb-3">
                   <div className="relative">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={14} />
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
                     <input
                       type="text"
                       placeholder="Buscar RUT..."
                       value={query}
                       onChange={handleSearchChange}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-9 pr-4 text-sm outline-none focus:ring-1 focus:ring-[#79D4A6]/50 focus:bg-white/10 transition-all placeholder:text-white/30"
+                      className="w-full rounded-lg border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-sm text-zinc-950 outline-none placeholder:text-zinc-500 focus:border-[#335fdb] focus:bg-white focus:ring-2 focus:ring-blue-100"
                     />
-                    {loadingSearch && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 border-2 border-[#79D4A6] border-t-transparent animate-spin rounded-full" />
-                    )}
+                    {loadingSearch && <div className="absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />}
                   </div>
 
                   {searchOpen && suggestions.length > 0 && (
-                    <div className="absolute top-full left-4 right-4 mt-2 bg-[#1B4B36] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+                    <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-lg bg-white shadow-lg">
                       <ul>
                         {suggestions.map((p) => (
                           <li key={p.id}>
                             <button
                               onClick={() => handleSelect(p)}
-                              className="w-full text-left px-4 py-3 hover:bg-white/10 transition flex flex-col gap-0.5 border-b border-white/5 last:border-0"
+                              className="flex w-full flex-col gap-0.5 bg-white px-4 py-3 text-left transition hover:bg-slate-100"
                             >
-                              <span className="text-sm font-semibold">{p.nombre}</span>
-                              <span className="text-xs text-white/50 font-mono">{formatearRut(p.rut)}</span>
+                              <span className="text-sm font-semibold text-slate-950">{p.nombre}</span>
+                              <span className="font-mono text-xs text-slate-600">{formatearRut(p.rut)}</span>
                             </button>
                           </li>
                         ))}
@@ -575,18 +434,10 @@ export default function Sidebar({
                   )}
                 </div>
 
-                <SidebarNav
-                  items={items}
-                  pathname={pathname}
-                  counts={counts}
-                  compact={false}
-                  onNavigate={close}
-                />
+                <SidebarNav items={items} pathname={pathname} counts={counts} compact={false} onNavigate={close} />
 
-                <div className="mt-auto border-t border-white/10 p-4 pb-8">
-                  <div className="flex items-center justify-center">
-                    <span className="text-[10px] text-white/20 uppercase tracking-widest font-bold">CCR System v2.0</span>
-                  </div>
+                <div className="mt-auto p-4 pb-8">
+                  <div className="text-center text-[10px] font-semibold uppercase tracking-wide text-[#335fdb]">CCR</div>
                 </div>
               </>
             )}

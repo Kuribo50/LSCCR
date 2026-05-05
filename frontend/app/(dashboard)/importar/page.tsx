@@ -4,9 +4,22 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  FiAlertTriangle,
+  FiArchive,
+  FiCheckCircle,
+  FiClock,
+  FiDownload,
+  FiFileText,
+  FiRefreshCw,
+  FiShield,
+  FiTrash2,
+  FiUploadCloud,
+} from "react-icons/fi";
 import { api } from "@/lib/api";
 import type {
   ImportacionConflictoResponse,
+  ImportacionDeletePeriodoResultado,
   ImportacionHistorialDetalle,
   ImportacionHistorialItem,
   ImportacionPreviewRegistro,
@@ -15,25 +28,48 @@ import type {
 } from "@/lib/types";
 import IngresoManual from "@/components/IngresoManual";
 
-const PAGE_SIZE = 50;
-
-function filaBackground(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR") return "#FEF2F2";
-  if (registro.estado === "DUPLICADO") return "#FFFBEB";
-  return "#FFFFFF";
-}
+const MESES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
 
 function estadoBadgeStyle(estado: ImportacionHistorialItem["estado"]) {
   if (estado === "COMPLETADO") {
-    return { backgroundColor: "#E8F5E9", color: "#1B5E20" };
+    return { backgroundColor: "#e9f4fb", color: "#335fdb", borderColor: "#a8d4f0" };
   }
   if (estado === "CON_ERRORES") {
-    return { backgroundColor: "#FFF3E0", color: "#BF360C" };
+    return { backgroundColor: "#FFF7ED", color: "#ca8702", borderColor: "#fdcb68" };
   }
   if (estado === "REEMPLAZADO") {
-    return { backgroundColor: "#F3F4F6", color: "#9E9E9E" };
+    return { backgroundColor: "#F8FAFC", color: "#64748B", borderColor: "#CBD5E1" };
   }
-  return { backgroundColor: "#E8F5EE", color: "#1B5E3B" };
+  return { backgroundColor: "#e9f4fb", color: "#335fdb", borderColor: "#a8d4f0" };
+}
+
+function previewEstadoBadgeClass(registro: ImportacionPreviewRegistro) {
+  if (registro.estado === "ERROR") {
+    return "ccr-preview-status ccr-preview-status-error";
+  }
+  if (registro.estado === "DUPLICADO") {
+    return "ccr-preview-status ccr-preview-status-duplicate";
+  }
+  return "ccr-preview-status ccr-preview-status-ok";
+}
+
+function previewEstadoLabel(registro: ImportacionPreviewRegistro) {
+  if (registro.estado === "ERROR") return registro.error || "Error";
+  if (registro.estado === "DUPLICADO") return "Recurrente";
+  return "Nuevo";
 }
 
 export default function ImportarPage() {
@@ -55,11 +91,19 @@ export default function ImportarPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [historialLoading, setHistorialLoading] = useState(false);
   const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
-  const [pagina, setPagina] = useState(1);
   const [conflicto, setConflicto] =
     useState<ImportacionConflictoResponse | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [mesGestion, setMesGestion] = useState(() => new Date().getMonth() + 1);
+  const [anioGestion, setAnioGestion] = useState(() => new Date().getFullYear());
+  const [detalleGestion, setDetalleGestion] =
+    useState<ImportacionHistorialDetalle | null>(null);
+  const [detalleGestionLoading, setDetalleGestionLoading] = useState(false);
+  const [deletePeriodoConfirm, setDeletePeriodoConfirm] = useState(false);
+  const [deletePeriodoLoading, setDeletePeriodoLoading] = useState(false);
+  const [deleteCorteConfirmId, setDeleteCorteConfirmId] = useState<number | null>(null);
+  const [deleteCorteLoadingId, setDeleteCorteLoadingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user && !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
@@ -73,6 +117,14 @@ export default function ImportarPage() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
+      setDeletePeriodoConfirm(false);
+      setDeleteCorteConfirmId(null);
+      void cargarDetalleGestion(mesGestion, anioGestion);
+    }
+  }, [user, mesGestion, anioGestion]);
+
   // Auto-previsualizar al seleccionar archivo
   useEffect(() => {
     if (archivo && !previewLoading && !resultado) {
@@ -80,15 +132,10 @@ export default function ImportarPage() {
     }
   }, [archivo]);
 
-  const registrosPagina = useMemo(() => {
-    if (!preview) return [];
-    const start = (pagina - 1) * PAGE_SIZE;
-    return preview.registros.slice(start, start + PAGE_SIZE);
-  }, [preview, pagina]);
-
-  const totalPaginas = preview
-    ? Math.max(1, Math.ceil(preview.registros.length / PAGE_SIZE))
-    : 1;
+  const registrosPreview = useMemo(
+    () => preview?.registros ?? [],
+    [preview],
+  );
   const historialAgrupado = useMemo(() => {
     const grupos = new Map<
       string,
@@ -163,6 +210,31 @@ export default function ImportarPage() {
     }
   }
 
+  async function cargarDetalleGestion(mes = mesGestion, anio = anioGestion) {
+    setDetalleGestionLoading(true);
+    try {
+      const data = await api.get<ImportacionHistorialDetalle>(
+        `/importar/historial/${mes}/${anio}/`,
+      );
+      setDetalleGestion(data);
+      setDetalleHistorial((prev) => ({ ...prev, [`${mes}-${anio}`]: data }));
+    } catch {
+      setDetalleGestion({
+        mes,
+        anio,
+        mes_label: MESES[mes - 1] ?? String(mes),
+        items: [],
+      });
+    } finally {
+      setDetalleGestionLoading(false);
+    }
+  }
+
+  async function refrescarGestionActual() {
+    await cargarHistorial();
+    await cargarDetalleGestion(mesGestion, anioGestion);
+  }
+
   async function cargarDetalle(item: ImportacionHistorialItem) {
     const mes = item.mes_datos ?? item.mes;
     const anio = item.anio_datos ?? item.anio;
@@ -193,12 +265,13 @@ export default function ImportarPage() {
     try {
       const form = new FormData();
       form.append("archivo", archivo);
+      form.append("mes", String(mesGestion));
+      form.append("anio", String(anioGestion));
       const data = await api.postForm<ImportacionPreviewResultado>(
         "/importar/previsualizar/",
         form,
       );
       setPreview(data);
-      setPagina(1);
     } catch (e: unknown) {
       setPreview(null);
       if (e && typeof e === "object" && "detail" in e) {
@@ -220,6 +293,8 @@ export default function ImportarPage() {
     try {
       const form = new FormData();
       form.append("archivo", archivo);
+      form.append("mes", String(mesGestion));
+      form.append("anio", String(anioGestion));
       if (forzarReemplazo) {
         form.append("forzar_reemplazo", "true");
       }
@@ -232,7 +307,7 @@ export default function ImportarPage() {
       );
       setResultado(data);
       setConflicto(null);
-      await cargarHistorial();
+      await refrescarGestionActual();
     } catch (e: unknown) {
       if (
         e &&
@@ -290,7 +365,7 @@ export default function ImportarPage() {
       setResultado(null);
       setArchivo(null);
       if (fileRef.current) fileRef.current.value = "";
-      await cargarHistorial();
+      await refrescarGestionActual();
       window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
     } catch (e: unknown) {
       if (e && typeof e === "object" && "detail" in e) {
@@ -303,138 +378,328 @@ export default function ImportarPage() {
     }
   }
 
-  if (!user || !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) return null;
+  async function handleDeletePeriodo() {
+    if (!deletePeriodoConfirm) {
+      setDeletePeriodoConfirm(true);
+      return;
+    }
 
+    setDeletePeriodoLoading(true);
+    setError("");
+    try {
+      await api.delete<ImportacionDeletePeriodoResultado>(
+        `/importar/historial/${mesGestion}/${anioGestion}/`,
+      );
+      setDeletePeriodoConfirm(false);
+      await refrescarGestionActual();
+      window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "detail" in e) {
+        setError((e as { detail: string }).detail);
+      } else {
+        setError("No se pudo borrar el mes seleccionado.");
+      }
+    } finally {
+      setDeletePeriodoLoading(false);
+    }
+  }
+
+  async function handleDeleteCorte(item: ImportacionHistorialItem) {
+    if (deleteCorteConfirmId !== item.id) {
+      setDeleteCorteConfirmId(item.id);
+      return;
+    }
+
+    setDeleteCorteLoadingId(item.id);
+    setError("");
+    try {
+      await api.delete(`/importar/historial/corte/${item.id}/`);
+      setDeleteCorteConfirmId(null);
+      await refrescarGestionActual();
+      window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "detail" in e) {
+        setError((e as { detail: string }).detail);
+      } else {
+        setError("No se pudo borrar el corte seleccionado.");
+      }
+    } finally {
+      setDeleteCorteLoadingId(null);
+    }
+  }
+
+  if (!user || !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) return null;
   return (
-    <div className="space-y-5">
-      <div>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <h1 className="text-lg font-bold text-gray-800">
-              Importar Derivaciones
-            </h1>
-            <p className="mt-0.5 text-xs text-gray-400">
-              Previsualiza, confirma y revisa el historial mensual de importaciones.
-            </p>
-            <Link
-              href="/historial-mensual"
-              className="mt-2 inline-flex rounded-lg border px-3 py-1.5 text-xs font-medium text-[#1B5E3B]"
-              style={{ borderColor: "#D4E4D4", backgroundColor: "#FAFCFA" }}
-            >
-              Ir a historial mensual
-            </Link>
+    <div className="ccr-dashboard-content space-y-5">
+      <header className="ccr-panel ccr-dashboard-card overflow-hidden rounded-xl">
+        <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-700 shadow-sm dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#8fc4d6]">
+              <FiUploadCloud size={24} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700 dark:!text-[#8fc4d6]">
+                Gestión de derivaciones
+              </p>
+              <h1 className="mt-1 text-2xl font-black text-slate-900 dark:!text-white">
+                Importar derivaciones
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600 dark:!text-[#b5d8e3]">
+                Carga archivos Excel, revisa la previsualización y administra cortes mensuales sin salir del flujo.
+              </p>
+            </div>
           </div>
-          {user?.rol === "ADMIN" && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Link href="/historial-mensual" className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs">
+              <FiArchive size={14} />
+              Historial mensual
+            </Link>
+            <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs">
+              <FiAlertTriangle size={14} />
+              Revisar observaciones
+            </Link>
+            {user?.rol === "ADMIN" && (
               <button
+                type="button"
                 onClick={handleReset}
                 disabled={resetLoading}
-                style={{
-                  padding: "8px 16px",
-                  borderRadius: 8,
-                  border: resetConfirm ? "1.5px solid #DC2626" : "1.5px solid #FCA5A5",
-                  backgroundColor: resetConfirm ? "#DC2626" : "#FFF5F5",
-                  color: resetConfirm ? "#fff" : "#DC2626",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: resetLoading ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                }}
+                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  resetConfirm
+                    ? "border-red-500 bg-red-600 text-white hover:bg-red-700"
+                    : "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100"
+                }`}
               >
+                {resetConfirm ? <FiAlertTriangle size={14} /> : <FiTrash2 size={14} />}
                 {resetLoading
                   ? "Reseteando..."
                   : resetConfirm
-                  ? "⚠️ Confirmar — borrar sin asignar"
-                  : "🗑 Resetear población"}
+                    ? "Confirmar borrado"
+                    : "Resetear población"}
               </button>
-              {resetConfirm && (
-                <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-                  Se conservan los pacientes asignados
-                </span>
-              )}
+            )}
+          </div>
+        </div>
+        {resetConfirm && user?.rol === "ADMIN" && (
+          <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs font-semibold text-red-700 dark:!border-red-500/30 dark:!bg-red-500/10 dark:!text-red-200">
+            Se eliminarán pacientes sin asignar. Los pacientes asignados se conservan.
+          </div>
+        )}
+      </header>
+
+      <section className="ccr-panel ccr-dashboard-card rounded-xl p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#8fc4d6]">
+                <FiClock size={18} />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-slate-900 dark:!text-white">Gestión por corte mensual</h2>
+                <p className="mt-0.5 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                  Selecciona un mes para cargar automáticamente sus cortes y administrar su contenido.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_120px_auto] xl:max-w-2xl">
+            <select
+              value={mesGestion}
+              onChange={(event) => setMesGestion(Number(event.target.value))}
+              className="ccr-control-input px-3 py-2.5 text-sm font-semibold"
+            >
+              {MESES.map((mes, index) => (
+                <option key={mes} value={index + 1}>
+                  {mes}
+                </option>
+              ))}
+            </select>
+            <select
+              value={anioGestion}
+              onChange={(event) => setAnioGestion(Number(event.target.value))}
+              className="ccr-control-input px-3 py-2.5 text-sm font-semibold"
+            >
+              {Array.from({ length: 7 }, (_, index) => new Date().getFullYear() + 1 - index).map((anio) => (
+                <option key={anio} value={anio}>
+                  {anio}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void handleDeletePeriodo()}
+              disabled={deletePeriodoLoading || !detalleGestion || detalleGestion.items.length === 0}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                deletePeriodoConfirm
+                  ? "border-red-500 bg-red-600 text-white hover:bg-red-700"
+                  : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+              }`}
+            >
+              <FiTrash2 size={14} />
+              {deletePeriodoLoading
+                ? "Borrando..."
+                : deletePeriodoConfirm
+                  ? "Confirmar borrar mes"
+                  : "Borrar mes"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-blue-100 bg-white p-4 dark:!border-[#262626] dark:!bg-[#111111]">
+          {detalleGestionLoading ? (
+            <p className="text-sm font-semibold text-slate-500 dark:!text-[#b5d8e3]">Cargando cortes del mes...</p>
+          ) : detalleGestion && detalleGestion.items.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-black text-slate-900 dark:!text-white">
+                  {detalleGestion.mes_label} {detalleGestion.anio}
+                </p>
+                <p className="text-xs font-semibold text-slate-500 dark:!text-[#b5d8e3]">
+                  {detalleGestion.items.length} corte{detalleGestion.items.length !== 1 ? "s" : ""} registrado{detalleGestion.items.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {detalleGestion.items.map((item) => (
+                  <article key={item.id} className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 dark:!border-[#262626] dark:!bg-[#202020]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-black text-slate-900 dark:!text-white">{item.archivo_nombre}</p>
+                        <p className="mt-1 text-[11px] font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                          {new Date(item.fecha_subida).toLocaleString("es-CL")}
+                        </p>
+                      </div>
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold" style={estadoBadgeStyle(item.estado)}>
+                        {item.estado_label}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px]">
+                      <div className="rounded-lg bg-white px-2 py-1.5 dark:!bg-[#111111]">
+                        <p className="font-black text-slate-900 dark:!text-white">{item.registros_importados}</p>
+                        <p className="text-slate-400 dark:!text-[#6ab0c8]">importados</p>
+                      </div>
+                      <div className="rounded-lg bg-white px-2 py-1.5 dark:!bg-[#111111]">
+                        <p className="font-black text-amber-600">{item.duplicados}</p>
+                        <p className="text-slate-400 dark:!text-[#6ab0c8]">recurrentes</p>
+                      </div>
+                      <div className="rounded-lg bg-white px-2 py-1.5 dark:!bg-[#111111]">
+                        <p className="font-black text-red-600">{item.errores.length}</p>
+                        <p className="text-slate-400 dark:!text-[#6ab0c8]">errores</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/lista-espera?importacion=${item.id}`)}
+                        className="ccr-control-button px-3 py-1.5 text-[11px]"
+                      >
+                        Ver pacientes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteCorte(item)}
+                        disabled={deleteCorteLoadingId === item.id}
+                        className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          deleteCorteConfirmId === item.id
+                            ? "border-red-500 bg-red-600 text-white hover:bg-red-700"
+                            : "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                        }`}
+                      >
+                        {deleteCorteLoadingId === item.id
+                          ? "Borrando..."
+                          : deleteCorteConfirmId === item.id
+                            ? "Confirmar borrar"
+                            : "Borrar corte"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-8 text-center dark:!border-[#262626] dark:!bg-[#202020]">
+              <p className="text-sm font-black text-slate-700 dark:!text-white">
+                No hay cortes para {MESES[mesGestion - 1]} {anioGestion}
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                Cuando subas una planilla de este periodo aparecerá aquí automáticamente.
+              </p>
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-        <div
-          className="rounded-[10px] bg-white p-6"
-          style={{ border: "0.5px solid #D4E4D4" }}
-        >
-          <div
-            style={{
-              marginBottom: 16,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <span style={{ fontSize: 13, color: "#5A7A5A" }}>
-              ¿Primera vez? Descarga la plantilla oficial:
-            </span>
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-base font-black text-slate-900 dark:!text-white">Archivo de importación</h2>
+              <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                Usa la plantilla oficial para mantener columnas y formatos compatibles.
+              </p>
+              <p className="mt-2 inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-800 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#daebf1]">
+                Periodo seleccionado: {MESES[mesGestion - 1]} {anioGestion}
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => void descargarPlantilla()}
               disabled={descargandoPlantilla}
-              style={{
-                padding: "6px 14px",
-                borderRadius: 7,
-                border: "1px solid #2E7D52",
-                background: "#E8F5EE",
-                color: "#1B5E3B",
-                fontSize: 12,
-                fontWeight: 500,
-                opacity: descargandoPlantilla ? 0.7 : 1,
-              }}
+              className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {descargandoPlantilla
-                ? "Descargando..."
-                : "Descargar plantilla .xlsx"}
+              <FiDownload size={14} />
+              {descargandoPlantilla ? "Descargando..." : "Plantilla .xlsx"}
             </button>
           </div>
-          <div className="space-y-4">
+
+          <div className="mt-5 space-y-4">
             <div>
-              <label className="mb-2 block text-xs font-semibold text-gray-600">
-                Archivo Excel (.xlsx)
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                Archivo Excel
               </label>
               <div
-                className="cursor-pointer rounded-lg border-2 border-dashed border-gray-200 p-8 text-center transition hover:border-[#2E7D52]"
-                style={{ transition: "border-color 0.2s" }}
+                className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
+                  archivo
+                    ? "border-blue-300 bg-blue-50/70 dark:!border-[#262626] dark:!bg-[#202020]"
+                    : "border-blue-200 bg-white hover:border-blue-500 hover:bg-blue-50/70 dark:!border-[#262626] dark:!bg-[#111111] dark:hover:!bg-[#202020]"
+                }`}
                 onClick={() => fileRef.current?.click()}
-                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "#2E7D52"; }}
-                onDragLeave={(e) => { e.currentTarget.style.borderColor = ""; }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.style.borderColor = "";
-                  const file = e.dataTransfer.files?.[0];
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.style.borderColor = "#335fdb";
+                }}
+                onDragLeave={(event) => {
+                  event.currentTarget.style.borderColor = "";
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.style.borderColor = "";
+                  const file = event.dataTransfer.files?.[0];
                   if (file) {
                     setArchivo(file);
                     setPreview(null);
                     setResultado(null);
                     setError("");
-                    setPagina(1);
                     setConflicto(null);
                   }
                 }}
               >
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-700 shadow-sm transition group-hover:-translate-y-0.5 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#8fc4d6]">
+                  <FiFileText size={24} />
+                </div>
                 {archivo ? (
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: "#1B5E3B" }}>
-                      📄 {archivo.name}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {(archivo.size / 1024).toFixed(1)} KB · Haz clic o arrastra para cambiar
+                  <div className="mt-4">
+                    <p className="text-sm font-black text-blue-800 dark:!text-white">{archivo.name}</p>
+                    <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                      {(archivo.size / 1024).toFixed(1)} KB · haz clic o arrastra para cambiar
                     </p>
                   </div>
                 ) : (
-                  <div>
-                    <p className="text-2xl mb-2">📂</p>
-                    <p className="text-sm text-gray-500">
-                      Haz clic o arrastra el archivo aquí
+                  <div className="mt-4">
+                    <p className="text-sm font-bold text-slate-700 dark:!text-white">
+                      Arrastra el archivo aquí o selecciona desde tu equipo
                     </p>
-                    <p className="mt-1 text-xs text-gray-300">Formato: .xlsx / .xls</p>
+                    <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-[#6ab0c8]">Formatos: .xlsx / .xls</p>
                   </div>
                 )}
               </div>
@@ -443,352 +708,213 @@ export default function ImportarPage() {
                 type="file"
                 accept=".xlsx,.xls"
                 className="hidden"
-                onChange={(e) => {
-                  setArchivo(e.target.files?.[0] ?? null);
+                onChange={(event) => {
+                  setArchivo(event.target.files?.[0] ?? null);
                   setPreview(null);
                   setResultado(null);
                   setError("");
-                  setPagina(1);
                   setConflicto(null);
                 }}
               />
             </div>
 
             {error && (
-              <p className="rounded bg-red-50 px-3 py-2 text-xs text-red-600">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:!border-red-500/30 dark:!bg-red-500/10 dark:!text-red-200">
                 {error}
-              </p>
+              </div>
             )}
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <button
+                type="button"
                 onClick={() => void importarArchivo(false)}
-                disabled={
-                  !archivo || !preview || preview.validos === 0 || importLoading
-                }
-                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
-                style={{ backgroundColor: "#1B5E3B" }}
+                disabled={!archivo || !preview || preview.total === 0 || importLoading}
+                className="ccr-control-button ccr-control-button-primary inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
+                <FiCheckCircle size={16} />
                 {importLoading ? "Importando..." : "Confirmar e importar"}
               </button>
               {archivo && !previewLoading && !preview && (
-                  <button
-                    onClick={handlePrevisualizar}
-                    className="rounded-lg border px-4 py-2.5 text-sm font-semibold text-gray-600"
-                    style={{ borderColor: "#D4E4D4" }}
-                  >
-                    Reintentar previsualización
-                  </button>
+                <button
+                  type="button"
+                  onClick={handlePrevisualizar}
+                  className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-3 text-sm"
+                >
+                  <FiRefreshCw size={15} />
+                  Reintentar previsualización
+                </button>
               )}
             </div>
           </div>
         </div>
 
-        {preview && (
-          <div
-            className="space-y-4 rounded-[10px] bg-white p-6 self-stretch"
-            style={{ border: "0.5px solid #D4E4D4" }}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-gray-700">
-                  Resumen de la previsualización
-                </h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  {preview.total} registros encontrados · {preview.duplicados} recurrentes
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span
-                  className="rounded-full px-2.5 py-1 text-green-700"
-                  style={{ backgroundColor: "#F0FDF4" }}
-                >
-                  {preview.validos} nuevos
-                </span>
-                <span
-                  className="rounded-full px-2.5 py-1 text-amber-700"
-                  style={{ backgroundColor: "#FFFBEB" }}
-                >
-                  {preview.duplicados} recurrentes
-                </span>
-                <span
-                  className="rounded-full px-2.5 py-1 text-red-700"
-                  style={{ backgroundColor: "#FEF2F2" }}
-                >
-                  {preview.errores.length} errores
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-               <div className="bg-[#FAFCFA] p-3 rounded-lg border border-[#E6EEE6]">
-                  <p className="text-xs text-gray-500">Nuevos pacientes</p>
-                  <p className="text-xl font-bold text-[#1B5E3B]">{preview.validos}</p>
-               </div>
-               <div className="bg-[#FAFCFA] p-3 rounded-lg border border-[#E6EEE6]">
-                  <p className="text-xs text-gray-500">Recurrentes (espera)</p>
-                  <p className="text-xl font-bold text-amber-600">{preview.duplicados}</p>
-               </div>
-            </div>
-            
-            {preview.errores.length > 0 && (
-                <div className="p-3 bg-red-50 rounded-lg text-[11px] text-red-700 border border-red-100 max-h-32 overflow-auto">
-                    <p className="font-bold mb-1">Se detectaron errores ({preview.errores.length}):</p>
-                    {preview.errores.slice(0, 5).map((e, idx) => (
-                        <p key={idx}>• Fila {e.fila}: {e.motivo}</p>
-                    ))}
-                    {preview.errores.length > 5 && <p>...y {preview.errores.length - 5} más</p>}
+        <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
+          {preview ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-base font-black text-slate-900 dark:!text-white">Previsualización del archivo</h2>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                    {preview.total} registros leídos · {preview.validos} nuevos · {preview.duplicados} recurrentes
+                  </p>
                 </div>
-            )}
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-bold text-blue-800 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#daebf1]">
+                    {preview.validos} nuevos
+                  </span>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-bold text-amber-700">
+                    {preview.duplicados} recurrentes
+                  </span>
+                  <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-bold text-red-700">
+                    {preview.errores.length} errores
+                  </span>
+                </div>
+              </div>
 
-            <div className="pt-2">
-                 <p className="text-[11px] text-gray-400 mb-2 italic">
-                    * Los recurrentes ya están en el sistema y se les sumará 1 mes de espera.
-                 </p>
-            </div>
-          </div>
-        )}
-        
-        {!preview && previewLoading && (
-            <div className="flex flex-col items-center justify-center p-12 bg-gray-50 rounded-[10px] border border-dashed border-gray-200 animate-pulse self-stretch">
-                <p className="text-sm text-gray-500">Analizando el archivo...</p>
-            </div>
-        )}
-        
-        {!preview && !previewLoading && !archivo && (
-            <div className="hidden lg:flex flex-col items-center justify-center p-12 bg-gray-50 rounded-[10px] border border-dashed border-gray-200 self-stretch opacity-50">
-                <p className="text-sm text-gray-400">El resumen aparecerá aquí</p>
-            </div>
-        )}
-      </div>
+              {registrosPreview.length > 0 ? (
+                <div className="ccr-preview-shell overflow-hidden rounded-xl">
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-black uppercase tracking-wide text-slate-700">
+                      Registros detectados
+                    </p>
+                    <p className="text-[11px] font-bold text-[#335fdb]">
+                      {preview.registros.length} registros
+                    </p>
+                  </div>
+                  <div className="max-h-[640px] overflow-auto">
+                    <table className="w-full min-w-[720px] border-collapse text-xs">
+                      <thead className="sticky top-0 z-10 bg-white">
+                        <tr className="border-b border-slate-200">
+                          {["Paciente", "RUT", "Fecha", "Diagnóstico", "Estado"].map((label) => (
+                            <th key={label} className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wide text-slate-500">
+                              {label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {registrosPreview.map((registro, index) => (
+                          <tr key={`${registro.hoja ?? "SIN"}-${registro.fila}-${index}-compacto`} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
+                            <td className="max-w-[210px] px-3 py-2.5 font-bold text-slate-800">
+                              <span className="block truncate">{registro.nombre || "-"}</span>
+                              <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
+                                {registro.hoja ? `${registro.hoja} · ` : ""}fila {registro.fila}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-slate-600">{registro.rut || "-"}</td>
+                            <td className="px-3 py-2.5 text-slate-600">{registro.fecha_derivacion || "-"}</td>
+                            <td className="max-w-[190px] px-3 py-2.5 text-slate-700">
+                              <span className="block truncate">{registro.diagnostico || "-"}</span>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex max-w-[150px] items-center ${previewEstadoBadgeClass(registro)}`}>
+                                <span className="truncate">{previewEstadoLabel(registro)}</span>
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-semibold text-amber-800 dark:!border-amber-300/40 dark:!bg-amber-400/15 dark:!text-amber-100">
+                  No se encontraron filas compatibles en el Excel. Revisa que la planilla tenga encabezados como Nombre, RUT, Diagnóstico y Fecha de derivación.
+                </div>
+              )}
 
-      {preview && (
-        <div
-          className="space-y-4 rounded-[10px] bg-white p-5"
-          style={{ border: "0.5px solid #D4E4D4" }}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold text-gray-700">
-                Detalle de registros
-              </h2>
-              <p className="mt-1 text-xs text-gray-500">
-                Página {pagina} de {totalPaginas}
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="overflow-hidden rounded-[10px]"
-            style={{ border: "0.5px solid #D4E4D4" }}
-          >
-            <div className="max-h-[560px] overflow-auto bg-white">
-              <table className="min-w-[1180px] w-full border-collapse text-xs">
-                <thead
-                  className="sticky top-0 z-10"
-                  style={{ backgroundColor: "#FAFCFA", color: "#7A9A7A" }}
-                >
-                  <tr>
-                    {[
-                      "NOMBRE",
-                      "RUT",
-                      "FECHA",
-                      "EDAD",
-                      "DIAGNÓSTICO",
-                      "PRIORIDAD",
-                      "DESDE",
-                      "ESTADO",
-                    ].map((label) => (
-                      <th
-                        key={label}
-                        className="px-3 py-3 text-left text-[11px] font-semibold"
-                        style={{ borderBottom: "0.5px solid #D4E4D4" }}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {registrosPagina.map((registro, index) => (
-                    <tr
-                      key={`${registro.hoja ?? "SIN"}-${registro.fila}-${index}`}
-                      style={{ backgroundColor: filaBackground(registro) }}
-                    >
-                      <td className="px-3 py-2.5 text-gray-700">
-                        {registro.nombre || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 font-mono text-gray-600">
-                        {registro.rut || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {registro.fecha_derivacion || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {registro.edad || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-700">
-                        {registro.diagnostico || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {registro.prioridad || "-"}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {registro.percapita_desde || "-"}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {registro.estado === "OK" && (
-                          <span
-                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-green-700"
-                            style={{ backgroundColor: "#F0FDF4" }}
-                          >
-                            OK
-                          </span>
-                        )}
-                        {registro.estado === "DUPLICADO" && (
-                          <span
-                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-amber-700"
-                            style={{ backgroundColor: "#FFFBEB" }}
-                          >
-                            Duplicado
-                          </span>
-                        )}
-                        {registro.estado === "ERROR" && (
-                          <span
-                            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-red-700"
-                            style={{ backgroundColor: "#FEF2F2" }}
-                          >
-                            {registro.error || "Error de formato"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+              {preview.errores.length > 0 && (
+                <div className="max-h-32 overflow-auto rounded-xl border border-red-100 bg-red-50 p-3 text-[11px] text-red-700 dark:!border-red-400/40 dark:!bg-red-500/15 dark:!text-red-100">
+                  <p className="mb-1 font-black">Errores detectados</p>
+                  {preview.errores.slice(0, 5).map((item, index) => (
+                    <p key={index}>Fila {item.fila}: {item.motivo}</p>
                   ))}
-                </tbody>
-              </table>
+                  {preview.errores.length > 5 && <p>Y {preview.errores.length - 5} más.</p>}
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-gray-500">
-              Página {pagina} de {totalPaginas}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setPagina((prev) => Math.max(1, prev - 1))}
-                disabled={pagina === 1}
-                className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600 disabled:opacity-50"
-                style={{ borderColor: "#D4E4D4" }}
-              >
-                Anterior
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setPagina((prev) => Math.min(totalPaginas, prev + 1))
-                }
-                disabled={pagina === totalPaginas}
-                className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600 disabled:opacity-50"
-                style={{ borderColor: "#D4E4D4" }}
-              >
-                Siguiente
-              </button>
+          ) : previewLoading ? (
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white text-center dark:!border-[#262626] dark:!bg-[#111111]">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+              <p className="mt-4 text-sm font-bold text-slate-600 dark:!text-[#daebf1]">Analizando archivo...</p>
             </div>
-          </div>
+          ) : (
+            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white/80 text-center dark:!border-[#262626] dark:!bg-[#111111]">
+              <FiShield className="text-blue-300" size={38} />
+              <p className="mt-3 text-sm font-bold text-slate-500 dark:!text-[#daebf1]">El resumen aparecerá aquí</p>
+              <p className="mt-1 text-xs text-slate-400 dark:!text-[#6ab0c8]">Selecciona un archivo para comenzar.</p>
+            </div>
+          )}
         </div>
-      )}
+      </section>
 
       {resultado && (
-        <div
-          className="space-y-4 rounded-[10px] bg-white p-5"
-          style={{ border: "0.5px solid #D4E4D4" }}
-        >
-          <h2 className="text-sm font-bold text-gray-700">
-            Resultado final de importación
-          </h2>
-
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-lg bg-gray-50 p-3">
-              <p className="text-2xl font-bold text-gray-700">
-                {resultado.total}
-              </p>
-              <p className="text-xs text-gray-400">Total detectado</p>
+        <section className="ccr-panel ccr-dashboard-card rounded-xl p-5">
+          <h2 className="text-base font-black text-slate-900 dark:!text-white">Resultado final</h2>
+          <div className="mt-4 grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 dark:!border-[#262626] dark:!bg-[#111111]">
+              <p className="text-2xl font-black text-slate-900 dark:!text-white">{resultado.total}</p>
+              <p className="text-xs font-semibold text-slate-500 dark:!text-[#b5d8e3]">Total detectado</p>
             </div>
-            <div
-              className="rounded-lg p-3"
-              style={{ backgroundColor: "#F0FDF4" }}
-            >
-              <p className="text-2xl font-bold text-green-700">
-                {resultado.importados}
-              </p>
-              <p className="text-xs text-gray-400">Importados</p>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:!border-[#262626] dark:!bg-[#202020]">
+              <p className="text-2xl font-black text-blue-800 dark:!text-white">{resultado.importados}</p>
+              <p className="text-xs font-semibold text-blue-700 dark:!text-[#b5d8e3]">Importados</p>
             </div>
-            <div
-              className="rounded-lg p-3"
-              style={{
-                backgroundColor:
-                  resultado.duplicados > 0 ? "#FFFBEB" : "#F9FAFB",
-              }}
-            >
-              <p
-                className="text-2xl font-bold"
-                style={{
-                  color: resultado.duplicados > 0 ? "#B45309" : "#6B7280",
-                }}
-              >
-                {resultado.duplicados}
-              </p>
-              <p className="text-xs text-gray-400">Duplicados</p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-2xl font-black text-amber-700">{resultado.duplicados}</p>
+              <p className="text-xs font-semibold text-amber-700">Duplicados</p>
             </div>
           </div>
 
+          {(resultado.errores.length > 0 || resultado.duplicados > 0) && (
+            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm dark:!border-[#262626] dark:!bg-[#202020] sm:flex-row sm:items-center sm:justify-between">
+              <p className="font-semibold text-blue-900 dark:!text-white">
+                Se guardaron recurrentes y errores de datos en la bandeja de revisión del corte.
+              </p>
+              <Link href="/importar/revision" className="ccr-control-button ccr-control-button-primary inline-flex items-center justify-center gap-2 px-3 py-2 text-xs">
+                <FiAlertTriangle size={13} />
+                Abrir revisión
+              </Link>
+            </div>
+          )}
+
           {resultado.errores.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold text-red-700">
-                Detalle de errores:
+            <div className="mt-4">
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-bold text-red-700 dark:!text-red-100">Detalle de errores enviados a revisión</p>
+                <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs">
+                  <FiAlertTriangle size={13} />
+                  Abrir revisión
+                </Link>
+              </div>
+              <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2 text-xs font-semibold text-amber-800 dark:!border-amber-300/30 dark:!bg-amber-400/10 dark:!text-amber-100">
+                Estos registros quedan guardados para revisión. Si el RUT coincide con una ficha existente, se agrega una observación en el historial del paciente.
               </p>
               <div className="max-h-48 space-y-1 overflow-auto">
-                {resultado.errores.map((err, i) => (
-                  <div
-                    key={i}
-                    className="flex gap-3 rounded bg-red-50 px-3 py-1.5 text-xs"
-                  >
-                    <span className="font-mono text-red-400">
-                      {err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}
-                    </span>
+                {resultado.errores.map((err, index) => (
+                  <div key={index} className="flex gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs">
+                    <span className="font-mono text-red-500">{err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}</span>
                     <span className="text-red-700">{err.motivo}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
+        </section>
       )}
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
+      <section className="ccr-panel ccr-dashboard-card rounded-xl p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-bold text-gray-700">
-              Historial de cortes mensuales
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Revisa qué se procesó, quién subió el corte y si un período fue
-              reemplazado.
+            <h2 className="text-base font-black text-slate-900 dark:!text-white">Historial de cortes mensuales</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+              Revisa qué se procesó, quién subió el corte y si un período fue reemplazado.
             </p>
           </div>
-          {historialLoading && (
-            <span className="text-xs text-gray-400">Cargando historial...</span>
-          )}
+          {historialLoading && <span className="text-xs font-semibold text-slate-400">Cargando historial...</span>}
         </div>
 
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-            gap: 10,
-          }}
-        >
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {historialAgrupado.map((grupo) => {
             const expanded = expandido === grupo.key;
             const detalle = detalleHistorial[grupo.key];
@@ -798,111 +924,64 @@ export default function ImportarPage() {
             if (!activo) return null;
 
             return (
-              <article
-                key={grupo.key}
-                className="rounded-[10px] bg-white p-4"
-                style={{
-                  border: "0.5px solid #D4E4D4",
-                  opacity: tachado ? 0.7 : 1,
-                }}
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3
-                        className="text-sm font-semibold text-gray-800"
-                        style={{
-                          textDecoration: tachado ? "line-through" : "none",
-                        }}
-                      >
-                        {grupo.periodoLabel}
-                      </h3>
-                      <p className="mt-1 text-[11px] text-gray-500">
-                        {grupo.items.length} corte
-                        {grupo.items.length !== 1 ? "s" : ""} registrado
-                        {grupo.items.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                    <span
-                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                      style={estadoBadgeStyle(activo.estado)}
-                    >
-                      {activo.estado_label}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 text-xs text-gray-600">
-                    <p>{activo.registros_importados} registros importados</p>
-                    <p>
-                      Última carga:{" "}
-                      {new Date(activo.fecha_subida).toLocaleString("es-CL")}
-                    </p>
-                    <p>
-                      Usuario{grupo.usuarios.length !== 1 ? "s" : ""}:{" "}
-                      {grupo.usuarios.join(", ") || "No disponible"}
+              <article key={grupo.key} className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm dark:!border-[#262626] dark:!bg-[#111111]" style={{ opacity: tachado ? 0.72 : 1 }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 dark:!text-white" style={{ textDecoration: tachado ? "line-through" : "none" }}>
+                      {grupo.periodoLabel}
+                    </h3>
+                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                      {grupo.items.length} corte{grupo.items.length !== 1 ? "s" : ""} registrado{grupo.items.length !== 1 ? "s" : ""}
                     </p>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void cargarDetalle(activo)}
-                    className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600"
-                    style={{ borderColor: "#D4E4D4" }}
-                  >
-                    {expanded ? "Ocultar detalle" : "Ver detalle"}
-                  </button>
-
-                  {expanded && (
-                    <div className="space-y-2 rounded-lg bg-[#FAFCFA] p-3">
-                      {detalle?.items?.map((detalleItem) => (
-                        <div
-                          key={detalleItem.id}
-                          className="space-y-1 border-b border-[#E6EEE6] pb-2 last:border-b-0 last:pb-0"
-                        >
-                          <p className="text-[11px] font-semibold text-gray-700">
-                            {new Date(detalleItem.fecha_subida).toLocaleString(
-                              "es-CL",
-                            )}
-                          </p>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] text-gray-500">
-                              Estado: {detalleItem.estado_label} · Duplicados:{" "}
-                              {detalleItem.duplicados}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => router.push(`/lista-espera?importacion=${detalleItem.id}`)}
-                              className="text-[10px] font-bold text-[#1B5E3B] hover:underline"
-                            >
-                              Ver pacientes de este corte
-                            </button>
-                          </div>
-                          <p className="text-[11px] text-gray-500">
-                            Subido por: <span className="font-semibold text-gray-700">{detalleItem.usuario_nombre || "No disponible"}</span>
-                          </p>
-                          {detalleItem.errores.length > 0 && (
-                            <div className="space-y-1">
-                              {detalleItem.errores.map((err, index) => (
-                                <div
-                                  key={`${detalleItem.id}-${index}`}
-                                  className="rounded bg-red-50 px-2 py-1 text-[11px] text-red-700"
-                                >
-                                  {err.hoja ? `${err.hoja} · ` : ""}Fila{" "}
-                                  {err.fila}: {err.motivo}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {detalleItem.errores.length === 0 && (
-                            <p className="text-[11px] text-gray-500">
-                              Sin errores registrados.
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <span className="rounded-full border px-2.5 py-1 text-[11px] font-bold" style={estadoBadgeStyle(activo.estado)}>
+                    {activo.estado_label}
+                  </span>
                 </div>
+
+                <div className="mt-3 space-y-1 text-xs font-medium text-slate-600 dark:!text-[#b5d8e3]">
+                  <p>{activo.registros_importados} registros importados</p>
+                  <p>Última carga: {new Date(activo.fecha_subida).toLocaleString("es-CL")}</p>
+                  <p>Usuario{grupo.usuarios.length !== 1 ? "s" : ""}: {grupo.usuarios.join(", ") || "No disponible"}</p>
+                </div>
+
+                <button type="button" onClick={() => void cargarDetalle(activo)} className="ccr-control-button mt-4 px-3 py-1.5 text-xs">
+                  {expanded ? "Ocultar detalle" : "Ver detalle"}
+                </button>
+
+                {expanded && (
+                  <div className="mt-3 space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 dark:!border-[#262626] dark:!bg-[#202020]">
+                    {detalle?.items?.map((detalleItem) => (
+                      <div key={detalleItem.id} className="space-y-1 border-b border-blue-100 pb-2 last:border-b-0 last:pb-0 dark:!border-[#262626]">
+                        <p className="text-[11px] font-bold text-slate-700 dark:!text-white">
+                          {new Date(detalleItem.fecha_subida).toLocaleString("es-CL")}
+                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">
+                            Estado: {detalleItem.estado_label} · Duplicados: {detalleItem.duplicados}
+                          </p>
+                          <button type="button" onClick={() => router.push(`/lista-espera?importacion=${detalleItem.id}`)} className="text-[10px] font-black text-blue-700 hover:underline dark:!text-[#8fc4d6]">
+                            Ver corte
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">
+                          Subido por: <span className="font-bold text-slate-700 dark:!text-white">{detalleItem.usuario_nombre || "No disponible"}</span>
+                        </p>
+                        {detalleItem.errores.length > 0 ? (
+                          <div className="space-y-1">
+                            {detalleItem.errores.map((err, index) => (
+                              <div key={`${detalleItem.id}-${index}`} className="rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">
+                                {err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}: {err.motivo}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">Sin errores registrados.</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </article>
             );
           })}
@@ -912,61 +991,35 @@ export default function ImportarPage() {
       <IngresoManual />
 
       {conflicto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div
-            className="w-full max-w-xl rounded-[10px] bg-white p-5"
-            style={{ border: "0.5px solid #D4E4D4" }}
-          >
-            <h2 className="text-base font-semibold text-gray-800">
-              Ya existen datos para estos meses
-            </h2>
-            <p className="mt-2 text-sm text-gray-600">{conflicto.mensaje}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="ccr-panel w-full max-w-xl rounded-xl p-5">
+            <h2 className="text-lg font-black text-slate-900 dark:!text-white">Ya existen datos para estos meses</h2>
+            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-[#b5d8e3]">{conflicto.mensaje}</p>
 
             <div className="mt-4 space-y-2">
               {conflicto.conflictos.map((item) => (
-                <div
-                  key={`${item.mes}-${item.anio}-${item.importacion_id}`}
-                  className="rounded-lg bg-[#FAFCFA] px-3 py-2 text-sm text-gray-700"
-                  style={{ border: "0.5px solid #D4E4D4" }}
-                >
-                  <p className="font-medium">
-                    {item.hoja} {item.anio}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    Importación previa: {item.importados_previos} registros ·{" "}
-                    {new Date(item.fecha_subida_previa).toLocaleString("es-CL")}
+                <div key={`${item.mes}-${item.anio}-${item.importacion_id}`} className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-slate-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#daebf1]">
+                  <p className="font-bold">{item.hoja} {item.anio}</p>
+                  <p className="text-xs text-slate-500 dark:!text-[#b5d8e3]">
+                    Importación previa: {item.importados_previos} registros · {new Date(item.fecha_subida_previa).toLocaleString("es-CL")}
                   </p>
                 </div>
               ))}
             </div>
 
-            <p className="mt-4 text-xs text-gray-500 italic">
-              * Complementar sumará meses de espera a pacientes existentes y agregará los nuevos sin borrar lo anterior.
+            <p className="mt-4 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+              Complementar suma meses de espera a pacientes existentes y agrega los nuevos sin borrar lo anterior.
             </p>
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setConflicto(null)}
-                className="order-last sm:order-first rounded-lg border px-4 py-2 text-sm font-medium text-gray-600"
-                style={{ borderColor: "#D4E4D4" }}
-              >
+              <button type="button" onClick={() => setConflicto(null)} className="ccr-control-button order-last px-4 py-2 text-sm sm:order-first">
                 Cancelar
               </button>
-              <button
-                type="button"
-                onClick={() => void importarArchivo(false, true)}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                style={{ backgroundColor: "#1B5E3B" }}
-              >
-                Complementar / Actualizar datos
+              <button type="button" onClick={() => void importarArchivo(false, true)} className="ccr-control-button ccr-control-button-primary px-4 py-2 text-sm">
+                Complementar datos
               </button>
-              <button
-                type="button"
-                onClick={() => void importarArchivo(true)}
-                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
-              >
-                Reemplazar todo el mes
+              <button type="button" onClick={() => void importarArchivo(true)} className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100">
+              Sobrescribir y limpiar mes
               </button>
             </div>
           </div>

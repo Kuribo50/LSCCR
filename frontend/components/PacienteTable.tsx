@@ -38,7 +38,7 @@ export default function PacienteTable({
 
   if (pacientes.length === 0) {
     return (
-      <div className="ccr-panel rounded-2xl border border-verde-border p-12 text-center text-sm text-gray-500">
+      <div className="ccr-panel rounded-xl border p-12 text-center text-sm text-slate-500">
         No hay pacientes que coincidan con los filtros.
       </div>
     );
@@ -47,52 +47,49 @@ export default function PacienteTable({
   return (
     <>
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
           {error}
         </p>
       )}
-      <div
-        className="ccr-panel overflow-hidden rounded-2xl bg-white"
-        style={{ border: "0.5px solid #D4E4D4" }}
-      >
+      <div className="ccr-panel ccr-data-table overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
         <div className="max-h-[clamp(300px,calc(100dvh-340px),820px)] min-h-[300px] overflow-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10">
-              <tr className="border-b border-[#D9E6DB] bg-[#F7FBF8]">
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+              <tr className="ccr-table-head border-b border-slate-200 bg-slate-50 dark:border-[#262626] dark:bg-[#202020]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Nombre
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   RUT
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Edad
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Diagnóstico
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Prioridad
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Categoría
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Kine
                 </th>
-                <th className="border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Estado
                 </th>
                 {showProximaAtencion && (
-                  <th className="whitespace-nowrap border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                  <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Próxima atención
                   </th>
                 )}
-                <th className="whitespace-nowrap border-r border-[#D9E6DB] px-4 py-2.5 text-left font-semibold text-[#2D4336]">
+                <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   <button
                     type="button"
                     onClick={onToggleDiasOrder}
-                    className="inline-flex items-center gap-1 text-[#2D4336] hover:text-[#1B5E3B]"
+                    className="inline-flex items-center gap-1 text-slate-700 transition hover:text-blue-700 dark:text-[#daebf1] dark:hover:text-blue-300"
                   >
                     {daysMode === "ingreso"
                       ? "Días desde el ingreso"
@@ -102,7 +99,7 @@ export default function PacienteTable({
                     <span className="text-[10px]">{orderingLabel}</span>
                   </button>
                 </th>
-                <th className="px-4 py-2.5 text-right font-semibold text-[#2D4336]">
+                <th className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-[#daebf1]">
                   Acciones
                 </th>
               </tr>
@@ -154,12 +151,12 @@ export default function PacienteTable({
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-1 border-t-2 border-[#C7DCCF] bg-gradient-to-r from-[#EAF5EE] to-[#F3F9F5] px-4 py-2.5 text-[11px] font-medium text-[#365544] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-medium text-slate-600 dark:border-[#262626] dark:bg-[#202020] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
           <p>
             {pacientes.length} paciente{pacientes.length !== 1 ? "s" : ""} en la
             tabla
           </p>
-          <p className="text-[#4E6F5C]">Vista actualizada</p>
+          <p className="text-slate-500 dark:text-[#6ab0c8]">Vista actualizada</p>
         </div>
       </div>
 

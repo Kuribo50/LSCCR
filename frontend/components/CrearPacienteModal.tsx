@@ -144,7 +144,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
             <>
               <header className="flex shrink-0 items-center justify-between border-b border-[#E9F3ED] bg-[#FAFCFB] px-6 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF6EE] text-[#1B5E3B]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e9f4fb] text-[#335fdb]">
                     <FiUserPlus size={20} />
                   </div>
                   <div>
@@ -175,7 +175,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
 
                 <form id="crear-paciente-form" onSubmit={handleSubmit} className="space-y-4">
                   {/* Row 1: Identification */}
-                  <div className="rounded-xl border border-[#D5E4D8] bg-white p-4">
+                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
                     <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Identificacion</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5 sm:col-span-1">
@@ -187,7 +187,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={rut}
                           onChange={handleRutChange}
                           placeholder="Sin puntos, con guión"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] font-semibold text-[#2C4837] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] font-semibold text-[#2C4837] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3">
@@ -199,14 +199,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={nombre}
                           onChange={(e) => setNombre(e.target.value)}
                           placeholder="Nombres y Apellidos"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Row 2: Demographics & Contact */}
-                  <div className="rounded-xl border border-[#D5E4D8] bg-white p-4">
+                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
                     <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Demografia y Contacto</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5">
@@ -229,7 +229,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                               }
                             }
                           }}
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -244,7 +244,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={edad}
                           onChange={(e) => setEdad(e.target.value)}
                           placeholder="Automático"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -255,7 +255,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={telefono}
                           onChange={handleTelefonoChange}
                           placeholder="+56912345678"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -267,14 +267,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="Opcional"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Row 3: Clinic Information */}
-                  <div className="rounded-xl border border-[#D5E4D8] bg-white p-4">
+                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
                     <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Informacion Clinica</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1.5 sm:col-span-2">
@@ -286,7 +286,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={diagnostico}
                           onChange={(e) => setDiagnostico(e.target.value)}
                           placeholder="Descripción detallada del diagnóstico"
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -297,7 +297,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           required
                           value={percapitaDesde}
                           onChange={(e) => setPercapitaDesde(e.target.value)}
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -308,7 +308,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           required
                           value={categoria}
                           onChange={(e) => setCategoria(e.target.value as Categoria)}
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         >
                           {CATEGORIAS.map((c) => (
                             <option key={c} value={c}>{CATEGORIA_LABELS[c]}</option>
@@ -323,7 +323,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           required
                           value={prioridad}
                           onChange={(e) => setPrioridad(e.target.value as Prioridad)}
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         >
                           {PRIORIDADES.map((p) => (
                             <option key={p} value={p}>{PRIORIDAD_LABELS[p]}</option>
@@ -339,7 +339,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           type="date"
                           value={fechaDerivacion}
                           onChange={(e) => setFechaDerivacion(e.target.value)}
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3 flex flex-col">
@@ -351,14 +351,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={observaciones}
                           onChange={(e) => setObservaciones(e.target.value)}
                           placeholder="Notas extra de la derivación o del estado..."
-                          className="w-full rounded-lg border border-[#D5E4D8] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#5FB88C] focus:bg-white focus:ring-1 focus:ring-[#5FB88C]"
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                     </div>
                   </div>
 
                   {isKine && (
-                    <div className="mt-4 rounded-xl border border-[#CDEAE0] bg-[#EAF6EE] p-4 text-[13px] flex items-center justify-between">
+                    <div className="mt-4 rounded-xl border border-[#CDEAE0] bg-[#e9f4fb] p-4 text-[13px] flex items-center justify-between">
                       <div>
                         <label htmlFor="autoAsignar" className="font-bold text-[#1D3B2A] cursor-pointer block">
                           Ingresar directo a mis pacientes
@@ -372,7 +372,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         id="autoAsignar"
                         checked={autoAsignar} 
                         onChange={(e) => setAutoAsignar(e.target.checked)}
-                        className="h-5 w-5 rounded border-[#9FCAB1] text-[#1B5E3B] focus:ring-[#5FB88C] bg-white shadow-sm"
+                        className="h-5 w-5 rounded border-[#6ab0c8] text-[#335fdb] focus:ring-[#2694d9] bg-white shadow-sm"
                       />
                     </div>
                   )}
@@ -392,7 +392,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                   type="submit"
                   form="crear-paciente-form"
                   disabled={loading}
-                  className="rounded-xl bg-[#1B5E3B] px-6 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#14472D] disabled:opacity-50 flex items-center justify-center min-w-[150px] shadow-sm"
+                  className="rounded-xl bg-[#335fdb] px-6 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#284fc0] disabled:opacity-50 flex items-center justify-center min-w-[150px] shadow-sm"
                 >
                   {loading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

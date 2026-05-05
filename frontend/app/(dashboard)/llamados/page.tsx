@@ -131,14 +131,14 @@ export default function LlamadosPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-900">Cola de Llamados</h1>
-              <p className="mt-0.5 text-xs text-[#60786B]">
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
                 Gestión de pacientes en estado pendiente o rescate.
               </p>
             </div>
             <button
               type="button"
               onClick={() => void cargar()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#C5DDCC] bg-white px-3 py-2 text-[11px] font-semibold text-[#21563B] outline-none transition hover:bg-[#ECF7F0] focus-visible:ring-2 focus-visible:ring-[#60B689] sm:w-auto"
+              className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
             >
               <FiRefreshCw size={13} />
               Recargar
@@ -159,14 +159,14 @@ export default function LlamadosPage() {
                   if (event.key === "Enter") event.preventDefault();
                 }}
                 placeholder="Buscar por nombre o RUT"
-                className="w-full rounded-xl border border-[#D5E4D8] bg-white px-9 py-2.5 text-xs outline-none focus:border-[#5FB88C]"
+                className="ccr-control-input w-full px-9 py-2.5 text-xs"
                 aria-label="Buscar pacientes"
               />
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <select
-                className="rounded-xl border border-[#D5E4D8] bg-white px-3 py-2.5 text-xs text-[#2D4336] outline-none focus:border-[#5FB88C]"
+                className="ccr-control-input px-3 py-2.5 text-xs"
                 value={estadoFilter}
                 onChange={(event) => setEstadoFilter(event.target.value)}
               >
@@ -176,7 +176,7 @@ export default function LlamadosPage() {
               </select>
 
               <select
-                className="rounded-xl border border-[#D5E4D8] bg-white px-3 py-2.5 text-xs text-[#2D4336] outline-none focus:border-[#5FB88C]"
+                className="ccr-control-input px-3 py-2.5 text-xs"
                 value={prioridadFilter}
                 onChange={(event) => setPrioridadFilter(event.target.value)}
               >
@@ -193,7 +193,7 @@ export default function LlamadosPage() {
             <button
               type="button"
               onClick={clearFilters}
-              className="inline-flex h-[34px] w-full items-center justify-center rounded-lg border border-[#D5E4D8] bg-white px-3 text-[11px] font-semibold text-[#294C3A] transition hover:bg-[#F5FAF7] sm:w-auto"
+              className="ccr-control-button inline-flex h-[34px] w-full items-center justify-center px-3 text-[11px] sm:w-auto"
             >
               Limpiar filtros
             </button>
@@ -210,7 +210,7 @@ export default function LlamadosPage() {
       {loading ? (
         <div
           className="ccr-panel rounded-2xl p-12 text-center text-sm text-gray-400 animate-pulse"
-          style={{ border: "0.5px solid #D4E4D4" }}
+          style={{ border: "0.5px solid #a8d4f0" }}
         >
           Cargando…
         </div>

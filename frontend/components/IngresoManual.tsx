@@ -255,13 +255,13 @@ export default function IngresoManual() {
         </p>
       </div>
 
-      <div className="rounded-[10px] bg-white p-5" style={{ border: '0.5px solid #D4E4D4' }}>
+      <div className="rounded-[10px] bg-white p-5" style={{ border: '0.5px solid #a8d4f0' }}>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => setMostrarPegado((prev) => !prev)}
             className="rounded-lg px-4 py-2 text-sm font-semibold text-white transition"
-            style={{ backgroundColor: '#1B5E3B' }}
+            style={{ backgroundColor: '#335fdb' }}
           >
             Pegar desde Excel
           </button>
@@ -274,7 +274,7 @@ export default function IngresoManual() {
               setError('')
             }}
             className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
-            style={{ borderColor: '#D4E4D4' }}
+            style={{ borderColor: '#a8d4f0' }}
           >
             Limpiar
           </button>
@@ -298,7 +298,7 @@ export default function IngresoManual() {
               onChange={(e) => manejarPegado(e.target.value)}
               placeholder="Pega aqui filas copiadas desde Excel (TSV)."
               className="min-h-[140px] w-full rounded-xl border p-3 text-sm text-gray-700 outline-none"
-              style={{ borderColor: '#D4E4D4', backgroundColor: '#FAFCFA' }}
+              style={{ borderColor: '#a8d4f0', backgroundColor: '#FAFCFA' }}
             />
           </div>
         )}
@@ -311,7 +311,7 @@ export default function IngresoManual() {
           <>
             <div
               className="mt-4 overflow-x-auto rounded-[10px]"
-              style={{ border: '0.5px solid #D4E4D4', backgroundColor: '#FFFFFF' }}
+              style={{ border: '0.5px solid #a8d4f0', backgroundColor: '#FFFFFF' }}
             >
               <table className="min-w-[980px] w-full border-collapse text-sm">
                 <thead style={{ backgroundColor: '#FAFCFA', color: '#7A9A7A' }}>
@@ -320,7 +320,7 @@ export default function IngresoManual() {
                       <th
                         key={columna.key}
                         className="px-3 py-3 text-left text-[11px] font-semibold tracking-[0.2px]"
-                        style={{ borderBottom: '0.5px solid #D4E4D4' }}
+                        style={{ borderBottom: '0.5px solid #a8d4f0' }}
                       >
                         {columna.label}
                       </th>
@@ -336,14 +336,14 @@ export default function IngresoManual() {
                           <td
                             key={columna.key}
                             className="px-2 py-2 align-top"
-                            style={{ borderTop: '0.5px solid #D4E4D4' }}
+                            style={{ borderTop: '0.5px solid #a8d4f0' }}
                           >
                             <input
                               value={fila[columna.key]}
                               onChange={(e) => actualizarCelda(fila.id, columna.key, e.target.value)}
                               placeholder={columna.placeholder}
                               className="w-full rounded-md border bg-white px-2 py-2 text-sm text-gray-700 outline-none"
-                              style={{ borderColor: '#D4E4D4' }}
+                              style={{ borderColor: '#a8d4f0' }}
                             />
                           </td>
                         ))}
@@ -363,7 +363,7 @@ export default function IngresoManual() {
                 onClick={importarFilas}
                 disabled={importando || filasValidas === 0}
                 className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
-                style={{ backgroundColor: '#1B5E3B' }}
+                style={{ backgroundColor: '#335fdb' }}
               >
                 {importando ? 'Importando...' : `Importar ${filas.length} registros`}
               </button>
@@ -373,7 +373,7 @@ export default function IngresoManual() {
       </div>
 
       {resultado && (
-        <div className="rounded-[10px] bg-white p-5 space-y-4" style={{ border: '0.5px solid #D4E4D4' }}>
+        <div className="rounded-[10px] bg-white p-5 space-y-4" style={{ border: '0.5px solid #a8d4f0' }}>
           <h3 className="text-sm font-bold text-gray-700">Resultado del ingreso manual</h3>
 
           <div className="grid gap-3 text-center sm:grid-cols-3">
@@ -391,7 +391,7 @@ export default function IngresoManual() {
             >
               <p
                 className="text-2xl font-bold"
-                style={{ color: resultado.duplicados > 0 ? '#B45309' : '#6B7280' }}
+                style={{ color: resultado.duplicados > 0 ? '#976502' : '#6B7280' }}
               >
                 {resultado.duplicados}
               </p>

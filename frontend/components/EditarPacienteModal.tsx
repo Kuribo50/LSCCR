@@ -68,6 +68,21 @@ function toForm(p: Paciente): FormState {
   };
 }
 
+function firstApiError(error: unknown): string {
+  if (!error || typeof error !== "object") return "No se pudo guardar.";
+  const err = error as Record<string, unknown>;
+  if (typeof err.detail === "string" && err.detail.trim()) return err.detail;
+
+  for (const value of Object.values(err)) {
+    if (Array.isArray(value) && value.length > 0) {
+      const first = value[0];
+      if (typeof first === "string" && first.trim()) return first;
+    }
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "No se pudo guardar.";
+}
+
 export default function EditarPacienteModal({
   paciente,
   onClose,
@@ -109,9 +124,9 @@ export default function EditarPacienteModal({
 
       if (isContactOnly) {
         payload.categoria = form.categoria;
-        payload.telefono = form.telefono;
-        payload.telefono_recados = form.telefono_recados;
-        payload.email = form.email;
+        payload.telefono = form.telefono.trim();
+        payload.telefono_recados = form.telefono_recados.trim();
+        payload.email = form.email.trim();
 
         const actualizado = await api.patch<Paciente>(
           `/pacientes/${paciente.id}/`,
@@ -128,11 +143,11 @@ export default function EditarPacienteModal({
       payload.edad = Number.isFinite(edadFinal) ? edadFinal : 0;
       payload.prioridad = form.prioridad;
       payload.categoria = form.categoria;
-      payload.diagnostico = form.diagnostico;
-      payload.telefono = form.telefono;
-      payload.telefono_recados = form.telefono_recados;
-      payload.email = form.email;
-      payload.observaciones = form.observaciones;
+      payload.diagnostico = form.diagnostico.trim();
+      payload.telefono = form.telefono.trim();
+      payload.telefono_recados = form.telefono_recados.trim();
+      payload.email = form.email.trim();
+      payload.observaciones = form.observaciones.trim();
 
       for (const key of DATE_FIELDS) {
         payload[key] = form[key] || null;
@@ -144,11 +159,7 @@ export default function EditarPacienteModal({
       );
       onGuardado(actualizado);
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "No se pudo guardar.";
-      setError(msg);
+      setError(firstApiError(e));
     } finally {
       setLoading(false);
     }
@@ -156,15 +167,14 @@ export default function EditarPacienteModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm dark:bg-black/75"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
-        style={{ border: "1px solid #E6EEE6" }}
+        className="ccr-edit-patient-modal max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-[#E6EEE6] bg-[#F7FBF8] px-6 py-4">
+        <div className="ccr-edit-patient-modal-header flex items-start justify-between border-b border-blue-100 bg-blue-50 px-6 py-4">
           <div>
             <h2 className="text-base font-bold text-gray-800">
               {isContactOnly
@@ -189,7 +199,7 @@ export default function EditarPacienteModal({
 
         <form
           onSubmit={handleSubmit}
-          className="max-h-[68vh] overflow-y-auto px-6 py-5"
+          className="ccr-edit-patient-modal-body max-h-[68vh] overflow-y-auto px-6 py-5"
         >
           {isContactOnly ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -202,7 +212,7 @@ export default function EditarPacienteModal({
                   onChange={(e) =>
                     set("categoria", e.target.value as Categoria)
                   }
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   {Object.entries(CATEGORIA_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -220,7 +230,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono}
                   onChange={(e) => set("telefono", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -232,7 +242,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono_recados}
                   onChange={(e) => set("telefono_recados", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -244,7 +254,7 @@ export default function EditarPacienteModal({
                   type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
@@ -258,7 +268,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_nacimiento}
                   onChange={(e) => set("fecha_nacimiento", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
                 <p className="mt-1 text-[11px] text-gray-500">
                   Edad calculada: {edadCalculada ?? "-"}
@@ -275,7 +285,7 @@ export default function EditarPacienteModal({
                   max={120}
                   value={form.edad}
                   onChange={(e) => set("edad", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -288,7 +298,7 @@ export default function EditarPacienteModal({
                   onChange={(e) =>
                     set("prioridad", e.target.value as Prioridad)
                   }
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   {Object.entries(PRIORIDAD_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -307,7 +317,7 @@ export default function EditarPacienteModal({
                   onChange={(e) =>
                     set("categoria", e.target.value as Categoria)
                   }
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   {Object.entries(CATEGORIA_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -325,7 +335,7 @@ export default function EditarPacienteModal({
                   type="text"
                   value={form.diagnostico}
                   onChange={(e) => set("diagnostico", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -337,7 +347,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono}
                   onChange={(e) => set("telefono", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -349,7 +359,7 @@ export default function EditarPacienteModal({
                   type="tel"
                   value={form.telefono_recados}
                   onChange={(e) => set("telefono_recados", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -361,7 +371,7 @@ export default function EditarPacienteModal({
                   type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
                 />
               </div>
 
@@ -373,7 +383,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_ingreso}
                   onChange={(e) => set("fecha_ingreso", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
                 />
               </div>
 
@@ -385,7 +395,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_siguiente_cita}
                   onChange={(e) => set("fecha_siguiente_cita", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
                 />
               </div>
 
@@ -397,7 +407,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_egreso}
                   onChange={(e) => set("fecha_egreso", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
                 />
               </div>
 
@@ -409,32 +419,32 @@ export default function EditarPacienteModal({
                   value={form.observaciones}
                   onChange={(e) => set("observaciones", e.target.value)}
                   rows={3}
-                  className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#4CAF7D] focus:outline-none"
+                  className="w-full resize-none rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
           )}
 
           {error && (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           )}
         </form>
 
-        <div className="flex gap-3 border-t border-[#E6EEE6] bg-gray-50 px-6 py-4">
+        <div className="ccr-edit-patient-modal-footer flex gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
           <button
             type="submit"
             onClick={handleSubmit}
             disabled={loading}
-            className="flex-1 rounded-xl bg-[#1B5E3B] py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:opacity-50"
+            className="flex-1 rounded-md bg-blue-700 py-2.5 text-sm font-bold text-white transition hover:bg-blue-800 disabled:opacity-50"
           >
             {loading ? "Guardando…" : "Guardar cambios"}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm text-gray-600 transition hover:bg-gray-100"
+            className="rounded-md border border-gray-200 px-5 py-2.5 text-sm text-gray-600 transition hover:bg-gray-100"
           >
             Cancelar
           </button>

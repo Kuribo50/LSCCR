@@ -30,7 +30,7 @@ function badgeEstado(estado: ImportacionHistorialItem["estado"]) {
   if (estado === "REEMPLAZADO") {
     return { backgroundColor: "#F3F4F6", color: "#9E9E9E" };
   }
-  return { backgroundColor: "#E8F5EE", color: "#1B5E3B" };
+  return { backgroundColor: "#e9f4fb", color: "#335fdb" };
 }
 
 export default function HistorialMensualPage() {
@@ -215,10 +215,10 @@ export default function HistorialMensualPage() {
 
       {resultadoEliminacion && (
         <div
-          className="rounded-[10px] bg-[#E8F5EE] p-4"
-          style={{ border: "0.5px solid #D4E4D4" }}
+          className="rounded-[10px] bg-[#e9f4fb] p-4"
+          style={{ border: "0.5px solid #a8d4f0" }}
         >
-          <p className="text-sm font-semibold text-[#1B5E3B]">
+          <p className="text-sm font-semibold text-[#335fdb]">
             Periodo eliminado correctamente
           </p>
           <p className="mt-1 text-xs text-[#355B43]">
@@ -232,7 +232,7 @@ export default function HistorialMensualPage() {
 
       <div
         className="rounded-[10px] bg-white p-4"
-        style={{ border: "0.5px solid #D4E4D4" }}
+        style={{ border: "0.5px solid #a8d4f0" }}
       >
         <p className="text-xs text-gray-600">
           Al borrar un periodo se eliminan todos los pacientes con fecha de
@@ -243,14 +243,14 @@ export default function HistorialMensualPage() {
       {loading ? (
         <div
           className="rounded-[10px] bg-white p-8 text-center text-sm text-gray-400"
-          style={{ border: "0.5px solid #D4E4D4" }}
+          style={{ border: "0.5px solid #a8d4f0" }}
         >
           Cargando historial...
         </div>
       ) : grupos.length === 0 ? (
         <div
           className="rounded-[10px] bg-white p-8 text-center text-sm text-gray-400"
-          style={{ border: "0.5px solid #D4E4D4" }}
+          style={{ border: "0.5px solid #a8d4f0" }}
         >
           No hay importaciones registradas.
         </div>
@@ -279,7 +279,7 @@ export default function HistorialMensualPage() {
                 key={grupo.key}
                 className="rounded-[10px] bg-white p-4"
                 style={{
-                  border: "0.5px solid #D4E4D4",
+                  border: "0.5px solid #a8d4f0",
                   opacity: reemplazado ? 0.75 : 1,
                 }}
               >
@@ -329,7 +329,7 @@ export default function HistorialMensualPage() {
                       type="button"
                       onClick={() => router.push(`/lista-espera?mes=${grupo.mes}&anio=${grupo.anio}`)}
                       className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-                      style={{ backgroundColor: "#1B5E3B" }}
+                      style={{ backgroundColor: "#335fdb" }}
                     >
                       Ver lista de espera
                     </button>
@@ -337,7 +337,7 @@ export default function HistorialMensualPage() {
                       type="button"
                       onClick={() => void cargarDetalle(grupo)}
                       className="rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600"
-                      style={{ borderColor: "#D4E4D4" }}
+                      style={{ borderColor: "#a8d4f0" }}
                     >
                       {estaExpandido ? "Ocultar detalle" : "Detalles corte"}
                     </button>
@@ -354,7 +354,7 @@ export default function HistorialMensualPage() {
                   {estaExpandido && (
                     <div
                       className="space-y-2 rounded-lg bg-[#FAFCFA] p-3"
-                      style={{ border: "0.5px solid #D4E4D4" }}
+                      style={{ border: "0.5px solid #a8d4f0" }}
                     >
                       {(detalle?.items ?? grupo.items).map((item) => (
                         <div
@@ -375,7 +375,7 @@ export default function HistorialMensualPage() {
                              <button
                                type="button"
                                onClick={() => router.push(`/lista-espera?importacion=${item.id}`)}
-                               className="text-[10px] font-bold text-[#1B5E3B] hover:underline"
+                               className="text-[10px] font-bold text-[#335fdb] hover:underline"
                              >
                                Ver pacientes de este corte
                              </button>
@@ -416,7 +416,7 @@ export default function HistorialMensualPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div
             className="w-full max-w-lg rounded-[10px] bg-white p-5"
-            style={{ border: "0.5px solid #D4E4D4" }}
+            style={{ border: "0.5px solid #a8d4f0" }}
           >
             <h2 className="text-base font-semibold text-gray-800">
               Confirmar eliminación
@@ -435,7 +435,7 @@ export default function HistorialMensualPage() {
                 type="button"
                 onClick={() => setPeriodoAEliminar(null)}
                 className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-600"
-                style={{ borderColor: "#D4E4D4" }}
+                style={{ borderColor: "#a8d4f0" }}
                 disabled={eliminando}
               >
                 Cancelar

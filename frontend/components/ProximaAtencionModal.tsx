@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Paciente } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
-import { motion, AnimatePresence } from "framer-motion";
-import { FiCalendar, FiClock, FiX, FiCheck, FiTrash2, FiRefreshCw } from "react-icons/fi";
+import { motion } from "framer-motion";
+import { FiCalendar, FiClock, FiX, FiCheck, FiTrash2, FiRefreshCw, FiUser } from "react-icons/fi";
 
 interface Props {
   paciente: Paciente;
@@ -32,13 +32,18 @@ function fechaHoraLocalDefault() {
 const backdropVariants = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
-  exit: { opacity: 0 }
+  exit: { opacity: 0 },
 };
 
 const modalVariants = {
-  initial: { opacity: 0, scale: 0.95, y: 20 },
-  animate: { opacity: 1, scale: 1, y: 0, transition: { type: "spring" as const, damping: 25, stiffness: 300 } },
-  exit: { opacity: 0, scale: 0.95, y: 10 }
+  initial: { opacity: 0, scale: 0.96, y: 12 },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: "spring" as const, damping: 22, stiffness: 280 },
+  },
+  exit: { opacity: 0, scale: 0.98, y: 8 },
 };
 
 export default function ProximaAtencionModal({
@@ -56,10 +61,7 @@ export default function ProximaAtencionModal({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const fechaActual = useMemo(
-    () => paciente.proxima_atencion ?? "",
-    [paciente.proxima_atencion],
-  );
+  const fechaActual = useMemo(() => paciente.proxima_atencion ?? "", [paciente.proxima_atencion]);
 
   async function handleConfirm() {
     if (!fechaHora) {
@@ -104,109 +106,120 @@ export default function ProximaAtencionModal({
       initial="initial"
       animate="animate"
       exit="exit"
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#05150E]/70 px-4 backdrop-blur-md"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
         variants={modalVariants}
-        className="w-full max-w-md overflow-hidden rounded-[1.5rem] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative"
+        className="ccr-schedule-modal relative w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_26px_64px_-30px_rgba(15,23,42,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute top-4 right-4 z-10">
-           <button onClick={onClose} className="p-2 rounded-full bg-black/5 hover:bg-black/10 text-gray-900 transition-colors">
-              <FiX size={20} />
-           </button>
-        </div>
+        <button
+          onClick={onClose}
+          className="ccr-control-button absolute right-4 top-4 z-20 p-2"
+          aria-label="Cerrar"
+        >
+          <FiX size={18} />
+        </button>
 
-        <div className="bg-[linear-gradient(135deg,#1B5E3B_0%,#15452C_100%)] p-7 text-white">
-           <div className="flex items-center gap-4 mb-4">
-              <div className="h-12 w-12 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner">
-                 <FiCalendar size={24} />
+        <div className="grid md:grid-cols-[34%_66%]">
+          <aside className="ccr-schedule-modal-side border-b border-slate-200 bg-[linear-gradient(180deg,#ecf5f8_0%,#F8FBFF_100%)] p-6 md:border-b-0 md:border-r">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-100 text-blue-700">
+                <FiCalendar size={20} />
               </div>
               <div>
-                 <h3 className="text-xl font-black leading-tight tracking-tight">Programar Atención</h3>
-                 <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">CCR Gestión Clínica</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Agenda clínica</p>
+                <h3 className="text-lg font-black text-slate-900">Programar atención</h3>
               </div>
-           </div>
-           
-           <div className="rounded-xl bg-black/20 backdrop-blur-md p-4 border border-white/10 shadow-sm">
-              <p className="text-base font-black text-white">{paciente.nombre}</p>
-              <p className="text-[10px] font-black opacity-80 mt-1 uppercase tracking-widest">{formatearRut(paciente.rut)}</p>
-           </div>
-        </div>
-
-        <div className="p-7 space-y-6">
-          {error && (
-            <div className="p-3 bg-red-50 rounded-xl border-2 border-red-100 text-[11px] font-black text-red-700">
-              {error}
             </div>
-          )}
 
-          <div>
-            <div className="flex items-center justify-between mb-2">
-               <label className="text-[11px] font-black uppercase text-gray-900 tracking-widest flex items-center gap-2">
-                 <FiClock size={14} /> Fecha y Hora
-               </label>
-               {fechaActual && (
-                  <span className="text-[10px] font-black text-[#1B5E3B] bg-[#EAF6EE] px-2.5 py-1 rounded-lg border border-[#1B5E3B]/20">
-                    Agendada
-                  </span>
-               )}
+            <div className="ccr-schedule-modal-card rounded-lg border border-blue-100 bg-white p-4">
+              <div className="mb-2 flex items-center gap-2 text-slate-500">
+                <FiUser size={14} />
+                <p className="text-[11px] font-bold uppercase tracking-wide">Paciente</p>
+              </div>
+              <p className="text-sm font-black leading-tight text-slate-900">{paciente.nombre}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{formatearRut(paciente.rut)}</p>
+              {fechaActual && (
+                <span className="mt-3 inline-flex rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                  Ya agendada
+                </span>
+              )}
             </div>
-            
-            <input
-              type="datetime-local"
-              value={fechaHora}
-              onChange={(e) => setFechaHora(e.target.value)}
-              className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-4 text-sm font-black text-gray-900 focus:border-[#1B5E3B] focus:ring-4 focus:ring-green-500/10 focus:outline-none transition-all"
-            />
-            
+
             <div className="mt-4">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 px-1">Accesos rápidos:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"].map(h => (
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Horarios sugeridos</p>
+              <div className="grid grid-cols-3 gap-2">
+                {["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00"].map((h) => (
                   <button
                     key={h}
                     type="button"
                     onClick={() => aplicarHorarioRapido(h)}
-                    className="h-8 px-3 rounded-lg border-2 border-gray-100 bg-white text-[11px] font-black text-gray-900 hover:border-[#1B5E3B] hover:bg-[#EAF6EE] transition-all shadow-sm active:scale-95"
+                    className="ccr-control-button px-2 py-1.5 text-[11px]"
                   >
                     {h}
                   </button>
                 ))}
               </div>
             </div>
-          </div>
-        </div>
+          </aside>
 
-        <div className="px-7 pb-7 flex flex-col gap-3">
-           <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 h-14 rounded-xl border-2 border-gray-200 bg-white text-xs font-black text-gray-900 hover:bg-gray-50 transition-all active:scale-95"
-              >
-                Cerrar Ventana
-              </button>
+          <section className="ccr-schedule-modal-main p-6 md:p-7">
+            {error && (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                {error}
+              </div>
+            )}
+
+            <label className="mb-2 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+              <FiClock size={13} /> Fecha y hora de atención
+            </label>
+            <input
+              type="datetime-local"
+              value={fechaHora}
+              onChange={(e) => setFechaHora(e.target.value)}
+              className="ccr-control-input w-full px-4 py-3 text-sm font-semibold"
+            />
+
+            <p className="mt-3 text-xs text-slate-500">
+              Al confirmar, el paciente quedará con esta cita programada en calendario.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="ccr-control-button px-4 py-2.5 text-xs"
+                >
+                  Cancelar
+                </button>
+                {onClear && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="ccr-table-action ccr-action-danger px-4 py-2.5 text-xs"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <FiTrash2 size={12} /> Eliminar
+                    </span>
+                  </button>
+                )}
+              </div>
+
               <button
                 onClick={handleConfirm}
                 disabled={loading}
-                className="flex-[2] h-14 rounded-xl bg-[#1B5E3B] text-white text-base font-black flex items-center justify-center gap-3 shadow-lg shadow-green-900/40 hover:bg-[#15452C] active:scale-[0.98] transition-all disabled:opacity-50"
+                className="ccr-control-button ccr-control-button-primary px-5 py-2.5 text-sm disabled:opacity-50"
               >
-                {loading ? <FiRefreshCw className="animate-spin" /> : <FiCheck size={22} />}
-                {loading ? "Guardando..." : "Confirmar Cita"}
+                <span className="inline-flex items-center gap-2">
+                  {loading ? <FiRefreshCw className="animate-spin" size={14} /> : <FiCheck size={15} />}
+                  {loading ? "Guardando..." : "Confirmar cita"}
+                </span>
               </button>
-           </div>
-           
-           {onClear && (
-            <button
-              type="button"
-              onClick={handleClear}
-              className="w-full h-11 rounded-xl border-2 border-red-100 bg-red-50 text-[10px] font-black uppercase text-red-700 hover:bg-red-100 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-sm"
-            >
-              <FiTrash2 size={14} /> Eliminar Programación Actual
-            </button>
-           )}
+            </div>
+          </section>
         </div>
       </motion.div>
     </motion.div>

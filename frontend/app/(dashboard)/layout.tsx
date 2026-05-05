@@ -19,8 +19,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#F5FAF6_0%,#EBF2EC_100%)]">
-        <div className="rounded-2xl border border-[#D7E5D9] bg-white px-6 py-4 text-sm font-medium text-[#1B5E3B] shadow-[0_14px_38px_-24px_rgba(27,94,59,0.5)] animate-pulse">
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:!bg-[#151515]">
+        <div className="animate-pulse rounded-2xl border border-gray-200 bg-white px-6 py-4 text-sm font-medium text-gray-700 shadow-sm dark:!border-[#262626] dark:!bg-[#0f0f10] dark:!text-[#ecf5f8]">
           Cargando entorno...
         </div>
       </div>
@@ -30,7 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null
 
   return (
-    <div className="flex min-h-screen bg-[#ECF3EE]">
+    <div className="ccr-dashboard-shell flex min-h-screen bg-slate-100 dark:!bg-[#151515]">
       <Sidebar
         rol={user.rol}
         userId={user.id}
@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar user={user} onOpenSidebar={() => setMobileSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="ccr-dashboard-main flex-1 overflow-y-auto bg-slate-100 dark:!bg-[#151515]">
           <div className="mx-auto w-full max-w-[1720px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
             {children}
           </div>

@@ -101,10 +101,10 @@ export default function Topbar({ user }: { user: Usuario }) {
                 setOpen(false)
               }}
               onFocus={() => { if (resultado || notFound) setOpen(true) }}
-              className="w-full rounded-full border border-[#D4E4D4] bg-[#FAFCFA] px-4 py-2 pl-10 pr-10 text-sm outline-none transition focus:border-[#4CAF7D] focus:ring-1 focus:ring-[#4CAF7D]"
+              className="w-full rounded-full border border-[#a8d4f0] bg-[#FAFCFA] px-4 py-2 pl-10 pr-10 text-sm outline-none transition focus:border-[#2694d9] focus:ring-1 focus:ring-[#2694d9]"
             />
             {searching && (
-              <span className="absolute right-3.5 h-4 w-4 animate-spin rounded-full border-2 border-[#4CAF7D] border-t-transparent" />
+              <span className="absolute right-3.5 h-4 w-4 animate-spin rounded-full border-2 border-[#2694d9] border-t-transparent" />
             )}
           </form>
 
@@ -121,8 +121,8 @@ export default function Topbar({ user }: { user: Usuario }) {
                 </div>
               ) : resultado ? (
                 <div>
-                  <div className="bg-[#F7FBF8] px-5 py-3 border-b border-[#E6EEE6]">
-                    <p className="text-xs font-bold text-[#1B5E3B] uppercase tracking-wider">Paciente encontrado</p>
+                  <div className="bg-[#ecf5f8] px-5 py-3 border-b border-[#E6EEE6]">
+                    <p className="text-xs font-bold text-[#335fdb] uppercase tracking-wider">Paciente encontrado</p>
                   </div>
                   <div className="px-5 py-4">
                     <p className="font-bold text-gray-800 text-sm">{resultado.nombre}</p>
@@ -140,7 +140,7 @@ export default function Topbar({ user }: { user: Usuario }) {
                     </div>
                     <button
                       onClick={verPerfil}
-                      className="mt-4 w-full rounded-xl bg-[#1B5E3B] py-2.5 text-sm font-semibold text-white hover:bg-[#256B47] transition"
+                      className="mt-4 w-full rounded-xl bg-[#335fdb] py-2.5 text-sm font-semibold text-white hover:bg-[#284fc0] transition"
                     >
                       Ver ficha completa →
                     </button>
@@ -159,7 +159,7 @@ export default function Topbar({ user }: { user: Usuario }) {
           className="text-right hover:opacity-80 transition"
         >
           <p className="text-sm font-bold text-gray-800 leading-tight">{user.nombre}</p>
-          <p className="text-[11px] font-semibold text-[#4CAF7D] uppercase tracking-wider">{ROL_LABELS[user.rol] ?? user.rol}</p>
+          <p className="text-[11px] font-semibold text-[#2694d9] uppercase tracking-wider">{ROL_LABELS[user.rol] ?? user.rol}</p>
         </button>
         <button
           onClick={handleLogout}

@@ -100,21 +100,20 @@ export default function CambiarEstadoModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-4 backdrop-blur-sm dark:bg-black/75"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-white shadow-xl overflow-hidden"
-        style={{ border: "1px solid #E6EEE6" }}
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-[#2a2a2a] dark:bg-[#111111]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-[#E6EEE6] bg-[#F7FBF8]">
-          <h3 className="text-base font-bold text-gray-800">
+        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
+          <h3 className="text-base font-bold text-gray-900 dark:text-white">
             Cambiar Estado del Paciente
           </h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            <span className="font-semibold text-gray-700">
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
+            <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
               {paciente.nombre}
             </span>
             {" — "}
@@ -122,10 +121,10 @@ export default function CambiarEstadoModal({
           </p>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
           {/* Current state */}
-          <div className="flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3 border border-gray-100">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-[#a3a3a3]">
               Estado actual
             </span>
             <BadgeEstado estado={paciente.estado} />
@@ -133,10 +132,10 @@ export default function CambiarEstadoModal({
 
           {/* State selector */}
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider">
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-[#ecf5f8]">
               Nuevo Estado
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {estadosPermitidos
                 .filter((e) => e !== paciente.estado)
                 .map((estado) => (
@@ -146,13 +145,13 @@ export default function CambiarEstadoModal({
                     onClick={() => setEstadoNuevo(estado)}
                     className={`rounded-xl px-4 py-3 text-left text-sm font-semibold transition border-2 ${
                       estadoNuevo === estado
-                        ? "border-[#1B5E3B] bg-[#E8F5EE] text-[#1B5E3B]"
-                        : "border-gray-100 bg-white text-gray-600 hover:border-[#4CAF7D] hover:bg-[#F7FBF8]"
+                        ? "border-[#335fdb] bg-[#335fdb] text-white shadow-sm"
+                        : "border-gray-100 bg-white text-gray-600 hover:border-[#2694d9] hover:bg-blue-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:border-[#335fdb] dark:hover:bg-[#202020]"
                     }`}
                   >
                     {ESTADO_LABELS[estado]}
                     {ESTADOS_NOTA_OBLIGATORIA.has(estado) && (
-                      <span className="ml-1 text-[10px] font-normal text-orange-500">
+                      <span className="ml-1 text-[10px] font-normal text-orange-500 dark:text-amber-300">
                         * notas requeridas
                       </span>
                     )}
@@ -160,7 +159,7 @@ export default function CambiarEstadoModal({
                 ))}
             </div>
             {estadoNuevo && ESTADO_DESCRIPTIONS[estadoNuevo] && (
-              <p className="mt-2 text-[11px] text-gray-500 italic">
+              <p className="mt-2 text-[11px] italic text-gray-500 dark:text-[#a3a3a3]">
                 {ESTADO_DESCRIPTIONS[estadoNuevo]}
               </p>
             )}
@@ -168,12 +167,12 @@ export default function CambiarEstadoModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-1.5 uppercase tracking-wider">
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-[#ecf5f8]">
               Notas{" "}
               {notaObligatoria ? (
-                <span className="text-orange-500">*</span>
+                <span className="text-orange-500 dark:text-amber-300">*</span>
               ) : (
-                <span className="text-gray-300">(opcional)</span>
+                <span className="text-gray-300 dark:text-[#6b7280]">(opcional)</span>
               )}
             </label>
             <textarea
@@ -185,28 +184,28 @@ export default function CambiarEstadoModal({
                   ? `Describe el motivo del ${esEgreso ? "egreso" : "cambio de estado"}…`
                   : "Notas adicionales (opcional)"
               }
-              className={`w-full rounded-xl border px-4 py-3 text-sm focus:outline-none resize-none ${
+              className={`w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none transition placeholder:text-gray-400 dark:placeholder:text-[#6b7280] ${
                 notaObligatoria && !notas.trim()
-                  ? "border-orange-300 focus:border-orange-500 bg-orange-50"
-                  : "border-gray-200 focus:border-[#4CAF7D]"
+                  ? "border-orange-300 bg-orange-50 text-gray-900 focus:border-orange-500 dark:border-amber-700/70 dark:bg-amber-950/25 dark:text-white"
+                  : "border-gray-200 bg-white text-gray-900 focus:border-[#2694d9] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
               }`}
             />
           </div>
 
           {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 font-medium">
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
               ⚠️ {error}
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="px-6 py-4 border-t border-[#E6EEE6] flex gap-3 bg-gray-50">
+        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:flex-row">
           <button
             type="button"
             onClick={handleConfirm}
             disabled={loading || !estadoNuevo}
-            className="flex-1 rounded-xl bg-[#1B5E3B] py-2.5 text-sm font-bold text-white hover:bg-[#256B47] disabled:opacity-50 transition"
+            className="flex-1 rounded-xl bg-[#335fdb] py-2.5 text-sm font-bold text-white transition hover:bg-[#284fc0] disabled:cursor-not-allowed disabled:bg-[#263f88] disabled:text-white/65"
           >
             {loading
               ? "Guardando…"
@@ -215,7 +214,7 @@ export default function CambiarEstadoModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm text-gray-600 hover:bg-gray-100 transition"
+            className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
           >
             Cancelar
           </button>

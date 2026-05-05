@@ -67,7 +67,7 @@ export default function UsuariosPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-[10px] overflow-hidden" style={{ border: '0.5px solid #D4E4D4' }}>
+      <div className="bg-white rounded-[10px] overflow-hidden" style={{ border: '0.5px solid #a8d4f0' }}>
         {loading ? (
           <div className="p-12 text-center text-gray-400 text-sm animate-pulse">Cargando…</div>
         ) : (
@@ -197,7 +197,7 @@ function UsuarioModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="bg-white rounded-[10px] shadow-xl w-full max-w-md mx-4"
-        style={{ border: '0.5px solid #D4E4D4' }}
+        style={{ border: '0.5px solid #a8d4f0' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-verde-ccr text-white px-5 py-4 flex items-center justify-between rounded-t-[10px]">

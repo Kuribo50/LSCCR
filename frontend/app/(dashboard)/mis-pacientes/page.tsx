@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createColumnHelper,
   flexRender,
@@ -21,9 +22,10 @@ import {
 } from "@tanstack/react-table";
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FiFilter, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiFilter, FiRefreshCw, FiSearch, FiUserPlus } from "react-icons/fi";
 import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import { usePersistentTableState } from "@/lib/tables/usePersistentTableState";
 import type { Categoria, Estado, Paciente, Prioridad } from "@/lib/types";
@@ -31,9 +33,12 @@ import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import FichaPaciente from "@/components/FichaPaciente";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import BadgeEstado from "@/components/BadgeEstado";
+import BadgeDias from "@/components/BadgeDias";
 import EditarPacienteModal from "@/components/EditarPacienteModal";
 import CrearPacienteModal from "@/components/CrearPacienteModal";
-import { FiUserPlus } from "react-icons/fi";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { TableSkeleton } from "@/components/Skeleton";
+import EmptyState from "@/components/EmptyState";
 
 const PRIORIDAD_ORDER: Record<Prioridad, number> = {
   ALTA: 0,
@@ -80,6 +85,7 @@ type ColumnMeta = {
 
 type FilterDraftState = Record<string, string[]>;
 type FilterQueryState = Record<string, string>;
+type FilterPopoverPosition = { top: number; left: number };
 type PatientTab = "INGRESADOS" | "SELECCIONADOS" | "EGRESADOS";
 
 const EGRESO_STATES: Estado[] = [
@@ -255,6 +261,7 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
 
 export default function MisPacientesPage() {
   const { user } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,8 +272,11 @@ export default function MisPacientesPage() {
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [draftFilters, setDraftFilters] = useState<FilterDraftState>({});
   const [filterQueries, setFilterQueries] = useState<FilterQueryState>({});
+  const [filterPosition, setFilterPosition] = useState<FilterPopoverPosition | null>(null);
   const [activeTab, setActiveTab] = useState<PatientTab>("INGRESADOS");
   const [isPending, startTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; nombre: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const initialTableState = useMemo(
@@ -355,12 +365,21 @@ export default function MisPacientesPage() {
 
   async function handleEliminar(id: number, nombre: string) {
     if (user?.rol !== "ADMIN") return;
-    if (!window.confirm(`¿Seguro que deseas eliminar al paciente ${nombre} del sistema de forma permanente?`)) return;
+    setDeleteTarget({ id, nombre });
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.delete(`/pacientes/${id}/`);
+      await api.delete(`/pacientes/${deleteTarget.id}/`);
+      toastSuccess(`Paciente "${deleteTarget.nombre}" eliminado correctamente.`);
+      setDeleteTarget(null);
       void cargar();
-    } catch (e) {
-      alert("No se pudo eliminar el paciente.");
+    } catch {
+      toastError("No se pudo eliminar el paciente.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -371,6 +390,7 @@ export default function MisPacientesPage() {
       if (!target) return;
       if (target.closest("[data-filter-root]")) return;
       setOpenFilter(null);
+      setFilterPosition(null);
     }
 
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -464,12 +484,12 @@ export default function MisPacientesPage() {
               minSize: 120,
               meta: { label: "Kinesiólogo", filterable: true } satisfies ColumnMeta,
               cell: (info) => (
-                <div
-                  className="truncate font-semibold text-[#2D4336]"
-                  title={info.getValue() || "Sin Kinesiólogo"}
-                >
-                  {toCapitalizedWords(info.getValue() || "Sin asignar")}
-                </div>
+              <div
+                className="truncate font-semibold text-gray-800"
+                title={info.getValue() || "Sin Kinesiólogo"}
+              >
+                {toCapitalizedWords(info.getValue() || "Sin asignar")}
+              </div>
               ),
             }),
           ]
@@ -484,7 +504,7 @@ export default function MisPacientesPage() {
         meta: { label: "Nombre", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <div
-            className="truncate font-semibold text-[#243D2E]"
+            className="truncate font-semibold text-gray-800"
             title={info.getValue()}
           >
             {info.getValue()}
@@ -502,7 +522,7 @@ export default function MisPacientesPage() {
           a.original.rutRaw.localeCompare(b.original.rutRaw, "es"),
         meta: { label: "RUT", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
-          <div className="font-mono text-[#3F5648]">{info.getValue()}</div>
+          <div className="font-mono text-gray-600">{info.getValue()}</div>
         ),
       }),
       columnHelper.accessor("edad", {
@@ -527,7 +547,7 @@ export default function MisPacientesPage() {
         minSize: 180,
         meta: { label: "Diagnóstico", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
-          <div className="truncate text-[#31493A]" title={info.getValue()}>
+          <div className="truncate text-gray-600" title={info.getValue()}>
             {info.getValue()}
           </div>
         ),
@@ -556,7 +576,7 @@ export default function MisPacientesPage() {
         minSize: 126,
         meta: { label: "Categoría", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
-          <span className="text-[#3D5648]">{info.getValue()}</span>
+          <span className="text-gray-600">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor("estadoLabel", {
@@ -591,20 +611,20 @@ export default function MisPacientesPage() {
               cell: (info) => {
                 const raw = info.getValue();
                 if (!raw) {
-                  return <span className="text-[#7B9588]">Sin programar</span>;
+                  return <span className="text-gray-400">Sin programar</span>;
                 }
 
                 const fecha = new Date(raw);
                 if (Number.isNaN(fecha.getTime())) {
-                  return <span className="text-[#7B9588]">Sin programar</span>;
+                  return <span className="text-gray-400">Sin programar</span>;
                 }
 
                 return (
-                  <div className="leading-tight">
-                    <p className="font-medium text-[#2D4336]">
+                  <div className="ccr-appointment-soft inline-flex min-w-[118px] flex-col items-start rounded-md px-2.5 py-1.5 leading-tight">
+                    <p className="font-bold text-white">
                       {fecha.toLocaleDateString("es-CL")}
                     </p>
-                    <p className="text-[11px] text-[#6A8374]">
+                    <p className="text-[11px] font-semibold text-white/85">
                       {fecha.toLocaleTimeString("es-CL", {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -628,21 +648,7 @@ export default function MisPacientesPage() {
           filterable: true,
           kind: "number",
         } satisfies ColumnMeta,
-        cell: (info) => {
-          const critico = info.row.original.dias_display > 90;
-
-          return (
-            <span
-              className={
-                critico
-                  ? "rounded-full bg-[#FDE8E8] px-2 py-0.5 font-semibold text-[#B32626]"
-                  : "rounded-full bg-[#F0F5F2] px-2 py-0.5 font-semibold text-[#40594B]"
-              }
-            >
-              {info.row.original.dias_display}d
-            </span>
-          );
-        },
+        cell: (info) => <BadgeDias days={info.row.original.dias_display} />,
       }),
       columnHelper.display({
         id: "acciones",
@@ -660,14 +666,14 @@ export default function MisPacientesPage() {
               <button
                 type="button"
                 onClick={() => setEditando(paciente)}
-                className="rounded-lg border border-[#AFCFB9] bg-[#F3FAF5] px-2.5 py-1.5 text-[11px] font-semibold text-[#255D40] outline-none transition hover:bg-[#CCE9DA]"
+                className="ccr-table-action ccr-action-edit"
               >
                 Editar
               </button>
               <button
                 type="button"
                 onClick={() => setSeleccionado(paciente)}
-                className="rounded-lg border border-[#B8D1C0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3D5648] outline-none transition hover:bg-[#DFECE4]"
+                className="ccr-table-action ccr-action-view"
               >
                 Ver ficha
               </button>
@@ -675,7 +681,7 @@ export default function MisPacientesPage() {
                 <button
                   type="button"
                   onClick={() => void handleEliminar(paciente.id, paciente.nombre)}
-                  className="rounded-lg border border-[#F5C2C7] bg-[#F8D7DA] px-2.5 py-1.5 text-[11px] font-semibold text-[#B32626] outline-none transition hover:bg-[#F5C2C7]"
+                  className="ccr-table-action ccr-action-danger"
                 >
                   Eliminar
                 </button>
@@ -750,10 +756,25 @@ export default function MisPacientesPage() {
     return sortFilterValues(column.id, values);
   }
 
-  function openColumnFilter(column: Column<MyPatientRow>) {
+  function openColumnFilter(column: Column<MyPatientRow>, anchor?: HTMLElement) {
     const options = getColumnOptions(column);
     const current = column.getFilterValue();
     const selected = Array.isArray(current) ? current : undefined;
+    if (anchor && typeof window !== "undefined") {
+      const rect = anchor.getBoundingClientRect();
+      const popoverWidth = Math.min(320, window.innerWidth - 24);
+      const estimatedHeight = Math.min(430, window.innerHeight - 24);
+      const opensBelow = rect.bottom + 8 + estimatedHeight <= window.innerHeight;
+      setFilterPosition({
+        top: opensBelow
+          ? rect.bottom + 8
+          : Math.max(12, window.innerHeight - estimatedHeight - 12),
+        left: Math.min(
+          Math.max(12, rect.left),
+          window.innerWidth - popoverWidth - 12,
+        ),
+      });
+    }
     setDraftFilters((prev) => ({
       ...prev,
       [column.id]: selected?.length ? [...selected] : options,
@@ -777,6 +798,7 @@ export default function MisPacientesPage() {
           : selected,
       );
       setOpenFilter(null);
+      setFilterPosition(null);
     });
   }
 
@@ -784,6 +806,7 @@ export default function MisPacientesPage() {
     startTransition(() => {
       resetTableState();
       setOpenFilter(null);
+      setFilterPosition(null);
       setDraftFilters({});
       setFilterQueries({});
     });
@@ -803,7 +826,7 @@ export default function MisPacientesPage() {
               <button
                 type="button"
                 onClick={() => setCreando(true)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#A7D1B7] bg-[#EAF6EE] px-3 py-2 text-[11px] font-semibold text-[#185535] outline-none transition hover:bg-[#DAEFE3] focus-visible:ring-2 focus-visible:ring-[#60B689] sm:w-auto sm:justify-start"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 outline-none transition hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto sm:justify-start"
               >
                 <FiUserPlus size={13} />
                 Agregar paciente
@@ -811,7 +834,7 @@ export default function MisPacientesPage() {
               <button
                 type="button"
                 onClick={() => void cargar()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#C5DDCC] bg-white px-3 py-2 text-[11px] font-semibold text-[#21563B] outline-none transition hover:bg-[#ECF7F0] focus-visible:ring-2 focus-visible:ring-[#60B689] sm:w-auto sm:justify-start"
+                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto sm:justify-start"
               >
                 <FiRefreshCw size={13} />
                 Recargar
@@ -822,7 +845,7 @@ export default function MisPacientesPage() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <div className="relative">
               <FiSearch
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#7A9585]"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                 size={15}
               />
               <input
@@ -835,7 +858,7 @@ export default function MisPacientesPage() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.preventDefault();
                 }}
-                className="w-full rounded-xl border border-[#D5E4D8] bg-white px-9 py-2.5 text-xs outline-none focus:border-[#5FB88C]"
+                className="w-full rounded-xl border border-gray-200 bg-white px-9 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 placeholder="Buscar por nombre, RUT o diagnóstico"
                 aria-label="Buscar pacientes"
               />
@@ -844,14 +867,14 @@ export default function MisPacientesPage() {
             <button
               type="button"
               onClick={clearAllFilters}
-              className="inline-flex h-[42px] w-full items-center justify-center rounded-xl border border-[#D5E4D8] bg-white px-3 text-xs font-semibold text-[#294C3A] outline-none transition hover:bg-[#F5FAF7] sm:w-auto"
+              className="inline-flex h-[42px] w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 outline-none transition hover:bg-gray-50 sm:w-auto"
             >
               Limpiar filtros
             </button>
           </div>
 
           {isPending && (
-            <p className="text-[11px] text-[#688473]">Actualizando tabla...</p>
+            <p className="text-[11px] text-gray-400">Actualizando tabla...</p>
           )}
         </div>
       </header>
@@ -867,19 +890,28 @@ export default function MisPacientesPage() {
                 onClick={() => {
                   setActiveTab(tab.id);
                   setOpenFilter(null);
+                  setFilterPosition(null);
                 }}
                 className={
                   active
-                    ? "inline-flex items-center gap-2 rounded-xl border border-[#6BAF89] bg-[#EAF6EF] px-3 py-2 text-xs font-semibold text-[#1E6241]"
-                    : "inline-flex items-center gap-2 rounded-xl border border-[#D5E4D8] bg-white px-3 py-2 text-xs font-semibold text-[#4F6A5B] transition hover:bg-[#F3F9F5]"
+                    ? tab.id === "INGRESADOS"
+                      ? "inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700"
+                      : tab.id === "EGRESADOS"
+                        ? "inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+                        : "inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700"
+                    : "inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
                 }
               >
                 <span>{tab.label}</span>
                 <span
                   className={
                     active
-                      ? "rounded-full bg-[#D7EEDF] px-2 py-0.5 text-[10px]"
-                      : "rounded-full bg-[#F1F6F3] px-2 py-0.5 text-[10px]"
+                      ? tab.id === "INGRESADOS"
+                        ? "rounded-full bg-green-100 px-2 py-0.5 text-[10px]"
+                        : tab.id === "EGRESADOS"
+                          ? "rounded-full bg-red-100 px-2 py-0.5 text-[10px]"
+                          : "rounded-full bg-amber-100 px-2 py-0.5 text-[10px]"
+                      : "rounded-full bg-gray-100 px-2 py-0.5 text-[10px]"
                   }
                 >
                   {tabCounts[tab.id]}
@@ -891,30 +923,35 @@ export default function MisPacientesPage() {
       </section>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
-          {error}
-        </div>
+        <EmptyState variant="error" compact message={error} />
       )}
 
-      <section className="ccr-panel relative overflow-hidden rounded-2xl bg-white">
-        {(loading || isPending || !hasHydrated) && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center rounded-2xl bg-white/70 backdrop-blur-[1px]">
-            <div className="flex items-center gap-2 rounded-lg border border-[#D5E4D8] bg-white px-3 py-2 text-xs font-semibold text-[#2D5B44] shadow-sm">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#9FCAB1] border-t-[#1B5E3B]" />
-              Actualizando tabla...
+      {!error && (
+        <section className="ccr-panel ccr-data-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+          {(loading || isPending || !hasHydrated) && (
+            <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
+              {loading && !hasHydrated ? (
+                <div className="w-full p-4">
+                  <TableSkeleton rows={6} />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#daebf1]">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+                  Actualizando...
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
 
         <div
           ref={tableScrollRef}
-          className="max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-[#D9E6DB] [animation:tableFadeIn_260ms_ease-out]"
+          className="max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
         >
-          <div className="min-w-max rounded-xl border border-[#D9E6DB] bg-white">
+          <div className="min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]">
             {table.getHeaderGroups().map((headerGroup) => (
               <div
                 key={headerGroup.id}
-                className="sticky top-0 z-20 grid border-b border-[#D9E6DB] bg-[#F7FBF8]"
+                className="ccr-table-head sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]"
                 style={{ gridTemplateColumns: columnTemplate }}
               >
                 {headerGroup.headers.map((header) => {
@@ -933,7 +970,7 @@ export default function MisPacientesPage() {
                   return (
                     <div
                       key={header.id}
-                      className="relative border-r border-[#D9E6DB] px-3 py-2.5 last:border-r-0"
+                      className="relative border-r border-gray-200 px-3 py-2.5 last:border-r-0 dark:border-[#262626]"
                     >
                       {header.isPlaceholder ? null : (
                         <div className="flex items-center justify-between gap-2">
@@ -948,7 +985,7 @@ export default function MisPacientesPage() {
                                 );
                               });
                             }}
-                            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-semibold text-[#273E30]"
+                            className="ccr-table-sort-button flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-semibold text-gray-700 dark:text-[#daebf1]"
                           >
                             <span className="whitespace-normal leading-tight">
                               {flexRender(
@@ -957,7 +994,7 @@ export default function MisPacientesPage() {
                               )}
                             </span>
                             {isSorted && (
-                              <span className="text-[11px] text-[#2E6246]">
+                              <span className="text-[11px] text-blue-600">
                                 {isSorted === "asc" ? "▲" : "▼"}
                                 {sortIndex >= 0 &&
                                 table.getState().sorting.length > 1
@@ -975,23 +1012,28 @@ export default function MisPacientesPage() {
                                   event.stopPropagation();
                                   if (openFilter === header.column.id) {
                                     setOpenFilter(null);
+                                    setFilterPosition(null);
                                     return;
                                   }
-                                  openColumnFilter(header.column);
+                                  openColumnFilter(
+                                    header.column,
+                                    event.currentTarget,
+                                  );
                                 }}
                                 className={
                                   isFilterActive
-                                    ? "inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#7CBF99] bg-[#EAF7F0] text-[#1E6241]"
-                                    : "inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#D4E3D7] bg-white text-[#617D6D] hover:bg-[#F4FAF7]"
+                                    ? "ccr-table-filter-button inline-flex h-7 w-7 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-700 dark:border-[#262626] dark:bg-white dark:text-[#335fdb]"
+                                    : "ccr-table-filter-button inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400 hover:bg-gray-50 dark:border-[#e5e7eb] dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
                                 }
                                 aria-label={`Filtrar ${meta.label}`}
                               >
                                 <FiFilter size={12} />
                               </button>
 
-                              {openFilter === header.column.id && (
+                              {openFilter === header.column.id && filterPosition && (
                                 <FilterPopover
                                   column={header.column}
+                                  position={filterPosition}
                                   sortState={header.column.getIsSorted()}
                                   query={filterQueries[header.column.id] ?? ""}
                                   selectedValues={
@@ -1003,18 +1045,21 @@ export default function MisPacientesPage() {
                                       header.column.toggleSorting(false, true),
                                     );
                                     setOpenFilter(null);
+                                    setFilterPosition(null);
                                   }}
                                   onSortDesc={() => {
                                     startTransition(() =>
                                       header.column.toggleSorting(true, true),
                                     );
                                     setOpenFilter(null);
+                                    setFilterPosition(null);
                                   }}
                                   onClearSort={() => {
                                     startTransition(() =>
                                       header.column.clearSorting(),
                                     );
                                     setOpenFilter(null);
+                                    setFilterPosition(null);
                                   }}
                                   onQueryChange={(value) =>
                                     setFilterQueries((prev) => ({
@@ -1028,7 +1073,10 @@ export default function MisPacientesPage() {
                                       [header.column.id]: values,
                                     }))
                                   }
-                                  onCancel={() => setOpenFilter(null)}
+                                  onCancel={() => {
+                                    setOpenFilter(null);
+                                    setFilterPosition(null);
+                                  }}
                                   onApply={(selectedValuesOverride) =>
                                     applyColumnFilter(
                                       header.column,
@@ -1047,7 +1095,7 @@ export default function MisPacientesPage() {
                           onDoubleClick={() => header.column.resetSize()}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className={`absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-[#8CBDA0]/40 ${header.column.getIsResizing() ? "bg-[#63A882]/50" : ""}`}
+                          className={`ccr-column-resizer absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-blue-200/50 ${header.column.getIsResizing() ? "bg-blue-300/60" : ""}`}
                           aria-label={`Redimensionar columna ${meta.label}`}
                         />
                       )}
@@ -1058,11 +1106,15 @@ export default function MisPacientesPage() {
             ))}
 
             {tableRows.length === 0 ? (
-              <div className="flex min-h-[240px] items-center justify-center px-6 py-12 text-xs text-gray-500">
-                {activeTab === "EGRESADOS"
-                  ? "Sin pacientes egresados en historial con los filtros seleccionados."
-                  : "Sin pacientes en seguimiento con los filtros seleccionados."}
-              </div>
+              <EmptyState
+                variant="search"
+                compact
+                message={
+                  activeTab === "EGRESADOS"
+                    ? "Sin pacientes egresados en historial con los filtros seleccionados."
+                    : "Sin pacientes en seguimiento con los filtros seleccionados."
+                }
+              />
             ) : (
               <div
                 className="relative"
@@ -1073,7 +1125,7 @@ export default function MisPacientesPage() {
                   return (
                     <div
                       key={row.id}
-                      className="absolute left-0 top-0 grid w-full border-b border-[#E1EBE4] bg-white transition hover:bg-[#E8F4EC]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       style={{
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
@@ -1091,7 +1143,7 @@ export default function MisPacientesPage() {
                         return (
                           <div
                             key={cell.id}
-                            className={`border-r border-[#E1EBE4] px-2 py-1.5 text-[12px] text-[#2D4336] last:border-r-0 sm:px-3 lg:px-4 ${alignment}`}
+                            className={`border-r border-gray-100 px-2 py-1.5 text-[12px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-3 lg:px-4 ${alignment}`}
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -1108,16 +1160,17 @@ export default function MisPacientesPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 border-t-2 border-[#C7DCCF] bg-gradient-to-r from-[#EAF5EE] to-[#F3F9F5] px-5 py-3 text-[11px] font-medium text-[#365544] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
           <p>
             {filteredRows} paciente{filteredRows !== 1 ? "s" : ""}{" "}
             {activeTab === "EGRESADOS" ? "en historial" : "en seguimiento"}
           </p>
-          <p className="text-[#4E6F5C]">
+          <p className="text-gray-400">
             Mostrando {filteredRows} de {rowsData.length}
           </p>
         </div>
       </section>
+      )}
 
       {seleccionado && (
         <FichaPaciente
@@ -1165,12 +1218,28 @@ export default function MisPacientesPage() {
         onOpenChange={setCreando}
         onSuccess={() => void cargar()}
       />
+
+      <ConfirmDialog
+        isOpen={deleteTarget !== null}
+        variant="danger"
+        title="Eliminar paciente"
+        message={
+          deleteTarget
+            ? `¿Eliminar permanentemente a "${deleteTarget.nombre}"? Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar permanentemente"
+        loading={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
 
 type FilterPopoverProps = {
   column: Column<MyPatientRow>;
+  position: FilterPopoverPosition;
   sortState: false | "asc" | "desc";
   query: string;
   selectedValues: string[];
@@ -1185,6 +1254,7 @@ type FilterPopoverProps = {
 
 function FilterPopover({
   column,
+  position,
   sortState,
   query,
   selectedValues,
@@ -1214,47 +1284,54 @@ function FilterPopover({
     selectedValues.length === options.length &&
     visibleOptions.length < options.length;
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div
       data-filter-root
-      className={`absolute top-[calc(100%+8px)] z-50 w-[min(92vw,320px)] rounded-2xl border border-[#D5E4D8] bg-white p-3 shadow-xl ${column.id === "nombre" ? "left-0" : "right-0"}`}
+      className="ccr-filter-popover fixed z-[100] w-[min(92vw,320px)] overflow-hidden rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-[#262626] dark:bg-[#0f0f10]"
+      style={{
+        left: position.left,
+        maxHeight: "calc(100vh - 24px)",
+        top: position.top,
+      }}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-[12px] font-semibold text-[#2B4636]">
+          <h3 className="text-[12px] font-semibold text-gray-800 dark:text-[#ecf5f8]">
             {meta.label}
           </h3>
-          <p className="text-[10px] text-[#7D9487]">Filtro de lista</p>
+          <p className="text-[10px] text-gray-400 dark:text-[#459dba]">Filtro de lista</p>
         </div>
         <button
           type="button"
           onClick={() => onSelectionChange(options)}
-          className="text-[10px] font-semibold text-[#688473] hover:text-[#2F4D3D]"
+          className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 dark:text-[#6ab0c8] dark:hover:text-[#daebf1]"
         >
           Limpiar
         </button>
       </div>
 
       {column.getCanSort() && (
-        <div className="mb-3 space-y-1 rounded-xl border border-[#E6EEE6] bg-[#F8FCF9] p-2">
+        <div className="mb-3 space-y-1 rounded-lg border border-gray-100 bg-gray-50/70 p-2 dark:border-[#262626] dark:bg-[#151515]">
           <button
             type="button"
             onClick={onSortAsc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-[#EAF7F0] text-[#1E6241]" : "text-[#355442] hover:bg-[#EEF7F1]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de menor a mayor
           </button>
           <button
             type="button"
             onClick={onSortDesc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-[#EAF7F0] text-[#1E6241]" : "text-[#355442] hover:bg-[#EEF7F1]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de mayor a menor
           </button>
           <button
             type="button"
             onClick={onClearSort}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-[#6A8374] hover:bg-[#EEF7F1]"
+            className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-gray-500 hover:bg-gray-100 dark:text-[#6ab0c8] dark:hover:bg-[#202020]"
           >
             Quitar orden
           </button>
@@ -1268,7 +1345,7 @@ function FilterPopover({
           if (event.key === "Enter") event.preventDefault();
         }}
         placeholder="Buscar opción"
-        className="mb-3 w-full rounded-md border border-[#D5E4D8] px-2 py-2 text-xs outline-none focus:border-[#5FB88C]"
+        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
       />
 
       <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px]">
@@ -1287,23 +1364,23 @@ function FilterPopover({
               Array.from(new Set([...selectedValues, ...visibleOptions])),
             );
           }}
-          className="font-semibold text-[#2E6246] hover:underline"
+          className="font-semibold text-blue-600 hover:underline"
         >
           Seleccionar todo
         </button>
-        <span className="text-[#7D9487]">{visibleOptions.length} opciones</span>
+        <span className="text-gray-400 dark:text-[#459dba]">{visibleOptions.length} opciones</span>
       </div>
 
-      <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-[#E6EEE6] p-2">
+      <div className={`space-y-1 overflow-y-auto rounded-lg border border-gray-100 p-2 dark:border-[#262626] ${visibleOptions.length > 5 ? "max-h-56" : "max-h-40"}`}>
         {visibleOptions.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-[#7D9487]">Sin coincidencias.</p>
+          <p className="px-2 py-2 text-xs text-gray-400 dark:text-[#459dba]">Sin coincidencias.</p>
         ) : (
           visibleOptions.map((option) => {
             const checked = selectedValues.includes(option);
             return (
               <label
                 key={option}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[#F2F8F4]"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-[#202020]"
               >
                 <input
                   type="checkbox"
@@ -1317,9 +1394,9 @@ function FilterPopover({
                       onSelectionChange([...selectedValues, option]);
                     }
                   }}
-                  className="h-3.5 w-3.5"
+                  className="h-3.5 w-3.5 accent-blue-600"
                 />
-                <span className="truncate text-[#324D3D]" title={option}>
+                <span className="truncate text-gray-700 dark:text-[#b5d8e3]" title={option}>
                   {option}
                 </span>
               </label>
@@ -1328,11 +1405,11 @@ function FilterPopover({
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2 border-t border-[#E4ECE6] pt-2">
+      <div className="mt-3 flex items-center justify-end gap-2 border-t border-gray-100 pt-2 dark:border-[#262626]">
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-[#D5E4D8] px-3 py-1.5 text-[11px] font-semibold text-[#5E7868]"
+          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] dark:hover:bg-[#202020]"
         >
           Cancelar
         </button>
@@ -1341,11 +1418,12 @@ function FilterPopover({
           onClick={() =>
             onApply(shouldApplyVisibleOnly ? visibleOptions : undefined)
           }
-          className="rounded-md bg-[#1B5E3B] px-3 py-1.5 text-[11px] font-semibold text-white"
+          className="ccr-filter-apply rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700"
         >
           Aplicar
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

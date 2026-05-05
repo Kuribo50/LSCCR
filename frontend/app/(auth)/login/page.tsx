@@ -26,61 +26,63 @@ const ROL_LABELS: Record<string, string> = {
 
 const DEMO_PASSWORD = "Ccr2025*";
 
-const QUICK_USERS: {
+type QuickUser = {
+  id: string;
   nombre: string;
   rut: string;
-  rol: string;
+  rol: Rol;
   icon: IconType;
   iconColor: string;
-  iconBg: string;
-}[] = [
+};
+
+const QUICK_USERS: QuickUser[] = [
   {
+    id: "admin",
     nombre: "Administrador",
     rut: "66666666K",
     rol: "ADMIN",
     icon: FiShield,
     iconColor: "#3D4AA3",
-    iconBg: "bg-[#EEF2FF]",
   },
   {
+    id: "kine-seba-salgado",
     nombre: "Seba Salgado",
     rut: "11111111K",
     rol: "KINE",
     icon: FiActivity,
-    iconColor: "#1B5E3B",
-    iconBg: "bg-[#E8F5EE]",
+    iconColor: "#335fdb",
   },
   {
+    id: "admin-administrativa",
     nombre: "Administrativa",
     rut: "55555555K",
     rol: "ADMINISTRATIVO",
     icon: FiClipboard,
     iconColor: "#0E7490",
-    iconBg: "bg-[#E0F7FA]",
   },
   {
+    id: "kine-seba-campos",
     nombre: "Seba Campos",
     rut: "22222222K",
     rol: "KINE",
     icon: FiActivity,
-    iconColor: "#1B5E3B",
-    iconBg: "bg-[#E8F5EE]",
+    iconColor: "#7C3AED",
   },
   {
+    id: "kine-mane",
     nombre: "Mane",
     rut: "33333333K",
     rol: "KINE",
     icon: FiActivity,
-    iconColor: "#1B5E3B",
-    iconBg: "bg-[#E8F5EE]",
+    iconColor: "#059669",
   },
   {
+    id: "kine-ma-ignacia",
     nombre: "Ma Ignacia",
     rut: "44444444K",
     rol: "KINE",
     icon: FiActivity,
-    iconColor: "#1B5E3B",
-    iconBg: "bg-[#E8F5EE]",
+    iconColor: "#c90603",
   },
 ];
 
@@ -119,17 +121,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl ccr-fade-up overflow-hidden rounded-[2.5rem] border border-[#C8DDCD] bg-white shadow-[0_32px_64px_-32px_rgba(18,65,43,0.4)]">
+    <div className="w-full max-w-5xl ccr-fade-up overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_48px_-28px_rgba(15,23,42,0.28)]">
       <div className="grid md:grid-cols-[40%_60%] min-h-[600px]">
         {/* Panel Lateral (Modo Dev / Accesos Rápidos) */}
-        <aside className="relative flex flex-col bg-[linear-gradient(160deg,#153C2B_0%,#1D563C_100%)] p-8 text-white overflow-hidden">
+        <aside className="relative flex flex-col bg-[linear-gradient(160deg,#0f172a_0%,#1e293b_100%)] p-8 text-white overflow-hidden">
           <div className="pointer-events-none absolute -left-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-[#7ED3A6]/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
           <div className="pointer-events-none absolute top-1/4 right-8 h-4 w-4 rounded-full bg-white/20" />
           <div className="pointer-events-none absolute bottom-1/4 left-12 h-6 w-6 rounded-full bg-white/10" />
           
           <div className="relative z-10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 text-white mb-6 shadow-lg border border-white/10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/20 text-white mb-6 shadow-lg border border-blue-400/10">
               <FiActivity size={24} />
             </div>
             <h2 className="text-2xl font-bold tracking-tight">Acceso Rápido</h2>
@@ -141,12 +143,12 @@ export default function LoginPage() {
           <div className="relative z-10 mt-8 space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar">
              {QUICK_USERS.map((user) => (
                 <button
-                  key={user.rut}
+                  key={user.id}
                   type="button"
                   onClick={() => handleQuickUserSelect(user.rut)}
-                  className={`w-full flex items-center gap-4 rounded-xl border p-3.5 transition-all outline-none ${
+                  className={`ccr-interactive w-full flex items-center gap-4 rounded-lg border p-3.5 outline-none ${
                     selectedQuickRut === user.rut
-                      ? "border-white/40 bg-white/20 shadow-lg translate-x-1"
+                      ? "border-blue-300/60 bg-blue-500/20 shadow-lg"
                       : "border-white/10 bg-white/5 hover:bg-white/10"
                   }`}
                 >
@@ -167,25 +169,25 @@ export default function LoginPage() {
         </aside>
 
         {/* Panel Formulario */}
-        <main className="flex flex-col justify-center p-8 lg:p-14 bg-[radial-gradient(circle_at_85%_10%,#F0F9F3_0%,transparent_40%)]">
-          <div className="mb-10 overflow-hidden rounded-2xl border border-[#D9E9DC] bg-[#F6FBF7] p-5 flex items-center justify-between">
+        <main className="flex flex-col justify-center p-8 lg:p-14 bg-[radial-gradient(circle_at_85%_10%,#ecf5f8_0%,transparent_40%)]">
+          <div className="mb-10 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-5 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#1B5E3B] shadow-sm border border-[#D9E9DC]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm border border-gray-200">
                 <FiKey size={22} />
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-[#4E6A55]">Seguridad Institucional</p>
-                <h1 className="text-2xl font-extrabold text-[#162C20]">Iniciar Sesión</h1>
+                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">Seguridad Institucional</p>
+                <h1 className="text-2xl font-extrabold text-gray-900">Iniciar Sesión</h1>
               </div>
             </div>
-            <FiShield className="text-[#2A6E49]/20" size={32} />
+            <FiShield className="text-blue-600/20" size={32} />
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 max-w-sm mx-auto w-full">
             <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#3A4E3A] ml-1">RUT</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-600 ml-1">RUT</label>
               <div className="relative group">
-                <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6F8C79] group-focus-within:text-[#1B5E3B] transition-colors" size={18} />
+                <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
                 <input
                   type="text"
                   value={rut}
@@ -193,27 +195,27 @@ export default function LoginPage() {
                   placeholder="11.111.111-K"
                   maxLength={12}
                   required
-                  className="w-full rounded-2xl border border-[#C8D8C8] bg-[#F7FAF7] py-4 pl-12 pr-4 text-sm outline-none transition-all focus:border-[#1B5E3B] focus:bg-white focus:ring-4 focus:ring-[#1B5E3B]/5 shadow-sm"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-4 pl-12 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 shadow-sm"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-[#3A4E3A] ml-1">Contraseña</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-600 ml-1">Contraseña</label>
               <div className="relative group">
-                <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6F8C79] group-focus-within:text-[#1B5E3B] transition-colors" size={18} />
+                <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="********"
                   required
-                  className="w-full rounded-2xl border border-[#C8D8C8] bg-[#F7FAF7] py-4 pl-12 pr-12 text-sm outline-none transition-all focus:border-[#1B5E3B] focus:bg-white focus:ring-4 focus:ring-[#1B5E3B]/5 shadow-sm"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-4 pl-12 pr-12 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 shadow-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[#6A8272] hover:text-[#1B5E3B] transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
                 >
                   {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
                 </button>
@@ -230,7 +232,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-4 rounded-2xl bg-[linear-gradient(135deg,#1B5E3B_0%,#2D7450_100%)] py-4 text-sm font-bold tracking-wide text-white shadow-xl shadow-green-900/20 transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+              className="w-full mt-4 rounded-lg bg-[linear-gradient(135deg,#335fdb_0%,#284fc0_100%)] py-4 text-sm font-bold tracking-wide text-white shadow-xl shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
             >
               {loading ? "Verificando..." : "Acceder al Sistema"}
             </button>

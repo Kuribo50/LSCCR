@@ -245,24 +245,23 @@ export default function FichaPaciente({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/35"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm dark:bg-black/75"
       onClick={onClose}
     >
       <aside
-        className="h-full w-full max-w-2xl overflow-y-auto bg-[#F6FAF7] ccr-fade-up"
-        style={{ borderLeft: "1px solid #D4E4D4" }}
+        className="ccr-fade-up h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)] dark:border-[#2a2a2a] dark:bg-[#101010] dark:shadow-[0_30px_80px_-34px_rgba(0,0,0,0.9)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 border-b border-[#D4E4D4] bg-[linear-gradient(120deg,#FFFFFF_0%,#EEF6F0_100%)] px-5 py-3.5 backdrop-blur">
+        <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-5 py-3.5 backdrop-blur dark:border-[#2a2a2a] dark:bg-[#101010]/95">
           <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#648170]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-[#a3a3a3]">
                 Ficha clínica
               </p>
-              <h2 className="mt-1 break-words text-xl font-semibold leading-tight text-[#1A3828]">
+              <h2 className="mt-1 break-words text-xl font-semibold leading-tight text-gray-900 dark:text-white">
                 {paciente.nombre}
               </h2>
-              <p className="mt-1 text-xs text-[#587261]">
+              <p className="mt-1 text-xs text-gray-500 dark:text-[#a3a3a3]">
                 {paciente.id_ccr} · {formatearRut(paciente.rut)}
               </p>
             </div>
@@ -272,7 +271,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarEdicion(true)}
-                className="rounded-lg border border-[#BFD3C8] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#1B5E3B] transition hover:bg-[#F3F8F5]"
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-[#2a2a2a] dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
               >
                 Editar
               </button>
@@ -281,7 +280,7 @@ export default function FichaPaciente({
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#D3E3D7] bg-white text-[#4B6857] transition hover:bg-[#ECF6EF]"
+            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-100 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
             aria-label="Cerrar ficha"
           >
             <FiX size={16} />
@@ -290,7 +289,7 @@ export default function FichaPaciente({
 
         <div className="space-y-4 p-5">
           {error && (
-            <p className="rounded-xl border border-[#F1CDCD] bg-[#FFF4F4] px-3 py-2 text-xs text-red-600 ccr-fade-up">
+            <p className="ccr-fade-up rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
               {error}
             </p>
           )}
@@ -299,160 +298,160 @@ export default function FichaPaciente({
             className="grid grid-cols-1 gap-4 md:grid-cols-3 ccr-fade-up"
             style={{ animationDelay: "60ms" }}
           >
-            <div className="ccr-panel rounded-2xl p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B8574]">
+            <div className="ccr-panel rounded-lg p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
                 {diasSeguimientoLabel}
               </p>
-              <p className="mt-2 text-3xl font-semibold text-[#173322]">
+              <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-white">
                 {diasSeguimiento}
               </p>
-              <p className="mt-1 text-[11px] text-[#74907F]">
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
                 Seguimiento actual
               </p>
             </div>
-            <div className="ccr-panel rounded-2xl p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B8574]">
+            <div className="ccr-panel rounded-lg p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
                 Kinesiólogo
               </p>
-              <p className="mt-2 text-sm font-semibold text-[#173322] line-clamp-2">
+              <p className="mt-2 line-clamp-2 text-sm font-semibold text-gray-800 dark:text-white">
                 {paciente.kine_asignado_nombre ?? "Sin asignar"}
               </p>
-              <p className="mt-1 text-[11px] text-[#74907F]">
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
                 Responsable actual
               </p>
             </div>
-            <div className="ccr-panel rounded-2xl p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6B8574]">
+            <div className="ccr-panel rounded-lg p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-[#a3a3a3]">
                 Contacto
               </p>
-              <p className="mt-2 text-sm font-semibold text-[#173322]">
+              <p className="mt-2 text-sm font-semibold text-gray-800 dark:text-white">
                 {paciente.telefono || "Sin teléfono"}
               </p>
-              <p className="mt-1 text-[11px] text-[#74907F]">
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-[#a3a3a3]">
                 Teléfono principal
               </p>
             </div>
           </section>
 
           <section
-            className="ccr-panel rounded-2xl p-5 ccr-fade-up"
+            className="ccr-panel rounded-lg p-5 ccr-fade-up"
             style={{ animationDelay: "100ms" }}
           >
             <div className="mb-4 flex items-center gap-2">
-              <FiUser className="text-[#2A6848]" />
-              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#264634]">
+              <FiUser className="text-blue-600" />
+              <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-gray-700 dark:text-white">
                 Resumen del Paciente
               </h3>
             </div>
             <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm md:grid-cols-2">
               <p>
-                <span className="font-semibold text-[#264634]">RUT:</span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">RUT:</span>{" "}
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {formatearRut(paciente.rut)}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">Edad:</span>{" "}
-                <span className="text-[#2D4838]">{paciente.edad}</span>
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Edad:</span>{" "}
+                <span className="text-gray-600 dark:text-[#b5d8e3]">{paciente.edad}</span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Fecha derivación:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {paciente.fecha_derivacion}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">Prioridad:</span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Prioridad:</span>{" "}
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {PRIORIDAD_LABELS[paciente.prioridad]}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">Estado:</span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">Estado:</span>{" "}
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {ESTADO_LABELS[paciente.estado]}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Mayor de 60:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {paciente.mayor_60 ? "Si" : "No"}
                 </span>
               </p>
               <p className="md:col-span-2">
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Próxima atención:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {formatearFechaHoraCorta(paciente.proxima_atencion)}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Faltas registradas:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {resumenSeguimiento.faltas}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Reprogramaciones:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {resumenSeguimiento.reprogramaciones}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Veces en rescate:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {resumenSeguimiento.rescates}
                 </span>
               </p>
               <p>
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Cambios de estado:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {resumenSeguimiento.cambiosEstado}
                 </span>
               </p>
               <p className="md:col-span-2">
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Intentos de contacto:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {resumenSeguimiento.intentosContacto}
                 </span>
               </p>
               <p className="md:col-span-2">
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Meses en espera total:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {paciente.n_meses_espera ?? 1}{" "}
                   {(paciente.n_meses_espera ?? 1) === 1 ? "mes" : "meses"}
                 </span>
               </p>
               <p className="md:col-span-2">
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Diagnóstico:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {paciente.diagnostico || "-"}
                 </span>
               </p>
               <p className="md:col-span-2">
-                <span className="font-semibold text-[#264634]">
+                <span className="font-semibold text-gray-700 dark:text-[#ecf5f8]">
                   Observaciones:
                 </span>{" "}
-                <span className="text-[#2D4838]">
+                <span className="text-gray-600 dark:text-[#b5d8e3]">
                   {paciente.observaciones || "-"}
                 </span>
               </p>
@@ -460,13 +459,13 @@ export default function FichaPaciente({
           </section>
 
           <section
-            className="ccr-panel rounded-2xl p-5 ccr-fade-up"
+            className="ccr-panel rounded-lg p-5 ccr-fade-up"
             style={{ animationDelay: "140ms" }}
           >
-            <div className="mb-4 rounded-xl border border-[#DFE9E2] bg-[#F7FBF8] px-3 py-3 text-xs text-gray-600">
+            <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-3 text-xs text-gray-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#b5d8e3]">
               <div className="mb-2 flex items-center gap-2">
-                <FiActivity className="text-[#2A6848]" />
-                <span className="font-semibold text-gray-700">
+                <FiActivity className="text-blue-600" />
+                <span className="font-semibold text-gray-700 dark:text-white">
                   Seguimiento por estado
                 </span>
               </div>
@@ -474,11 +473,11 @@ export default function FichaPaciente({
                 {seguimientoPorEstado.map((item, index) => (
                   <span
                     key={`${item.estado}-${item.inicio}-${index}`}
-                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 transition hover:-translate-y-0.5"
+                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 transition hover:-translate-y-0.5 dark:border-[#2a2a2a] dark:bg-[#0f0f10]"
                     title={`${new Date(item.inicio).toLocaleString("es-CL")} - ${new Date(item.fin).toLocaleString("es-CL")}`}
                   >
                     <BadgeEstado estado={item.estado} />
-                    <span className="text-[11px] text-gray-500">
+                    <span className="text-[11px] text-gray-500 dark:text-[#a3a3a3]">
                       {formatearDuracion(item.dias)}
                     </span>
                   </span>
@@ -488,8 +487,8 @@ export default function FichaPaciente({
 
             <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <FiClock className="text-[#2A6848]" />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-[#264634]">
+                <FiClock className="text-blue-600" />
+                <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-gray-700 dark:text-white">
                   Historial de cambios
                 </h3>
               </div>
@@ -497,7 +496,7 @@ export default function FichaPaciente({
                 <button
                   type="button"
                   onClick={() => setMostrarCambioEstado(true)}
-                  className="rounded-xl bg-[#1B5E3B] px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_-14px_rgba(27,94,59,0.8)] transition hover:bg-[#256B47]"
+                  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_20px_-14px_rgba(37,99,235,0.6)] transition hover:bg-blue-700"
                 >
                   Cambiar estado
                 </button>
@@ -505,9 +504,9 @@ export default function FichaPaciente({
             </div>
 
             {loadingHistorial ? (
-              <p className="text-sm text-gray-400">Cargando historial...</p>
+              <p className="text-sm text-gray-400 dark:text-[#a3a3a3]">Cargando historial...</p>
             ) : historial.length === 0 ? (
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-400 dark:text-[#a3a3a3]">
                 Sin movimientos registrados.
               </p>
             ) : (
@@ -522,9 +521,9 @@ export default function FichaPaciente({
                   return (
                     <li
                       key={mov.id}
-                      className="rounded-xl border border-[#E2EBE4] bg-[#FBFDFB] px-3 py-3 transition hover:border-[#BFD4C6]"
+                      className="rounded-lg border border-gray-100 bg-white px-3 py-3 transition hover:border-gray-200 dark:border-[#2a2a2a] dark:bg-[#151515] dark:hover:border-[#3a3a3a]"
                     >
-                      <p className="text-xs font-semibold text-[#2B4435]">
+                      <p className="text-xs font-semibold text-gray-700 dark:text-white">
                         {mov.estado_anterior === mov.estado_nuevo || !mov.estado_anterior ? (
                           <span>Actualización de lista oficial</span>
                         ) : (
@@ -535,16 +534,16 @@ export default function FichaPaciente({
                           </>
                         )}
                       </p>
-                      <p className="mt-0.5 text-xs text-[#617A69]">
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
                         {formatearFechaHora(mov.fecha)} ·{" "}
                         {mov.usuario_nombre ?? "Sistema"}
                       </p>
-                      <p className="mt-0.5 text-xs text-[#617A69]">
+                      <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
                         Duración en este estado:{" "}
                         {formatearDuracion(diasEnEstado)}
                       </p>
                       {mov.notas && (
-                        <p className="mt-1 rounded-lg bg-[#F4F8F5] px-2 py-1.5 text-xs text-[#4F6859]">
+                        <p className="mt-1 rounded-lg bg-gray-50 px-2 py-1.5 text-xs text-gray-600 dark:bg-[#101010] dark:text-[#b5d8e3]">
                           {mov.notas}
                         </p>
                       )}
@@ -574,6 +573,7 @@ export default function FichaPaciente({
           onGuardado={(actualizado) => {
             setPaciente(actualizado);
             setMostrarEdicion(false);
+            onRefresh();
           }}
         />
       )}

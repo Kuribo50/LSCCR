@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from .models import Usuario
 from .permissions import IsAdminRole
 from .serializers import (
+    ChangePasswordSerializer,
     LoginSerializer,
     UsuarioCreateSerializer,
     UsuarioPatchSerializer,
@@ -36,6 +37,20 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UsuarioSerializer(request.user).data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password"])
+        return Response({"detail": "Contraseña actualizada correctamente."})
 
 
 class UsuarioViewSet(

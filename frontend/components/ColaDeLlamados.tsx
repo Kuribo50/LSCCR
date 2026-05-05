@@ -40,7 +40,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
 
   if (!['ADMINISTRATIVO', 'ADMIN', 'KINE'].includes(usuario.rol)) {
     return (
-      <div className="bg-white rounded-[10px] p-6 text-sm text-gray-500" style={{ border: '0.5px solid #D4E4D4' }}>
+      <div className="bg-white rounded-[10px] p-6 text-sm text-gray-500" style={{ border: '0.5px solid #a8d4f0' }}>
         Esta vista está disponible para perfil administrativo.
       </div>
     )
@@ -70,7 +70,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
 
   if (cola.length === 0) {
     return (
-      <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm" style={{ border: '0.5px solid #D4E4D4' }}>
+      <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm" style={{ border: '0.5px solid #a8d4f0' }}>
         No hay pacientes en cola de llamados.
       </div>
     )
@@ -92,7 +92,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
             key={p.id}
             className="bg-white rounded-[10px] overflow-hidden"
             style={{
-              border: '0.5px solid #D4E4D4',
+              border: '0.5px solid #a8d4f0',
               borderLeft: `3px solid ${kineColor}`,
             }}
           >
@@ -161,7 +161,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                   <button
                     onClick={() => registrarLlamado(p, true)}
                     disabled={loading}
-                    className="flex-1 bg-green-600 text-white rounded-lg py-2 text-xs font-semibold hover:bg-green-700 disabled:opacity-60"
+                    className="flex-1 bg-blue-700 text-white rounded-lg py-2 text-xs font-semibold hover:bg-blue-800 disabled:opacity-60"
                   >
                     Llamó — confirmar
                   </button>

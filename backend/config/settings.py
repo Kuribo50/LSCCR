@@ -79,6 +79,61 @@ def origins_from_coolify() -> list[str]:
     return origins
 
 
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def hosts_from_railway() -> list[str]:
+    values = [
+        env_optional("RAILWAY_PUBLIC_DOMAIN"),
+        env_optional("RAILWAY_PRIVATE_DOMAIN"),
+    ]
+    hosts = [_normalize_host(value) for value in values if value]
+    return _unique([host for host in hosts if host])
+
+
+def origins_from_railway() -> list[str]:
+    values = [
+        env_optional("RAILWAY_PUBLIC_DOMAIN"),
+    ]
+    origins: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        if "://" in value:
+            parsed = urlparse(value)
+            if parsed.scheme and parsed.hostname:
+                origins.append(f"{parsed.scheme}://{parsed.hostname}")
+        else:
+            host = _normalize_host(value)
+            if host:
+                origins.append(f"https://{host}")
+    return _unique(origins)
+
+
+def origins_from_urls(*names: str) -> list[str]:
+    origins: list[str] = []
+    for name in names:
+        value = env_optional(name)
+        if not value:
+            continue
+        if "://" in value:
+            parsed = urlparse(value)
+            if parsed.scheme and parsed.hostname:
+                origins.append(f"{parsed.scheme}://{parsed.hostname}")
+        else:
+            host = _normalize_host(value)
+            if host:
+                origins.append(f"https://{host}")
+    return _unique(origins)
+
+
 def postgres_connection_from_env() -> dict[str, str]:
     # Explicit vars have priority; URL is used as fallback when provided.
     db_name = env_optional("POSTGRES_DB")
@@ -127,16 +182,20 @@ SECRET_KEY = env("DJANGO_SECRET_KEY", "replace-me")
 DEBUG = env_bool("DJANGO_DEBUG", not IS_PRODUCTION)
 allowed_hosts_default = "localhost,127.0.0.1"
 if IS_PRODUCTION:
-    coolify_hosts = hosts_from_coolify()
-    if coolify_hosts:
-        allowed_hosts_default = ",".join(coolify_hosts)
+    deployment_hosts = _unique(hosts_from_coolify() + hosts_from_railway())
+    if deployment_hosts:
+        allowed_hosts_default = ",".join(deployment_hosts)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", allowed_hosts_default)
 
 csrf_default = "http://localhost,http://127.0.0.1"
 if IS_PRODUCTION:
-    coolify_origins = origins_from_coolify()
-    if coolify_origins:
-        csrf_default = ",".join(coolify_origins)
+    deployment_origins = _unique(
+        origins_from_coolify()
+        + origins_from_railway()
+        + origins_from_urls("FRONTEND_PUBLIC_URL", "NEXT_PUBLIC_APP_URL")
+    )
+    if deployment_origins:
+        csrf_default = ",".join(deployment_origins)
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", csrf_default)
 ENABLE_DJANGO_ADMIN = env_bool("DJANGO_ENABLE_ADMIN", not IS_PRODUCTION)
 

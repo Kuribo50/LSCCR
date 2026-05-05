@@ -5,10 +5,10 @@ import type { Paciente, Usuario } from "@/lib/types";
 import {
   CATEGORIA_LABELS,
   getKineColor,
-  getKineRowBackground,
 } from "@/lib/types";
 import BadgePrioridad from "./BadgePrioridad";
 import BadgeEstado from "./BadgeEstado";
+import BadgeDias from "./BadgeDias";
 
 interface Props {
   paciente: Paciente;
@@ -66,7 +66,6 @@ export default function PacienteRow({
     proximaAtencion && !Number.isNaN(proximaAtencion.getTime());
 
   const kineColor = getKineColor(paciente.kine_asignado_nombre);
-  const rowBg = getKineRowBackground(paciente.kine_asignado_nombre);
   const diasDesdeIngreso =
     calcularDiasDesde(paciente.fecha_ingreso ?? paciente.fecha_cambio_estado) ??
     paciente.dias_en_lista;
@@ -80,7 +79,6 @@ export default function PacienteRow({
       : daysMode === "llamados"
         ? diasDesdeLlamados
         : paciente.dias_en_lista;
-  const diasCriticos = diasMostrados > 90;
   const puedeAsignarse =
     paciente.kine_asignado === null && usuario.rol === "KINE";
   const estadoProgramable = ["PENDIENTE", "RESCATE", "INGRESADO"].includes(
@@ -101,27 +99,26 @@ export default function PacienteRow({
 
   return (
     <tr
-      className="cursor-pointer border-b border-[#E1EBE4] hover:brightness-[0.99]"
-      style={{ backgroundColor: rowBg }}
+      className="cursor-pointer border-b border-slate-100 odd:bg-white even:bg-[#FCFCFD] transition-colors hover:bg-slate-50 dark:border-[#262626] dark:odd:bg-[#151515] dark:even:bg-[#0f0f10] dark:hover:bg-[#202020]"
       onClick={() => onVerFicha(paciente)}
     >
-      <td className="max-w-[170px] border-r border-[#E1EBE4] px-4 py-2.5 font-semibold text-[#243D2E]">
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 font-semibold text-slate-800 dark:border-[#262626] dark:text-[#ecf5f8]">
         <div className="truncate">{toCapitalizedWords(paciente.nombre)}</div>
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5 font-mono text-[#3F5648]">
+      <td className="border-r border-slate-100 px-4 py-3 font-mono text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
         {formatearRut(paciente.rut)}
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5 text-[#40594B]">{paciente.edad}</td>
-      <td className="max-w-[220px] border-r border-[#E1EBE4] px-4 py-2.5 text-[#31493A]">
+      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">{paciente.edad}</td>
+      <td className="max-w-[220px] border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
         <div className="truncate">{toCapitalizedWords(paciente.diagnostico)}</div>
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5">
+      <td className="border-r border-slate-100 px-4 py-3 dark:border-[#262626]">
         <BadgePrioridad prioridad={paciente.prioridad} />
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5 text-[#3D5648]">
+      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
         {toCapitalizedWords(CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria)}
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5">
+      <td className="border-r border-slate-100 px-4 py-3 dark:border-[#262626]">
         <div className="flex items-center gap-2">
           <span
             className="h-2 w-2 rounded-full"
@@ -129,22 +126,22 @@ export default function PacienteRow({
               backgroundColor: paciente.kine_asignado ? kineColor : "#9CA3AF",
             }}
           />
-          <span className="max-w-[110px] truncate text-[#2D4336]">
+          <span className="max-w-[110px] truncate text-slate-700 dark:text-[#b5d8e3]">
             {toCapitalizedWords(paciente.kine_asignado_nombre ?? "Sin asignar")}
           </span>
         </div>
       </td>
-      <td className="border-r border-[#E1EBE4] px-4 py-2.5">
+      <td className="border-r border-slate-100 px-4 py-3 dark:border-[#262626]">
         <BadgeEstado estado={paciente.estado} />
       </td>
       {showProximaAtencion && (
-        <td className="whitespace-nowrap border-r border-[#E1EBE4] px-4 py-2.5 text-[#2D4336]">
+        <td className="whitespace-nowrap border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
           {proximaAtencionValida ? (
-            <div className="leading-tight">
-              <p className="font-medium">
+            <div className="ccr-appointment-soft inline-flex min-w-[118px] flex-col items-start rounded-md px-2.5 py-1.5 leading-tight">
+              <p className="font-bold">
                 {proximaAtencion!.toLocaleDateString("es-CL")}
               </p>
-              <p className="text-[11px] text-[#6A8374]">
+              <p className="text-[11px] font-semibold opacity-75">
                 {proximaAtencion!.toLocaleTimeString("es-CL", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -152,14 +149,12 @@ export default function PacienteRow({
               </p>
             </div>
           ) : (
-            <span className="text-[#7B9588]">Sin programar</span>
+            <span className="text-slate-500 dark:text-[#6ab0c8]">Sin programar</span>
           )}
         </td>
       )}
       <td
-        className={`border-r border-[#E1EBE4] px-4 py-2.5 text-center font-semibold ${
-          diasCriticos ? "bg-[#FFEBEE] text-[#C62828]" : "text-[#2D4336]"
-        }`}
+        className="border-r border-slate-100 px-4 py-3 text-center font-semibold dark:border-[#262626]"
         title={`${diasMostrados} ${
           daysMode === "ingreso"
             ? "días desde ingreso"
@@ -168,9 +163,9 @@ export default function PacienteRow({
               : "días en lista"
         }`}
       >
-        {diasMostrados}
+        <BadgeDias days={diasMostrados} />
       </td>
-      <td className="whitespace-nowrap px-4 py-2.5 text-right">
+      <td className="whitespace-nowrap px-4 py-3 text-right dark:text-[#daebf1]">
         <div className="inline-flex gap-2">
           {puedeAsignarse && (
             <button
@@ -179,7 +174,7 @@ export default function PacienteRow({
                 e.stopPropagation();
                 void onAsignarme(paciente);
               }}
-              className="rounded-lg border border-[#155437] bg-[#1B5E3B] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-[#256B47]"
+              className="ccr-table-action ccr-action-primary"
             >
               Asignarme
             </button>
@@ -191,7 +186,7 @@ export default function PacienteRow({
                 e.stopPropagation();
                 onProgramar(paciente);
               }}
-              className="rounded-lg border border-[#BFD3C8] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1B5E3B] hover:bg-[#F3F8F5]"
+              className="ccr-table-action ccr-action-schedule"
             >
               {paciente.proxima_atencion ? "Reprogramar" : "Próxima atención"}
             </button>
@@ -203,7 +198,7 @@ export default function PacienteRow({
                 e.stopPropagation();
                 onContactar(paciente);
               }}
-              className="rounded-lg border border-[#ED8121] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#ED8121] hover:bg-[#FFF3E0]"
+              className="ccr-table-action ccr-action-call"
             >
               Llamar
             </button>
@@ -214,7 +209,7 @@ export default function PacienteRow({
               e.stopPropagation();
               onVerFicha(paciente);
             }}
-            className="rounded-lg border border-[#B8D1C0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3D5648] hover:bg-[#DFECE4]"
+            className="ccr-table-action ccr-action-view"
           >
             Ver ficha
           </button>
@@ -225,7 +220,7 @@ export default function PacienteRow({
                 e.stopPropagation();
                 onEliminar(paciente);
               }}
-                className="rounded-lg border border-[#F5C2C7] bg-[#F8D7DA] px-2.5 py-1.5 text-[11px] font-semibold text-[#B32626] hover:bg-[#F5C2C7]"
+                className="ccr-table-action ccr-action-danger"
               >
                 Eliminar
               </button>

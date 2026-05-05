@@ -1,197 +1,86 @@
-# ListaEsperaCCR
+# Lista de Espera CCR
 
-Sistema de gestion de lista de espera CCR con Django REST (backend), Next.js (frontend) y Docker Compose.
-
-## Stack
-
-- Backend: Django 5 + DRF + SimpleJWT
-- Frontend: Next.js App Router + TypeScript + Tailwind
-- Infra local: PostgreSQL + Redis + Nginx
+Sistema web para gestion de lista de espera, pacientes, calendario de citas, llamados, importaciones mensuales y usuarios.
 
 ## Estructura
 
-```text
-ListaEsperaCCR/
-├── backend/
-├── frontend/
-├── nginx/
-├── docker-compose.yml
-├── Makefile
-└── README.md
+- `backend/`: API Django + Django REST Framework.
+- `frontend/`: panel Next.js.
+- `docker-compose.yml`: entorno local con PostgreSQL, Redis, backend, frontend y Nginx.
+
+## Archivos que no deben subirse
+
+El repositorio esta preparado para no subir datos reales ni credenciales:
+
+- `.env` y cualquier variable local real.
+- `backend/db.sqlite3` y cualquier base SQLite local.
+- `backend/media/`, cargas Excel y archivos importados.
+- archivos `.xlsx`, `.xls`, `.csv`, `.tsv` y exportaciones locales.
+- caches, builds, logs, certificados y volumenes Docker.
+
+Antes de subir a GitHub, revisa:
+
+```bash
+git status --short
+git check-ignore -v .env backend/db.sqlite3 backend/media
 ```
 
-## Requisitos
+## Desarrollo local
 
-- Docker
-- Docker Compose
-- Make
+### Backend
 
-## Variables de entorno
-
-Variables principales requeridas en `.env`:
-
-- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`
-- `REDIS_HOST`, `REDIS_PORT`
-- `DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`
-- `DJANGO_DB_ENGINE`, `DJANGO_CACHE_BACKEND`
-- `NEXT_PUBLIC_API_BASE_URL`
-- `BACKEND_INTERNAL_URL`
-
-Para desarrollo local sin Docker puedes usar `SQLite`:
-
-- `DJANGO_DB_ENGINE=sqlite`
-- `SQLITE_PATH=backend/db.sqlite3` (opcional, si quieres ruta personalizada)
-- `DJANGO_CACHE_BACKEND=locmem`
-
-## Levantar proyecto con Docker
-
-```powershell
-make up
-make migrate
-make loaddata
+```bash
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r backend/requirements.txt
+copy .env.example .env
+python backend/manage.py migrate
+python backend/manage.py runserver 8000
 ```
 
-Servicios definidos en `docker-compose.yml`:
+Para crear usuarios demo locales, ejecuta solo si los necesitas:
 
-- `db`
-- `redis`
-- `backend`
-- `frontend`
-- `nginx`
-
-Accesos:
-
-- Frontend: `http://localhost/`
-- API: `http://localhost/api/`
-- Admin Django: `http://localhost/admin/`
-
-## Comandos Make disponibles
-
-- `make up`
-- `make down`
-- `make migrate`
-- `make loaddata`
-- `make shell`
-- `make logs`
-
-## Deploy en Coolify con Dockerfile
-
-Guía rápida:
-
-- `COOLIFY_DOCKERFILE_DEPLOY.md`
-
-## Credenciales iniciales
-
-Fixture: `backend/fixtures/initial_data.json`
-
-- 4 kines: `11111111K`, `22222222K`, `33333333K`, `44444444K`
-- 1 admin: `66666666K`
-- Password fixture: `Ccr2025*`
-
-Usuario administrativo demo adicional (opcional):
-
-```powershell
-docker-compose exec backend python manage.py generar_usuarios_demo
+```bash
+python backend/manage.py generar_usuarios_demo
 ```
 
-## Roles del sistema
+Esto crea usuarios de acceso, no pacientes reales.
 
-- `KINE`
-- `ADMINISTRATIVO`
-- `ADMIN`
+### Frontend
 
-Resumen funcional:
-
-- `KINE`: asignarse pacientes libres, gestionar estados clinicos y revisar historial.
-- `ADMINISTRATIVO`: registrar llamados, confirmar asistencia (`INGRESADO`) en pacientes con kine asignado, importacion de derivaciones.
-- `ADMIN`: acceso total, incluyendo gestion de usuarios.
-
-## Autenticacion JWT
-
-Endpoints:
-
-- `POST /api/auth/login/` (body: `{ rut, password }`)
-- `POST /api/auth/refresh/`
-- `POST /api/auth/logout/`
-- `GET /api/auth/me/`
-
-Flujo implementado:
-
-- Login devuelve `access` + `refresh`.
-- Frontend guarda tokens en cookies `httpOnly` (`access-token`, `refresh-token`).
-- Middleware de Next protege rutas y refresca token si expiro.
-- Cliente API adjunta `Authorization: Bearer <access>`.
-
-## Endpoints principales
-
-Pacientes:
-
-- `GET /api/pacientes/`
-- `POST /api/pacientes/`
-- `POST /api/pacientes/{id}/asignar/`
-- `POST /api/pacientes/{id}/cambiar-estado/`
-- `POST /api/pacientes/{id}/registrar-llamado/`
-- `GET /api/pacientes/{id}/historial/`
-
-Importacion:
-
-- `POST /api/importar/derivaciones/`
-
-Reportes:
-
-- `GET /api/reportes/resumen/`
-- `GET /api/reportes/por-kine/`
-
-Usuarios:
-
-- `GET /api/usuarios/`
-- `POST /api/usuarios/`
-- `PATCH /api/usuarios/{id}/`
-
-## Importacion Excel de derivaciones
-
-Parser: `backend/apps/importar/parser.py`
-
-Soporta:
-
-- Formato antiguo con columna `PERCAPITA`
-- Formato nuevo con columna `DESDE`
-- Deteccion de formato nuevo por:
-  - Columna B vacia
-  - Columna F con centro valido (`CAR`, `CST`, `CCEQ`, `CCE`, `CES`, `HT`, `TMT`, `FST`, `HLH`, `TMT HT`, `FST HT`, `CEQ`, `CESFAM`, `CECOSF`, `SANTO`)
-
-Normalizaciones:
-
-- Prioridad (`ALTA GES`, `MDORADA`, `MODERDA`, etc.)
-- Fechas en `DD.MM.YYYY`, `DD/MM/YYYY`, `DD-MM-YYYY` o serial Excel
-
-Reglas:
-
-- Duplicados por `RUT + fecha_derivacion`
-- `mayor_60` se calcula automaticamente desde edad
-
-Respuesta del endpoint:
-
-```json
-{
-  "total": 0,
-  "importados": 0,
-  "duplicados": 0,
-  "errores": [
-    { "fila": 0, "motivo": "..." }
-  ]
-}
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-## Crear usuarios desde Admin Django
+El frontend local usa `/api` y en desarrollo proxea al backend en `http://localhost:8000`.
 
-1. Entrar a `http://localhost/admin/`
-2. Iniciar sesion con un usuario `ADMIN`
-3. Ir a `Usuarios`
-4. Crear usuario con `rut`, `nombre`, `rol` y password
+## Demo limpia en Railway
 
-## Notas de desarrollo
+Railway debe crear una base PostgreSQL nueva. No subas `db.sqlite3`, `media/` ni archivos Excel al repositorio.
 
-- Nginx usa `nginx/nginx.conf`.
-- `make loaddata` carga `backend/fixtures/initial_data.json`.
-- Si `next lint` falla por configuracion de ESLint en tu entorno, el build de Next igualmente compila y la app levanta.
+Servicios recomendados:
+
+- Backend: root directory `backend`, Dockerfile `backend/Dockerfile`.
+- Frontend: root directory `frontend`, Dockerfile `frontend/Dockerfile`.
+- PostgreSQL: servicio administrado de Railway.
+
+Variables:
+
+- Usa `.env.railway.example` como plantilla.
+- Carga las variables del bloque backend solo en el servicio backend.
+- Carga las variables del bloque frontend solo en el servicio frontend.
+- Usa `DATABASE_URL` del PostgreSQL de Railway en el backend.
+
+El backend ejecuta migraciones al iniciar. No carga pacientes ni importaciones automaticamente.
+
+Si quieres una demo vacia pero con login, corre una vez en Railway:
+
+```bash
+python manage.py generar_usuarios_demo
+```
+
+Si quieres una base completamente vacia, no ejecutes ese comando y crea usuarios manualmente despues.
+
+Mas detalle: ver `RAILWAY_DEPLOY.md`.

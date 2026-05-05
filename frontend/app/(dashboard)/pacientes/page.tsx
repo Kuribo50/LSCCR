@@ -113,7 +113,7 @@ export default function PacientesPage() {
             {isEgresoParams ? 'Egresos Históricos' : pathname === '/mis-pacientes' ? 'Mis Pacientes' : 'Lista de Espera'}
           </h1>
           {mes && anio && (
-            <p className="mt-1 mb-1 text-xs text-[#1B5E3B] bg-[#E8F5EE] inline-block px-2 py-1 rounded-md font-medium" style={{ border: '0.5px solid #D4E4D4' }}>
+            <p className="mt-1 mb-1 text-xs text-[#335fdb] bg-[#e9f4fb] inline-block px-2 py-1 rounded-md font-medium" style={{ border: '0.5px solid #a8d4f0' }}>
               Mostrando ingresados en: {new Date(parseInt(anio), parseInt(mes) - 1).toLocaleString('es-CL', { month: 'long', year: 'numeric' })}
             </p>
           )}
@@ -153,7 +153,7 @@ export default function PacientesPage() {
       {/* Filtros */}
       <div
         className="bg-white rounded-[10px] px-4 py-3 flex flex-wrap gap-3 items-center"
-        style={{ border: '0.5px solid #D4E4D4' }}
+        style={{ border: '0.5px solid #a8d4f0' }}
       >
         <input
           type="text"
@@ -244,7 +244,7 @@ export default function PacientesPage() {
 
       {/* Vista principal */}
       {loading ? (
-        <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm animate-pulse" style={{ border: '0.5px solid #D4E4D4' }}>
+        <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm animate-pulse" style={{ border: '0.5px solid #a8d4f0' }}>
           Cargando pacientes…
         </div>
       ) : vista === 'cola' ? (
@@ -325,7 +325,7 @@ function NuevoPacienteModal({ onClose, onCreado }: { onClose: () => void; onCrea
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
         className="bg-white rounded-[10px] shadow-xl w-full max-w-xl mx-4 max-h-[90vh] flex flex-col overflow-hidden"
-        style={{ border: '0.5px solid #D4E4D4' }}
+        style={{ border: '0.5px solid #a8d4f0' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-verde-ccr text-white px-5 py-4 flex items-center justify-between">

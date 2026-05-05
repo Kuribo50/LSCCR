@@ -158,6 +158,8 @@ export interface ImportacionHistorialItem {
   registros_importados: number;
   duplicados: number;
   errores: ImportacionErrorDetalle[];
+  observaciones_revision: ImportacionRevisionItem[];
+  observaciones_revision_count: number;
   reemplazada_por: number | null;
 }
 
@@ -190,6 +192,62 @@ export interface ImportacionDeletePeriodoResultado {
   pacientes_eliminados: number;
   importaciones_eliminadas: number;
   archivos_eliminados: number;
+}
+
+export type ImportacionRevisionTipo = "ERROR" | "RECURRENTE";
+export type ImportacionRevisionEstado = "PENDIENTE" | "RESUELTO" | "DESCARTADO";
+
+export interface ImportacionRevisionItem {
+  id: string;
+  tipo: ImportacionRevisionTipo;
+  tipo_label: string;
+  importacion_id: number;
+  revision_index: number;
+  fecha_subida: string;
+  usuario_nombre: string | null;
+  mes: number;
+  anio: number;
+  mes_label: string;
+  periodo_label: string;
+  archivo_nombre: string;
+  hoja: string;
+  fila: number | null;
+  motivo: string;
+  accion: string;
+  nombre: string;
+  rut: string;
+  fecha_derivacion: string;
+  fecha_original: string;
+  edad: number;
+  diagnostico: string;
+  prioridad: string;
+  percapita_desde: string;
+  profesional: string;
+  observaciones: string;
+  paciente_id: number | null;
+  paciente_rut: string | null;
+  paciente_nombre: string | null;
+  paciente_estado: Estado | null;
+  paciente_id_ccr: string | null;
+  kine_asignado_nombre: string | null;
+  requiere_revision: boolean;
+  estado_revision: ImportacionRevisionEstado;
+  resolucion: string;
+  resuelto_en: string | null;
+  resuelto_por_id: number | null;
+  resuelto_por_nombre: string | null;
+}
+
+export interface ImportacionRevisionResultado {
+  total: number;
+  pendientes: number;
+  resueltos: number;
+  descartados: number;
+  items: ImportacionRevisionItem[];
+}
+
+export interface ImportacionRevisionActionResultado {
+  item: ImportacionRevisionItem;
 }
 
 export const CATEGORIA_LABELS: Record<Categoria, string> = {
@@ -240,7 +298,7 @@ export function getKineColor(nombre: string | null): string {
 }
 
 export const KINE_ROW_BACKGROUND: Record<string, string> = {
-  "Seba Salgado": "#EEF4FF",
+  "Seba Salgado": "#F8FBFF",
   "Seba Campos": "#FFF0F6",
   Mane: "#E0F7FA",
   "M° Ignacia": "#F3E5F5",
