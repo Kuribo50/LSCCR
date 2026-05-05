@@ -270,9 +270,16 @@ export default function HistorialMensualPage() {
               (acc, item) => acc + item.registros_importados,
               0,
             );
+            const recurrentesMes = grupo.items.reduce((acc, item) => acc + item.duplicados, 0);
+            const erroresMes = grupo.items.reduce((acc, item) => acc + (item.errores_count ?? item.errores.length), 0);
+            const pendientesRevision = grupo.items.reduce(
+              (acc, item) => acc + (item.observaciones_pendientes_count ?? 0),
+              0,
+            );
             const reemplazado = activo?.estado === "REEMPLAZADO";
 
             if (!activo) return null;
+            const resumenCorte = activo.pacientes_actuales_del_corte;
 
             return (
               <article
@@ -310,7 +317,10 @@ export default function HistorialMensualPage() {
 
                   <div className="space-y-1 text-xs text-gray-600">
                     <p>
-                      {registrosMes} registros importados (histórico del mes)
+                      {activo.total_registros} registros · {registrosMes} importados
+                    </p>
+                    <p>
+                      {recurrentesMes} recurrentes · {erroresMes} errores · {pendientesRevision} pendientes de revisión
                     </p>
                     <p>
                       Última subida:{" "}
@@ -323,6 +333,15 @@ export default function HistorialMensualPage() {
                         : "No disponible"}
                     </p>
                   </div>
+
+                  {resumenCorte && (
+                    <div className="grid grid-cols-2 gap-2 rounded-lg bg-[#E7F3EC] p-2 text-[11px] text-[#1B5E3B]">
+                      <span className="font-semibold">Pendientes: {resumenCorte.pendientes}</span>
+                      <span className="font-semibold">Rescate: {resumenCorte.rescate}</span>
+                      <span className="font-semibold">Ingresados: {resumenCorte.ingresados}</span>
+                      <span className="font-semibold">Egresados: {resumenCorte.egresados_total}</span>
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -368,9 +387,11 @@ export default function HistorialMensualPage() {
                           </p>
                           <div className="flex items-center justify-between gap-2">
                              <p className="text-[11px] text-gray-500">
-                               Estado: {item.estado_label} · Importados:{" "}
+                               Estado: {item.estado_label} · Total:{" "}
+                               {item.total_registros} · Importados:{" "}
                                {item.registros_importados} · Duplicados:{" "}
-                               {item.duplicados}
+                               {item.duplicados} · Revisión pendiente:{" "}
+                               {item.observaciones_pendientes_count}
                              </p>
                              <button
                                type="button"

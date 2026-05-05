@@ -72,6 +72,29 @@ function previewEstadoLabel(registro: ImportacionPreviewRegistro) {
   return "Nuevo";
 }
 
+function PreviewMetric({
+  label,
+  value,
+  tone = "blue",
+}: {
+  label: string;
+  value: number;
+  tone?: "blue" | "green" | "amber" | "red";
+}) {
+  const toneClass = {
+    blue: "text-blue-800",
+    green: "text-[#1B5E3B]",
+    amber: "text-amber-700",
+    red: "text-red-700",
+  };
+  return (
+    <div className="rounded-xl border border-[#D4E4D4] bg-white px-3 py-3 text-center">
+      <p className={`text-2xl font-black ${toneClass[tone]}`}>{value}</p>
+      <p className="mt-1 text-[11px] font-semibold text-slate-500">{label}</p>
+    </div>
+  );
+}
+
 export default function ImportarPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -755,21 +778,37 @@ export default function ImportarPage() {
                 <div>
                   <h2 className="text-base font-black text-slate-900 dark:!text-white">Previsualización del archivo</h2>
                   <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
-                    {preview.total} registros leídos · {preview.validos} nuevos · {preview.duplicados} recurrentes
+                    Revisa el corte antes de guardar pacientes y observaciones.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-bold text-blue-800 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#daebf1]">
-                    {preview.validos} nuevos
-                  </span>
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 font-bold text-amber-700">
-                    {preview.duplicados} recurrentes
-                  </span>
-                  <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-bold text-red-700">
-                    {preview.errores.length} errores
-                  </span>
-                </div>
+                {(preview.errores_count ?? preview.errores.length) > 0 && (
+                  <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-2 text-xs">
+                    <FiAlertTriangle size={13} />
+                    Ir a revisión
+                  </Link>
+                )}
               </div>
+
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+                <PreviewMetric label="Total detectados" value={preview.total} />
+                <PreviewMetric label="Nuevos" value={preview.nuevos ?? preview.validos} tone="green" />
+                <PreviewMetric label="Recurrentes" value={preview.recurrentes ?? preview.duplicados} tone="amber" />
+                <PreviewMetric label="Errores" value={preview.errores_count ?? preview.errores.length} tone="red" />
+                <PreviewMetric label="Meses detectados" value={Object.keys(preview.meses_detectados).length} />
+              </div>
+
+              {Object.keys(preview.meses_detectados).length > 0 && (
+                <div className="rounded-xl border border-[#D4E4D4] bg-[#E7F3EC] px-3 py-2">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-[#1B5E3B]">Meses detectados</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.entries(preview.meses_detectados).map(([mes, total]) => (
+                      <span key={mes} className="rounded-full border border-[#D4E4D4] bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                        {mes}: {total}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {registrosPreview.length > 0 ? (
                 <div className="ccr-preview-shell overflow-hidden rounded-xl">
@@ -782,10 +821,10 @@ export default function ImportarPage() {
                     </p>
                   </div>
                   <div className="max-h-[640px] overflow-auto">
-                    <table className="w-full min-w-[720px] border-collapse text-xs">
+                    <table className="w-full min-w-[980px] border-collapse text-xs">
                       <thead className="sticky top-0 z-10 bg-white">
                         <tr className="border-b border-slate-200">
-                          {["Paciente", "RUT", "Fecha", "Diagnóstico", "Estado"].map((label) => (
+                          {["Estado", "Hoja", "Fila", "Fecha", "Paciente", "RUT", "Diagnóstico", "Prioridad", "Categoría"].map((label) => (
                             <th key={label} className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wide text-slate-500">
                               {label}
                             </th>
@@ -795,22 +834,23 @@ export default function ImportarPage() {
                       <tbody>
                         {registrosPreview.map((registro, index) => (
                           <tr key={`${registro.hoja ?? "SIN"}-${registro.fila}-${index}-compacto`} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
-                            <td className="max-w-[210px] px-3 py-2.5 font-bold text-slate-800">
-                              <span className="block truncate">{registro.nombre || "-"}</span>
-                              <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
-                                {registro.hoja ? `${registro.hoja} · ` : ""}fila {registro.fila}
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-600">{registro.rut || "-"}</td>
-                            <td className="px-3 py-2.5 text-slate-600">{registro.fecha_derivacion || "-"}</td>
-                            <td className="max-w-[190px] px-3 py-2.5 text-slate-700">
-                              <span className="block truncate">{registro.diagnostico || "-"}</span>
-                            </td>
                             <td className="px-3 py-2.5">
                               <span className={`inline-flex max-w-[150px] items-center ${previewEstadoBadgeClass(registro)}`}>
                                 <span className="truncate">{previewEstadoLabel(registro)}</span>
                               </span>
                             </td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.hoja || "-"}</td>
+                            <td className="px-3 py-2.5 font-mono text-slate-500">{registro.fila}</td>
+                            <td className="px-3 py-2.5 text-slate-600">{registro.fecha_derivacion || "-"}</td>
+                            <td className="max-w-[210px] px-3 py-2.5 font-bold text-slate-800">
+                              <span className="block truncate">{registro.nombre || "-"}</span>
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-slate-600">{registro.rut || "-"}</td>
+                            <td className="max-w-[190px] px-3 py-2.5 text-slate-700">
+                              <span className="block truncate">{registro.diagnostico || "-"}</span>
+                            </td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.prioridad || "-"}</td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.categoria || "-"}</td>
                           </tr>
                         ))}
                       </tbody>

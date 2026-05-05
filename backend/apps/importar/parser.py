@@ -201,10 +201,13 @@ def _registro_preview(
 ) -> dict:
     if error:
         estado = "ERROR"
+        tipo_revision = "ERROR"
     elif es_duplicado:
         estado = "DUPLICADO"
+        tipo_revision = "RECURRENTE"
     else:
         estado = "OK"
+        tipo_revision = ""
 
     return {
         "hoja": hoja,
@@ -223,6 +226,7 @@ def _registro_preview(
         "es_duplicado": es_duplicado,
         "estado": estado,
         "error": error,
+        "tipo_revision": tipo_revision,
     }
 
 
@@ -462,11 +466,15 @@ def _procesar_derivaciones(archivo) -> dict:
 
 def previsualizar_derivaciones(archivo) -> dict:
     procesado = _procesar_derivaciones(archivo)
+    errores_count = len(procesado["errores"])
     return {
         "total": procesado["total"],
         "validos": len(procesado["pacientes"]),
+        "nuevos": len(procesado["pacientes"]),
         "duplicados": procesado["duplicados"],
+        "recurrentes": procesado["duplicados"],
         "errores": procesado["errores"],
+        "errores_count": errores_count,
         "registros": procesado["registros"],
         "meses_detectados": procesado["meses_detectados"],
     }
@@ -474,11 +482,15 @@ def previsualizar_derivaciones(archivo) -> dict:
 
 def parsear_derivaciones(archivo) -> dict:
     procesado = _procesar_derivaciones(archivo)
+    errores_count = len(procesado["errores"])
     return {
         "total": procesado["total"],
-        "importados": 0,  # Will be populated by view
+        "importados": 0,  # La vista completa este valor después de crear pacientes.
+        "nuevos": len(procesado["pacientes"]),
         "duplicados": procesado["duplicados"],
+        "recurrentes": procesado["duplicados"],
         "errores": procesado["errores"],
+        "errores_count": errores_count,
         "registros": procesado["registros"],
         "meses_detectados": procesado["meses_detectados"],
         "pacientes": procesado["pacientes"],

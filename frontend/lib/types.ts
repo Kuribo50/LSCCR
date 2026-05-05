@@ -236,14 +236,24 @@ export interface ReporteSerieMensual {
 export interface ImportacionResultado {
   total: number;
   importados: number;
+  nuevos?: number;
   duplicados: number;
+  recurrentes?: number;
+  errores_count?: number;
   errores: { hoja?: string; fila: number; motivo: string }[];
+  meses_detectados?: Record<string, number>;
 }
 
 export interface ImportacionErrorDetalle {
   hoja?: string;
   fila: number;
   motivo: string;
+  nombre?: string;
+  rut?: string;
+  fecha_derivacion?: string;
+  diagnostico?: string;
+  prioridad?: string;
+  categoria?: string;
 }
 
 export type ImportacionPreviewEstado = "OK" | "DUPLICADO" | "ERROR";
@@ -265,12 +275,16 @@ export interface ImportacionPreviewRegistro {
   es_duplicado: boolean;
   estado: ImportacionPreviewEstado;
   error?: string;
+  tipo_revision?: ImportacionRevisionTipo | "";
 }
 
 export interface ImportacionPreviewResultado {
   total: number;
   validos: number;
+  nuevos: number;
   duplicados: number;
+  recurrentes: number;
+  errores_count: number;
   errores: ImportacionErrorDetalle[];
   registros: ImportacionPreviewRegistro[];
   meses_detectados: Record<string, number>;
@@ -300,8 +314,16 @@ export interface ImportacionHistorialItem {
   registros_importados: number;
   duplicados: number;
   errores: ImportacionErrorDetalle[];
+  errores_count: number;
   observaciones_revision: ImportacionRevisionItem[];
   observaciones_revision_count: number;
+  observaciones_pendientes_count: number;
+  pacientes_actuales_del_corte?: {
+    pendientes: number;
+    rescate: number;
+    ingresados: number;
+    egresados_total: number;
+  };
   reemplazada_por: number | null;
 }
 
@@ -309,6 +331,13 @@ export interface ImportacionHistorialDetalle {
   mes: number;
   anio: number;
   mes_label: string;
+  periodo_label?: string;
+  pacientes_actuales_del_corte?: {
+    pendientes: number;
+    rescate: number;
+    ingresados: number;
+    egresados_total: number;
+  };
   items: ImportacionHistorialItem[];
 }
 

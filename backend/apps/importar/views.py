@@ -51,6 +51,13 @@ MESES_LABEL = {
     12: "Diciembre",
 }
 
+ESTADOS_EGRESADOS = [
+    Paciente.Estado.ALTA_MEDICA,
+    Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.ABANDONO,
+    Paciente.Estado.DERIVADO,
+]
+
 
 def _bool_from_request(value) -> bool:
     if isinstance(value, bool):
@@ -78,6 +85,7 @@ def _periodo_q(mes: int, anio: int) -> Q:
 
 def _serialize_importacion(importacion: ImportacionMensual) -> dict:
     mes_ref, anio_ref = _mes_y_anio_referencia(importacion)
+    observaciones = importacion.observaciones_revision or []
     return {
         "id": importacion.id,
         "archivo_nombre": importacion.archivo_nombre or importacion.archivo.name.rsplit("/", 1)[-1],
@@ -96,9 +104,28 @@ def _serialize_importacion(importacion: ImportacionMensual) -> dict:
         "registros_importados": importacion.registros_importados,
         "duplicados": importacion.duplicados,
         "errores": importacion.errores,
+        "errores_count": len(importacion.errores or []),
         "observaciones_revision": importacion.observaciones_revision,
-        "observaciones_revision_count": len(importacion.observaciones_revision or []),
+        "observaciones_revision_count": len(observaciones),
+        "observaciones_pendientes_count": len(
+            [
+                item
+                for item in observaciones
+                if item.get("estado_revision", "PENDIENTE") == "PENDIENTE"
+            ]
+        ),
+        "pacientes_actuales_del_corte": _resumen_pacientes_corte(mes_ref, anio_ref),
         "reemplazada_por": importacion.reemplazada_por_id,
+    }
+
+
+def _resumen_pacientes_corte(mes: int, anio: int) -> dict:
+    pacientes = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+    return {
+        "pendientes": pacientes.filter(estado=Paciente.Estado.PENDIENTE).count(),
+        "rescate": pacientes.filter(estado=Paciente.Estado.RESCATE).count(),
+        "ingresados": pacientes.filter(estado=Paciente.Estado.INGRESADO).count(),
+        "egresados_total": pacientes.filter(estado__in=ESTADOS_EGRESADOS).count(),
     }
 
 
@@ -480,8 +507,8 @@ class ImportarDerivacionesView(APIView):
             pacientes_a_crear = resultado.get("pacientes", [])
             if pacientes_a_crear:
                 import uuid as _uuid
-                batch_prefix = _uuid.uuid4().hex[:8].upper()  # e.g. A3F1C2B7
-                # Link each patient to the correct ImportacionMensual (by month)
+                batch_prefix = _uuid.uuid4().hex[:8].upper()
+                # Vincula cada paciente con la importación del mes de su derivación.
                 for i, p in enumerate(pacientes_a_crear):
                     mes_derivacion = p.fecha_derivacion.month
                     importacion_correspondiente = nuevas_importaciones.get(mes_derivacion)
@@ -489,7 +516,7 @@ class ImportarDerivacionesView(APIView):
                         p.importacion_origen = importacion_correspondiente
                     elif nuevas_importaciones:
                         p.importacion_origen = list(nuevas_importaciones.values())[0]
-                    # Assign a guaranteed-unique temporary id_ccr to avoid UNIQUE conflicts
+                    # Usa un id temporal único porque bulk_create no ejecuta save().
                     p.id_ccr = f"TMP-{batch_prefix}-{i + 1:06d}"
 
                 creados = Paciente.objects.bulk_create(pacientes_a_crear, batch_size=200)
@@ -531,7 +558,7 @@ class ImportarDerivacionesView(APIView):
                     # 1. Incrementamos contador
                     pats_a_actualizar.update(n_meses_espera=F('n_meses_espera') + 1)
                     
-                    # 2. Registramos en el historial (MovimientoPaciente)
+                    # 2. Registramos en el historial del paciente.
                     from apps.pacientes.models import MovimientoPaciente
                     meses_str = ", ".join([MESES_LABEL.get(m, str(m)) for m in meses_periodo])
                     
@@ -539,7 +566,7 @@ class ImportarDerivacionesView(APIView):
                         MovimientoPaciente(
                             paciente_id=pid,
                             usuario=request.user,
-                            estado_anterior=None, # Indicamos que no hay cambio de estado, sino actualización
+                            estado_anterior=None,  # No cambia estado, solo registra reaparición.
                             estado_nuevo=estado,
                             notas=f"Registrado nuevamente en lista de espera: {meses_str} {anio_datos}"
                         ) for pid, estado in pats_data
@@ -553,9 +580,8 @@ class ImportarDerivacionesView(APIView):
                 usuario=request.user,
             )
 
-            # Update the success counts locally
             for importacion in nuevas_importaciones.values():
-                importacion.registros_importados = resultado["importados"]
+                importacion.registros_importados = importacion.pacientes_creados.count()
                 importacion.save(update_fields=["registros_importados"])
 
             resultado.pop("pacientes", None)
@@ -812,6 +838,8 @@ class HistorialImportacionesMesView(APIView):
                 "mes": mes,
                 "anio": anio,
                 "mes_label": MESES_LABEL.get(mes, str(mes)),
+                "periodo_label": f"{MESES_LABEL.get(mes, mes)} {anio}",
+                "pacientes_actuales_del_corte": _resumen_pacientes_corte(mes, anio),
                 "items": [_serialize_importacion(item) for item in historial],
             }
         )

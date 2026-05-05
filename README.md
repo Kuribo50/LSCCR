@@ -27,6 +27,18 @@ Los reportes operativos permiten revisar un resumen mensual del corte de derivac
 
 Estos reportes son apoyo operativo del CCR y no reemplazan Trak, la ficha clinica institucional ni el criterio clinico del equipo.
 
+## Importación mensual y revisión
+
+La importación mensual permite previsualizar una planilla Excel antes de guardar datos. La previsualización separa registros nuevos, recurrentes y errores para que el equipo revise el corte antes de confirmar.
+
+- Nuevos: registros válidos que crearán pacientes en lista de espera.
+- Recurrentes: pacientes que ya existen según la regla operativa vigente y quedan como observación de revisión.
+- Errores: registros incompletos o inconsistentes que no crean ficha hasta ser revisados.
+- Revisión de importación: bandeja para marcar observaciones como resueltas o descartadas, dejando resolución y usuario.
+- Historial mensual: vista de cortes cargados, importados, recurrentes, errores y estado actual de pacientes del periodo.
+
+No subas Excel reales al repositorio. Los archivos de carga deben tratarse como datos sensibles y mantenerse fuera de Git.
+
 ## Estructura
 
 - `backend/`: API Django + Django REST Framework.

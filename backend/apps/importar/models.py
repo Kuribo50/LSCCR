@@ -62,3 +62,42 @@ class ImportacionMensual(models.Model):
         mes_ref = self.mes_datos or self.mes
         anio_ref = self.anio_datos or self.anio
         return f"Importación {meses[mes_ref]}/{anio_ref} — {self.get_estado_display()}"
+
+    @property
+    def mes_label(self):
+        meses = [
+            "",
+            "Enero",
+            "Febrero",
+            "Marzo",
+            "Abril",
+            "Mayo",
+            "Junio",
+            "Julio",
+            "Agosto",
+            "Septiembre",
+            "Octubre",
+            "Noviembre",
+            "Diciembre",
+        ]
+        mes_ref = self.mes_datos or self.mes
+        return meses[mes_ref] if 1 <= mes_ref <= 12 else str(mes_ref)
+
+    @property
+    def periodo_label(self):
+        anio_ref = self.anio_datos or self.anio
+        return f"{self.mes_label} {anio_ref}"
+
+    @property
+    def errores_count(self):
+        return len(self.errores or [])
+
+    @property
+    def observaciones_pendientes_count(self):
+        return len(
+            [
+                item
+                for item in (self.observaciones_revision or [])
+                if item.get("estado_revision", "PENDIENTE") == "PENDIENTE"
+            ]
+        )
