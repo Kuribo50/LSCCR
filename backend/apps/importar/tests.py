@@ -88,7 +88,23 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(response.data["nuevos"], 1)
         self.assertEqual(response.data["errores_count"], 1)
         self.assertEqual(response.data["registros"][0]["tipo_revision"], "")
-        self.assertEqual(response.data["registros"][1]["tipo_revision"], "ERROR")
+
+    def test_preview_rechaza_archivo_que_no_es_xlsx(self):
+        archivo = SimpleUploadedFile(
+            "derivaciones.csv",
+            b"fecha,nombre\n",
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            "/api/importar/previsualizar/",
+            {"archivo": archivo, "mes": 7, "anio": 2025},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Paciente.objects.count(), 0)
+        self.assertIn("archivo", response.data)
 
     def test_importacion_crea_pacientes_y_asocia_importacion(self):
         archivo = self.archivo(

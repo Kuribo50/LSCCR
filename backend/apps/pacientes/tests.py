@@ -427,6 +427,19 @@ class PacienteWorkflowTests(APITestCase):
         nombres = [row[3] for row in ws.iter_rows(min_row=8, values_only=True) if row[3]]
         self.assertEqual(nombres, [rescate.nombre])
 
+    def test_exportar_lista_espera_sanitiza_formula_excel(self):
+        self.crear_paciente(nombre="=cmd", diagnostico="+diagnostico", observaciones="@observacion")
+
+        response = self.client.get("/api/pacientes/exportar/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        fila = next(row for row in ws.iter_rows(min_row=8, values_only=True) if row[3])
+        self.assertEqual(fila[3], "'=cmd")
+        self.assertEqual(fila[7], "'+diagnostico")
+        self.assertEqual(fila[18], "'@observacion")
+
     def test_usuario_no_autenticado_no_puede_exportar(self):
         self.client.force_authenticate(user=None)
 

@@ -12,6 +12,48 @@ ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de 
 - Inasistencias: registro de ausencias a sesiones de pacientes `INGRESADOS`; dos inasistencias no justificadas generan alerta para evaluar `ABANDONO`, sin cambiar el estado automaticamente.
 - Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, contactos e inasistencias.
 
+## V1 Demo
+
+La V1 incluye lista de espera, ficha operativa, responsable CCR, contactabilidad, inasistencias, Trabajo de hoy, alertas operativas, importacion mensual, revision de errores/recurrentes, historial mensual, reportes, exportacion Excel e impresion.
+
+No reemplaza Trak ni la ficha clinica institucional. Es una herramienta interna para apoyo operativo del CCR.
+
+Flujo principal de demo:
+
+1. Importar derivaciones desde una planilla demo `.xlsx`.
+2. Revisar la previsualizacion antes de guardar.
+3. Confirmar la importacion.
+4. Ver los pacientes en lista de espera.
+5. Asignar responsable CCR.
+6. Registrar contacto.
+7. Ingresar paciente cuando confirma asistencia.
+8. Registrar inasistencia si ya esta `INGRESADO`.
+9. Cerrar o egresar con observacion operativa cuando corresponda.
+10. Revisar reportes mensuales y por responsable.
+11. Exportar Excel o imprimir ficha/lista de contactabilidad.
+
+Para correr localmente:
+
+```bash
+cd backend
+python manage.py migrate
+python manage.py generar_usuarios_demo
+python manage.py runserver
+
+cd ../frontend
+npm install
+npm run dev
+```
+
+Usuarios demo locales:
+
+- `66666666K` ADMIN
+- `55555555K` ADMINISTRATIVO
+- `11111111K`, `22222222K`, `33333333K`, `44444444K` KINE
+- Password demo: `Ccr2025*`
+
+Usa solo datos ficticios en la demo. No subas datos reales, Excel reales, bases locales ni archivos exportados al repositorio.
+
 ## Trabajo de hoy y alertas operativas
 
 La seccion Trabajo de hoy orienta la gestion diaria del CCR mostrando pacientes que requieren accion, como altas sin responsable, rescates activos, esperas prolongadas, ingresados sin proxima atencion o posibles abandonos. Es una ayuda operativa para priorizar trabajo y no reemplaza el criterio clinico, Trak ni la ficha clinica institucional.

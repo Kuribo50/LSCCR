@@ -150,6 +150,8 @@ class ReportesOperativosTests(APITestCase):
         )
 
     def test_exportar_por_responsable_devuelve_xlsx(self):
+        self.kine.nombre = "=Responsable"
+        self.kine.save(update_fields=["nombre"])
         self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
 
         response = self.client.get("/api/reportes/por-responsable/exportar/?mes=7&anio=2025")
@@ -160,3 +162,4 @@ class ReportesOperativosTests(APITestCase):
         ws = workbook.active
         self.assertEqual(ws["A1"].value, "Reporte por responsable CCR")
         self.assertIn("Responsable CCR", [cell.value for cell in ws[5]])
+        self.assertEqual(ws["A6"].value, "'=Responsable")

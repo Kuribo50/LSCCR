@@ -10,6 +10,7 @@ from .models import Paciente
 
 
 EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 PRIORIDAD_FILL = {
     Paciente.Prioridad.ALTA: "FEE2E2",
@@ -26,6 +27,12 @@ def excel_response(workbook: Workbook, filename: str) -> HttpResponse:
     response = HttpResponse(output.read(), content_type=EXCEL_CONTENT_TYPE)
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+def sanitizar_celda_excel(valor):
+    if isinstance(valor, str) and valor.lstrip().startswith(FORMULA_PREFIXES):
+        return f"'{valor}"
+    return valor
 
 
 def _dias_en_lista(paciente: Paciente, hoy: date | None = None) -> int:
@@ -72,6 +79,7 @@ def _agregar_encabezado(ws, titulo: str, subtitulo: str, filtros: dict[str, str]
     ws["A4"] = f"Fecha de generación: {timezone.localtime().strftime('%d/%m/%Y %H:%M')}"
     if filtros:
         texto_filtros = ", ".join(f"{clave}: {valor}" for clave, valor in filtros.items() if valor)
+        texto_filtros = sanitizar_celda_excel(texto_filtros or "Sin filtros")
         ws["A5"] = f"Filtros aplicados: {texto_filtros or 'Sin filtros'}"
         return 7
     ws["A5"] = "Filtros aplicados: Sin filtros"
@@ -157,7 +165,7 @@ def crear_excel_pacientes(
                         _fecha_hora(importacion.fecha_subida) if importacion else "",
                     ]
                 )
-            ws.append(fila)
+            ws.append([sanitizar_celda_excel(valor) for valor in fila])
             row_number = ws.max_row
             fill_color = PRIORIDAD_FILL.get(paciente.prioridad)
             if fill_color:

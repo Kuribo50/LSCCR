@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.pacientes.exports import excel_response
+from apps.pacientes.exports import excel_response, sanitizar_celda_excel
 from apps.pacientes.models import Paciente
 from apps.usuarios.models import Usuario
 
@@ -252,23 +252,22 @@ def crear_excel_responsables(data):
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     for item in data["responsables"]:
-        ws.append(
-            [
-                item["responsable_nombre"] or "Sin nombre",
-                item["total_asignados_corte"],
-                item["pendientes"],
-                item["rescate"],
-                item["ingresados_actuales"],
-                item["ingresos_mes"],
-                item["egresos_mes"],
-                item["altas_medicas_mes"],
-                item["egresos_voluntarios_mes"],
-                item["abandonos_mes"],
-                item["derivados_mes"],
-                item["promedio_dias_hasta_ingreso"],
-                item["promedio_dias_en_lista_actual"],
-            ]
-        )
+        fila = [
+            item["responsable_nombre"] or "Sin nombre",
+            item["total_asignados_corte"],
+            item["pendientes"],
+            item["rescate"],
+            item["ingresados_actuales"],
+            item["ingresos_mes"],
+            item["egresos_mes"],
+            item["altas_medicas_mes"],
+            item["egresos_voluntarios_mes"],
+            item["abandonos_mes"],
+            item["derivados_mes"],
+            item["promedio_dias_hasta_ingreso"],
+            item["promedio_dias_en_lista_actual"],
+        ]
+        ws.append([sanitizar_celda_excel(valor) for valor in fila])
     ws.freeze_panes = "A6"
     ws.auto_filter.ref = f"A{header_row}:M{max(header_row, ws.max_row)}"
     for index, width in enumerate([28, 16, 12, 12, 18, 14, 14, 14, 20, 12, 12, 24, 26], start=1):
