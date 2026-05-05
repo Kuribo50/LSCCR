@@ -153,6 +153,86 @@ export interface KineReporte {
   altas: number;
 }
 
+export interface ReporteResumenMensual {
+  mes: number;
+  anio: number;
+  periodo_label: string;
+  corte: {
+    total_derivados: number;
+    pendientes: number;
+    rescate: number;
+    ingresados_actuales: number;
+    altas_medicas: number;
+    egresos_voluntarios: number;
+    abandonos: number;
+    derivados: number;
+    sin_responsable: number;
+    con_responsable: number;
+    sobre_90_dias: number;
+    promedio_dias_en_lista_actual: number;
+  };
+  actividad_mes: {
+    ingresos: number;
+    egresos_total: number;
+    altas_medicas: number;
+    egresos_voluntarios: number;
+    abandonos: number;
+    derivados: number;
+    promedio_dias_hasta_ingreso: number;
+  };
+  por_estado: { estado: string; label: string; total: number }[];
+  por_prioridad: { prioridad: string; label: string; total: number }[];
+  por_categoria: { categoria: string; label: string; total: number }[];
+}
+
+export interface ReporteResponsableItem {
+  responsable_id: number | null;
+  responsable_nombre: string | null;
+  total_asignados_corte: number;
+  pendientes: number;
+  rescate: number;
+  ingresados_actuales: number;
+  ingresos_mes: number;
+  egresos_mes: number;
+  altas_medicas_mes: number;
+  egresos_voluntarios_mes: number;
+  abandonos_mes: number;
+  derivados_mes: number;
+  promedio_dias_hasta_ingreso: number;
+  promedio_dias_en_lista_actual: number;
+}
+
+export interface ReportePorResponsable {
+  mes: number;
+  anio: number;
+  periodo_label: string;
+  responsables: ReporteResponsableItem[];
+  sin_responsable: {
+    total_corte: number;
+    pendientes: number;
+    rescate: number;
+    sobre_90_dias: number;
+  };
+}
+
+export interface ReporteSerieMensualItem {
+  mes: number;
+  periodo_label: string;
+  total_derivados: number;
+  ingresos: number;
+  egresos_total: number;
+  rescates_actuales: number;
+  abandonos: number;
+  altas_medicas: number;
+  egresos_voluntarios: number;
+  derivados: number;
+}
+
+export interface ReporteSerieMensual {
+  anio: number;
+  meses: ReporteSerieMensualItem[];
+}
+
 export interface ImportacionResultado {
   total: number;
   importados: number;

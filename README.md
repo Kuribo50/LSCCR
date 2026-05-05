@@ -16,6 +16,17 @@ ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de 
 
 La seccion Trabajo de hoy orienta la gestion diaria del CCR mostrando pacientes que requieren accion, como altas sin responsable, rescates activos, esperas prolongadas, ingresados sin proxima atencion o posibles abandonos. Es una ayuda operativa para priorizar trabajo y no reemplaza el criterio clinico, Trak ni la ficha clinica institucional.
 
+## Reportes operativos
+
+Los reportes operativos permiten revisar un resumen mensual del corte de derivaciones, la actividad ocurrida durante el mes, la carga por responsable y una tendencia anual de derivaciones, ingresos y egresos.
+
+- Resumen mensual: muestra el estado actual de los pacientes derivados en el mes consultado.
+- Actividad del mes: cuenta ingresos y egresos ocurridos durante el periodo, separados del corte mensual.
+- Reporte por responsable: resume asignados, pendientes, rescates, ingresos y egresos por kinesiólogo responsable, manteniendo compatibilidad con `kine_asignado`.
+- Tendencia anual: compara derivaciones, ingresos y egresos por mes para apoyar la gestion.
+
+Estos reportes son apoyo operativo del CCR y no reemplazan Trak, la ficha clinica institucional ni el criterio clinico del equipo.
+
 ## Estructura
 
 - `backend/`: API Django + Django REST Framework.
