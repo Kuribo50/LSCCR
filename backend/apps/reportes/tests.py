@@ -1,10 +1,15 @@
 from datetime import date
+from io import BytesIO
 
+from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.pacientes.models import Paciente
 from apps.usuarios.models import Usuario
+
+
+EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class ReportesOperativosTests(APITestCase):
@@ -143,3 +148,15 @@ class ReportesOperativosTests(APITestCase):
             no_autenticado.status_code,
             {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN},
         )
+
+    def test_exportar_por_responsable_devuelve_xlsx(self):
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+
+        response = self.client.get("/api/reportes/por-responsable/exportar/?mes=7&anio=2025")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], EXCEL_CONTENT_TYPE)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        self.assertEqual(ws["A1"].value, "Reporte por responsable CCR")
+        self.assertIn("Responsable", [cell.value for cell in ws[5]])

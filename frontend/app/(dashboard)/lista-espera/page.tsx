@@ -23,7 +23,7 @@ import {
 } from "@tanstack/react-table";
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FiFilter, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiDownload, FiFilter, FiRefreshCw, FiSearch } from "react-icons/fi";
 import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -100,6 +100,17 @@ function toCapitalizedWords(value: string) {
     const [first = "", ...rest] = Array.from(word);
     return `${first.toLocaleUpperCase("es-CL")}${rest.join("")}`;
   });
+}
+
+function descargarBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 const multiSelectFilter: FilterFn<WaitlistRow> = (
@@ -238,6 +249,7 @@ export default function ListaEsperaPage() {
   const [isPending, startTransition] = useTransition();
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; nombre: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const initialTableState = useMemo(
     () => ({
@@ -353,6 +365,30 @@ export default function ListaEsperaPage() {
       toastError("No se pudo eliminar el paciente.");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function exportarExcel() {
+    setExportando(true);
+    try {
+      const params = new URLSearchParams();
+      if (alertaActiva) {
+        params.set("alerta", alertaActiva);
+      } else {
+        params.set("sin_asignar", "1");
+      }
+      if (mes) params.set("mes", mes);
+      if (anio) params.set("anio", anio);
+      if (importacionId) params.set("importacion", importacionId);
+      if (tableState.globalSearch.trim()) {
+        params.set("search", tableState.globalSearch.trim());
+      }
+      const blob = await api.getBlob(`/pacientes/exportar/?${params.toString()}`);
+      descargarBlob(blob, `lista-espera-ccr-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}.xlsx`);
+    } catch {
+      toastError("No se pudo exportar la lista de espera.");
+    } finally {
+      setExportando(false);
     }
   }
 
@@ -772,6 +808,15 @@ export default function ListaEsperaPage() {
               >
                 <FiRefreshCw size={13} />
                 Recargar
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportarExcel()}
+                disabled={exportando}
+                className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
+              >
+                <FiDownload size={13} />
+                {exportando ? "Exportando..." : "Exportar Excel"}
               </button>
             </div>
           </div>

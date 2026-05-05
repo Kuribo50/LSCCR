@@ -21,6 +21,7 @@ import {
   FiEdit2,
   FiFileText,
   FiPhone,
+  FiPrinter,
   FiRefreshCw,
   FiUser,
   FiX,
@@ -208,11 +209,11 @@ export default function FichaPaciente({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
+      className="ccr-ficha-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <aside
-        className="h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
+        className="ccr-ficha-printable h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 border-b border-emerald-100 bg-white/95 px-5 py-4 backdrop-blur">
@@ -234,17 +235,25 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarEdicion(true)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 <FiEdit2 size={14} />
                 Editar contacto
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
+              >
+                <FiPrinter size={14} />
+                Imprimir ficha
               </button>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100"
+            className="ccr-no-print absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100"
             aria-label="Cerrar ficha"
           >
             <FiX size={16} />
@@ -269,7 +278,7 @@ export default function FichaPaciente({
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="ccr-no-print flex flex-wrap gap-2">
             {puedeCambiarEstado && (
               <button
                 type="button"
@@ -515,6 +524,39 @@ export default function FichaPaciente({
           }}
         />
       )}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .ccr-ficha-printable,
+          .ccr-ficha-printable * {
+            visibility: visible !important;
+          }
+          .ccr-ficha-overlay {
+            position: static !important;
+            display: block !important;
+            background: white !important;
+            padding: 0 !important;
+            backdrop-filter: none !important;
+          }
+          .ccr-ficha-printable {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            overflow: visible !important;
+            border: 0 !important;
+            box-shadow: none !important;
+            background: white !important;
+          }
+          .ccr-no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { FiDownload } from "react-icons/fi";
 import type {
   ImportacionDeletePeriodoResultado,
   ImportacionHistorialDetalle,
@@ -49,6 +50,7 @@ export default function HistorialMensualPage() {
     useState<HistorialGrupo | null>(null);
   const [resultadoEliminacion, setResultadoEliminacion] =
     useState<ImportacionDeletePeriodoResultado | null>(null);
+  const [exportandoKey, setExportandoKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
@@ -190,6 +192,26 @@ export default function HistorialMensualPage() {
       }
     } finally {
       setEliminando(false);
+    }
+  }
+
+  async function exportarCorte(grupo: HistorialGrupo) {
+    setExportandoKey(grupo.key);
+    setError("");
+    try {
+      const blob = await api.getBlob(`/importar/historial/${grupo.mes}/${grupo.anio}/exportar/`);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `corte-ccr-${grupo.mes}-${grupo.anio}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setError("No se pudo exportar el corte mensual.");
+    } finally {
+      setExportandoKey(null);
     }
   }
 
@@ -359,6 +381,16 @@ export default function HistorialMensualPage() {
                       style={{ borderColor: "#a8d4f0" }}
                     >
                       {estaExpandido ? "Ocultar detalle" : "Detalles corte"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportarCorte(grupo)}
+                      disabled={exportandoKey === grupo.key}
+                      className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-medium text-gray-600 disabled:opacity-60"
+                      style={{ borderColor: "#a8d4f0" }}
+                    >
+                      <FiDownload size={12} />
+                      {exportandoKey === grupo.key ? "Exportando..." : "Exportar corte"}
                     </button>
                     <button
                       type="button"

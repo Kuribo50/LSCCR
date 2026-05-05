@@ -1,5 +1,7 @@
 from datetime import timedelta
+from io import BytesIO
 
+from openpyxl import load_workbook
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -7,6 +9,9 @@ from rest_framework.test import APITestCase
 from apps.usuarios.models import Usuario
 
 from .models import InasistenciaPaciente, LlamadoPaciente, MovimientoPaciente, Paciente
+
+
+EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class PacienteWorkflowTests(APITestCase):
@@ -384,3 +389,37 @@ class PacienteWorkflowTests(APITestCase):
         expected_ids = {paciente.id for paciente in pacientes}
         response_ids = {item["id"] for item in response.data}
         self.assertEqual(response_ids, expected_ids)
+
+    def test_exportar_lista_espera_devuelve_excel(self):
+        self.crear_paciente(nombre="Paciente Exportado")
+
+        response = self.client.get("/api/pacientes/exportar/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], EXCEL_CONTENT_TYPE)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        self.assertEqual(ws["A1"].value, "ListaEsperaCCR")
+        self.assertIn("ID CCR", [cell.value for cell in ws[7]])
+
+    def test_exportar_lista_espera_respeta_alerta_rescates(self):
+        self.crear_paciente(nombre="Paciente Pendiente", estado=Paciente.Estado.PENDIENTE)
+        rescate = self.crear_paciente(nombre="Paciente Rescate", estado=Paciente.Estado.RESCATE)
+
+        response = self.client.get("/api/pacientes/exportar/?alerta=rescates_activos")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        nombres = [row[3] for row in ws.iter_rows(min_row=8, values_only=True) if row[3]]
+        self.assertEqual(nombres, [rescate.nombre])
+
+    def test_usuario_no_autenticado_no_puede_exportar(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get("/api/pacientes/exportar/")
+
+        self.assertIn(
+            response.status_code,
+            {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN},
+        )

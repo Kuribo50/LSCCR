@@ -12,6 +12,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.pacientes.exports import crear_excel_pacientes, excel_response
 from apps.pacientes.models import MovimientoPaciente, Paciente
 from apps.pacientes.services import categoria_por_diagnostico, prioridad_normalizada
 from apps.usuarios.permissions import IsAdminOrAdministrativoRole
@@ -826,6 +827,31 @@ class ObservacionRevisionDetalleView(APIView):
         importacion.observaciones_revision = observaciones
         importacion.save(update_fields=["observaciones_revision"])
         return Response({"item": observaciones[index_int]}, status=status.HTTP_200_OK)
+
+
+class ExportarHistorialImportacionesMesView(APIView):
+    permission_classes = [IsAdminOrAdministrativoRole]
+
+    def get(self, request, mes: int, anio: int):
+        mes = int(mes)
+        anio = int(anio)
+        periodo = f"{MESES_LABEL.get(mes, mes)} {anio}"
+        pacientes = (
+            Paciente.objects.select_related("kine_asignado", "importacion_origen")
+            .filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+            .order_by("fecha_derivacion", "nombre")
+        )
+        workbook = crear_excel_pacientes(
+            pacientes,
+            titulo=f"Corte mensual CCR - {periodo}",
+            subtitulo="Pacientes derivados en el periodo",
+            filtros={"mes": str(mes), "anio": str(anio)},
+            incluir_importacion=True,
+            periodo=periodo,
+            mensaje_vacio="Sin pacientes para este corte.",
+        )
+        nombre_mes = MESES_LABEL.get(mes, str(mes)).lower()
+        return excel_response(workbook, f"corte-ccr-{nombre_mes}-{anio}.xlsx")
 
 
 class HistorialImportacionesMesView(APIView):

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiPrinter, FiRefreshCw, FiSearch } from "react-icons/fi";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
+import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import PacienteTable from "@/components/PacienteTable";
 
 function normalizeRut(value: string) {
@@ -35,13 +36,23 @@ function diasEnLlamados(paciente: Paciente) {
   return calcularDiasDesde(paciente.fecha_cambio_estado) ?? paciente.dias_en_lista;
 }
 
+function formatearFechaImpresion() {
+  return new Date().toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function LlamadosPage() {
   const { user } = useAuth();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // States for filters
+  // Filtros locales de la cola de llamados.
   const [searchQuery, setSearchQuery] = useState("");
   const [prioridadFilter, setPrioridadFilter] = useState("TODAS");
   const [estadoFilter, setEstadoFilter] = useState("TODOS");
@@ -90,7 +101,7 @@ export default function LlamadosPage() {
     void cargar();
   }, [cargar]);
 
-  // Derived state to apply local filters
+  // Lista visible después de aplicar filtros locales.
   const pacientesFiltrados = useMemo(() => {
     return pacientes.filter((p) => {
       // Búsqueda por RUT o Nombre
@@ -142,6 +153,14 @@ export default function LlamadosPage() {
             >
               <FiRefreshCw size={13} />
               Recargar
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
+            >
+              <FiPrinter size={13} />
+              Imprimir lista de llamados
             </button>
           </div>
 
@@ -227,6 +246,84 @@ export default function LlamadosPage() {
           }}
         />
       )}
+      <section className="ccr-llamados-print hidden">
+        <h1>Lista de llamados CCR</h1>
+        <p>Fecha de impresión: {formatearFechaImpresion()}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>RUT</th>
+              <th>Prioridad</th>
+              <th>Responsable</th>
+              <th>Teléfono</th>
+              <th>Intentos contacto</th>
+              <th>Estado</th>
+              <th>Observación breve</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pacientesFiltrados.map((paciente) => (
+              <tr key={paciente.id}>
+                <td>{paciente.nombre}</td>
+                <td>{paciente.rut}</td>
+                <td>{PRIORIDAD_LABELS[paciente.prioridad]}</td>
+                <td>{paciente.kine_asignado_nombre ?? "Sin responsable"}</td>
+                <td>{paciente.telefono || paciente.telefono_recados || "Sin teléfono"}</td>
+                <td>{paciente.n_intentos_contacto}</td>
+                <td>{ESTADO_LABELS[paciente.estado]}</td>
+                <td>{paciente.observaciones || paciente.ultimo_llamado?.notas || ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .ccr-llamados-print,
+          .ccr-llamados-print * {
+            visibility: visible !important;
+          }
+          .ccr-llamados-print {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            padding: 16px !important;
+            background: white !important;
+            color: #111827 !important;
+          }
+          .ccr-llamados-print h1 {
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            margin-bottom: 6px !important;
+          }
+          .ccr-llamados-print p {
+            font-size: 11px !important;
+            margin-bottom: 12px !important;
+          }
+          .ccr-llamados-print table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 10px !important;
+          }
+          .ccr-llamados-print th,
+          .ccr-llamados-print td {
+            border: 1px solid #d1d5db !important;
+            padding: 5px !important;
+            text-align: left !important;
+            vertical-align: top !important;
+          }
+          .ccr-llamados-print th {
+            background: #e7f3ec !important;
+            font-weight: 700 !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

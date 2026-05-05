@@ -39,6 +39,18 @@ La importación mensual permite previsualizar una planilla Excel antes de guarda
 
 No subas Excel reales al repositorio. Los archivos de carga deben tratarse como datos sensibles y mantenerse fuera de Git.
 
+## Exportación e impresión
+
+El sistema permite sacar respaldos operativos sin volver al Excel manual.
+
+- Exportar lista filtrada: descarga la lista de espera respetando filtros operativos como alerta, mes, año, importación y búsqueda.
+- Exportar corte mensual: descarga los pacientes derivados en un mes/año con su estado actual e importación de origen.
+- Exportar reporte por responsable: descarga la tabla mensual de carga, ingresos y egresos por responsable.
+- Imprimir ficha operativa: genera una versión legible de la ficha CCR con datos generales, gestión, llamados, inasistencias y movimientos.
+- Imprimir lista de llamados: imprime la cola visible de pacientes pendientes o en rescate.
+
+Las exportaciones `.xlsx` y archivos impresos son material operativo. No subas exportaciones reales al repositorio.
+
 ## Estructura
 
 - `backend/`: API Django + Django REST Framework.

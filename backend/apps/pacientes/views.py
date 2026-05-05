@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from apps.usuarios.models import Usuario
 
+from .exports import crear_excel_pacientes, excel_response, fecha_archivo_hoy
 from .models import InasistenciaPaciente, LlamadoPaciente, MovimientoPaciente, Paciente
 from .permissions import (
     PuedeAsignarPaciente,
@@ -449,6 +450,36 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 for nombre, queryset in grupos.items()
             }
         )
+
+    @action(detail=False, methods=["get"], url_path="exportar")
+    def exportar(self, request):
+        queryset = self.filter_queryset(self.get_queryset()).select_related(
+            "kine_asignado", "importacion_origen"
+        )
+        filtros = {
+            key: request.query_params.get(key, "")
+            for key in [
+                "categoria",
+                "prioridad",
+                "estado",
+                "kine",
+                "search",
+                "mes",
+                "anio",
+                "importacion",
+                "alerta",
+                "sin_asignar",
+                "asignados",
+            ]
+            if request.query_params.get(key)
+        }
+        workbook = crear_excel_pacientes(
+            queryset,
+            titulo="Listado operativo CCR",
+            subtitulo="Exportación de lista de espera",
+            filtros=filtros,
+        )
+        return excel_response(workbook, f"lista-espera-ccr-{fecha_archivo_hoy()}.xlsx")
 
     @action(
         detail=True,

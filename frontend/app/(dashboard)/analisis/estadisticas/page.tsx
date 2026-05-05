@@ -55,6 +55,7 @@ export default function EstadisticasPage() {
   const [serie, setSerie] = useState<ReporteSerieMensual | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [exportandoResponsables, setExportandoResponsables] = useState(false);
 
   const cargarReportes = useCallback(async () => {
     setLoading(true);
@@ -122,6 +123,23 @@ export default function EstadisticasPage() {
     link.click();
     URL.revokeObjectURL(url);
   }, [resumen, porResponsable]);
+
+  const exportarExcelResponsables = useCallback(async () => {
+    setExportandoResponsables(true);
+    try {
+      const blob = await api.getBlob(`/reportes/por-responsable/exportar/?mes=${mes}&anio=${anio}`);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `reporte-responsables-ccr-${anio}-${String(mes).padStart(2, "0")}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("No se pudo exportar el reporte por responsable.");
+    } finally {
+      setExportandoResponsables(false);
+    }
+  }, [mes, anio]);
 
   return (
     <main className="ccr-dashboard-content space-y-6">
@@ -199,7 +217,7 @@ export default function EstadisticasPage() {
             <KpiCard title="Abandonos del mes" value={resumen.actividad_mes.abandonos} icon={<FiAlertTriangle />} tone="rose" />
           </section>
 
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={exportarCsv}
@@ -207,6 +225,15 @@ export default function EstadisticasPage() {
             >
               <FiDownload size={14} />
               Exportar resumen CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportarExcelResponsables()}
+              disabled={exportandoResponsables}
+              className="inline-flex items-center gap-2 rounded-md border border-[#D4E4D4] bg-white px-4 py-2 text-sm font-bold text-[#1B5E3B] transition hover:bg-[#E7F3EC] disabled:opacity-60"
+            >
+              <FiDownload size={14} />
+              {exportandoResponsables ? "Exportando..." : "Exportar Excel por responsable"}
             </button>
           </div>
 

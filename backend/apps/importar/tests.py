@@ -6,13 +6,16 @@ import tempfile
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.importar.models import ImportacionMensual
 from apps.pacientes.models import Paciente
 from apps.usuarios.models import Usuario
+
+
+EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def excel_derivaciones(rows, sheet_name="JULIO"):
@@ -256,3 +259,38 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(response.data["periodo_label"], "Julio 2025")
         self.assertEqual(len(response.data["items"]), 1)
         self.assertEqual(response.data["pacientes_actuales_del_corte"]["pendientes"], 1)
+
+    def test_exportar_historial_mensual_devuelve_xlsx(self):
+        importacion = ImportacionMensual.objects.create(
+            archivo=ContentFile(b"test", name="historial.xlsx"),
+            archivo_nombre="historial.xlsx",
+            mes=5,
+            anio=2026,
+            mes_datos=7,
+            anio_datos=2025,
+            usuario=self.admin,
+            total_registros=1,
+            registros_importados=1,
+        )
+        Paciente.objects.create(
+            id_ccr="CCR-9999",
+            fecha_derivacion=date(2025, 7, 5),
+            percapita_desde="CESFAM",
+            nombre="PACIENTE CORTE",
+            rut="666666666",
+            edad=50,
+            diagnostico="Lumbago",
+            profesional="KINESIOLOGO",
+            prioridad=Paciente.Prioridad.MODERADA,
+            categoria=Paciente.Categoria.LUMBAGOS,
+            importacion_origen=importacion,
+        )
+
+        response = self.client.get("/api/importar/historial/7/2025/exportar/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], EXCEL_CONTENT_TYPE)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        self.assertEqual(ws["A1"].value, "ListaEsperaCCR")
+        self.assertIn("Importación origen", [cell.value for cell in ws[7]])

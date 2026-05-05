@@ -1,10 +1,13 @@
 from datetime import date, timedelta
 
 from django.db.models import Count
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.pacientes.exports import excel_response
 from apps.pacientes.models import Paciente
 from apps.usuarios.models import Usuario
 
@@ -146,6 +149,133 @@ def distribucion_por_choice(queryset, campo, choices, key):
     ]
 
 
+def reporte_por_responsable_data(mes, anio):
+    hoy = date.today()
+    corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+    responsables = []
+
+    for kine in Usuario.objects.filter(rol=Usuario.Rol.KINE).order_by("nombre"):
+        corte_kine = corte.filter(kine_asignado=kine)
+        ingresos_mes = filtrar_mes(
+            Paciente.objects.filter(kine_asignado=kine).exclude(fecha_ingreso__isnull=True),
+            "fecha_ingreso",
+            mes,
+            anio,
+        )
+        egresos_mes = filtrar_mes(
+            Paciente.objects.filter(kine_asignado=kine, estado__in=ESTADOS_FINALES).exclude(
+                fecha_egreso__isnull=True
+            ),
+            "fecha_egreso",
+            mes,
+            anio,
+        )
+        activos_corte = corte_kine.filter(estado__in=ESTADOS_ACTIVOS)
+        responsables.append(
+            {
+                "responsable_id": kine.id,
+                "responsable_nombre": kine.nombre,
+                "kine_asignado": kine.id,
+                "kine_asignado__nombre": kine.nombre,
+                "total_asignados_corte": corte_kine.count(),
+                "total": corte_kine.count(),
+                "pendientes": conteo_estado(corte_kine, Paciente.Estado.PENDIENTE),
+                "rescate": conteo_estado(corte_kine, Paciente.Estado.RESCATE),
+                "ingresados_actuales": conteo_estado(corte_kine, Paciente.Estado.INGRESADO),
+                "ingresados": conteo_estado(corte_kine, Paciente.Estado.INGRESADO),
+                "ingresos_mes": ingresos_mes.count(),
+                "egresos_mes": egresos_mes.count(),
+                "altas_medicas_mes": conteo_estado(egresos_mes, Paciente.Estado.ALTA_MEDICA),
+                "altas": conteo_estado(corte_kine, Paciente.Estado.ALTA_MEDICA),
+                "egresos_voluntarios_mes": conteo_estado(
+                    egresos_mes, Paciente.Estado.EGRESO_VOLUNTARIO
+                ),
+                "abandonos_mes": conteo_estado(egresos_mes, Paciente.Estado.ABANDONO),
+                "derivados_mes": conteo_estado(egresos_mes, Paciente.Estado.DERIVADO),
+                "promedio_dias_hasta_ingreso": promedio_dias(
+                    ingresos_mes, "fecha_derivacion", "fecha_ingreso"
+                ),
+                "promedio_dias_en_lista_actual": promedio_dias_desde_derivacion(
+                    activos_corte, hoy
+                ),
+            }
+        )
+
+    sin_responsable = corte.filter(kine_asignado__isnull=True)
+    return {
+        "mes": mes,
+        "anio": anio,
+        "periodo_label": periodo_label(mes, anio),
+        "responsables": responsables,
+        "kines": responsables,
+        "sin_responsable": {
+            "total_corte": sin_responsable.count(),
+            "pendientes": conteo_estado(sin_responsable, Paciente.Estado.PENDIENTE),
+            "rescate": conteo_estado(sin_responsable, Paciente.Estado.RESCATE),
+            "sobre_90_dias": sin_responsable.filter(
+                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
+                fecha_derivacion__lt=hoy - timedelta(days=90),
+            ).count(),
+        },
+    }
+
+
+def crear_excel_responsables(data):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Responsables"
+    ws["A1"] = "Reporte por responsable CCR"
+    ws["A1"].font = Font(bold=True, size=16, color="1B5E3B")
+    ws["A2"] = f"Periodo: {data['periodo_label']}"
+    ws["A3"] = f"Fecha de generación: {date.today().strftime('%d/%m/%Y')}"
+    headers = [
+        "Responsable",
+        "Asignados corte",
+        "Pendientes",
+        "Rescate",
+        "Ingresados actuales",
+        "Ingresos mes",
+        "Egresos mes",
+        "Altas médicas",
+        "Egresos voluntarios",
+        "Abandonos",
+        "Derivados",
+        "Promedio días hasta ingreso",
+        "Promedio días en lista actual",
+    ]
+    ws.append([])
+    ws.append(headers)
+    header_row = 5
+    for cell in ws[header_row]:
+        cell.fill = PatternFill("solid", fgColor="1B5E3B")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for item in data["responsables"]:
+        ws.append(
+            [
+                item["responsable_nombre"] or "Sin nombre",
+                item["total_asignados_corte"],
+                item["pendientes"],
+                item["rescate"],
+                item["ingresados_actuales"],
+                item["ingresos_mes"],
+                item["egresos_mes"],
+                item["altas_medicas_mes"],
+                item["egresos_voluntarios_mes"],
+                item["abandonos_mes"],
+                item["derivados_mes"],
+                item["promedio_dias_hasta_ingreso"],
+                item["promedio_dias_en_lista_actual"],
+            ]
+        )
+    ws.freeze_panes = "A6"
+    ws.auto_filter.ref = f"A{header_row}:M{max(header_row, ws.max_row)}"
+    for index, width in enumerate([28, 16, 12, 12, 18, 14, 14, 14, 20, 12, 12, 24, 26], start=1):
+        ws.column_dimensions[ws.cell(row=1, column=index).column_letter].width = width
+    return wb
+
+
 class ResumenReporteView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -178,76 +308,17 @@ class PorKineReporteView(APIView):
 
     def get(self, request):
         mes, anio = obtener_mes_anio(request)
-        hoy = date.today()
-        corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
-        responsables = []
+        return Response(reporte_por_responsable_data(mes, anio))
 
-        for kine in Usuario.objects.filter(rol=Usuario.Rol.KINE).order_by("nombre"):
-            corte_kine = corte.filter(kine_asignado=kine)
-            ingresos_mes = filtrar_mes(
-                Paciente.objects.filter(kine_asignado=kine).exclude(fecha_ingreso__isnull=True),
-                "fecha_ingreso",
-                mes,
-                anio,
-            )
-            egresos_mes = filtrar_mes(
-                Paciente.objects.filter(kine_asignado=kine, estado__in=ESTADOS_FINALES).exclude(
-                    fecha_egreso__isnull=True
-                ),
-                "fecha_egreso",
-                mes,
-                anio,
-            )
-            activos_corte = corte_kine.filter(estado__in=ESTADOS_ACTIVOS)
-            responsables.append(
-                {
-                    "responsable_id": kine.id,
-                    "responsable_nombre": kine.nombre,
-                    "kine_asignado": kine.id,
-                    "kine_asignado__nombre": kine.nombre,
-                    "total_asignados_corte": corte_kine.count(),
-                    "total": corte_kine.count(),
-                    "pendientes": conteo_estado(corte_kine, Paciente.Estado.PENDIENTE),
-                    "rescate": conteo_estado(corte_kine, Paciente.Estado.RESCATE),
-                    "ingresados_actuales": conteo_estado(corte_kine, Paciente.Estado.INGRESADO),
-                    "ingresados": conteo_estado(corte_kine, Paciente.Estado.INGRESADO),
-                    "ingresos_mes": ingresos_mes.count(),
-                    "egresos_mes": egresos_mes.count(),
-                    "altas_medicas_mes": conteo_estado(egresos_mes, Paciente.Estado.ALTA_MEDICA),
-                    "altas": conteo_estado(corte_kine, Paciente.Estado.ALTA_MEDICA),
-                    "egresos_voluntarios_mes": conteo_estado(
-                        egresos_mes, Paciente.Estado.EGRESO_VOLUNTARIO
-                    ),
-                    "abandonos_mes": conteo_estado(egresos_mes, Paciente.Estado.ABANDONO),
-                    "derivados_mes": conteo_estado(egresos_mes, Paciente.Estado.DERIVADO),
-                    "promedio_dias_hasta_ingreso": promedio_dias(
-                        ingresos_mes, "fecha_derivacion", "fecha_ingreso"
-                    ),
-                    "promedio_dias_en_lista_actual": promedio_dias_desde_derivacion(
-                        activos_corte, hoy
-                    ),
-                }
-            )
 
-        sin_responsable = corte.filter(kine_asignado__isnull=True)
-        return Response(
-            {
-                "mes": mes,
-                "anio": anio,
-                "periodo_label": periodo_label(mes, anio),
-                "responsables": responsables,
-                "kines": responsables,
-                "sin_responsable": {
-                    "total_corte": sin_responsable.count(),
-                    "pendientes": conteo_estado(sin_responsable, Paciente.Estado.PENDIENTE),
-                    "rescate": conteo_estado(sin_responsable, Paciente.Estado.RESCATE),
-                    "sobre_90_dias": sin_responsable.filter(
-                        estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
-                        fecha_derivacion__lt=hoy - timedelta(days=90),
-                    ).count(),
-                },
-            }
-        )
+class PorResponsableExportarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        mes, anio = obtener_mes_anio(request)
+        data = reporte_por_responsable_data(mes, anio)
+        workbook = crear_excel_responsables(data)
+        return excel_response(workbook, f"reporte-responsables-ccr-{anio}-{mes:02d}.xlsx")
 
 
 class SerieMensualReporteView(APIView):
