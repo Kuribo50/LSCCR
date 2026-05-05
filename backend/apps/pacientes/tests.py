@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -22,13 +24,15 @@ class PacienteWorkflowTests(APITestCase):
             rol=Usuario.Rol.ADMIN,
         )
         self.client.force_authenticate(self.admin)
+        self.paciente_counter = 0
 
     def crear_paciente(self, **overrides):
+        self.paciente_counter += 1
         data = {
             "fecha_derivacion": timezone.localdate(),
             "percapita_desde": "CESFAM",
             "nombre": "Paciente Test",
-            "rut": "12345678-5",
+            "rut": f"900000{self.paciente_counter:02d}-{self.paciente_counter % 10}",
             "edad": 45,
             "diagnostico": "Lumbago",
             "profesional": "KINESIOLOGO",
@@ -204,3 +208,59 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(len(response.data["movimientos"]), 1)
         self.assertEqual(len(response.data["llamados"]), 1)
         self.assertEqual(len(response.data["inasistencias"]), 1)
+
+    def test_alertas_operativas_retorna_grupos_esperados(self):
+        alta = self.crear_paciente(
+            prioridad=Paciente.Prioridad.ALTA,
+            kine_asignado=None,
+            estado=Paciente.Estado.PENDIENTE,
+        )
+        antiguo = self.crear_paciente(
+            fecha_derivacion=timezone.localdate() - timedelta(days=91),
+            estado=Paciente.Estado.PENDIENTE,
+        )
+        intento = self.crear_paciente(
+            estado=Paciente.Estado.PENDIENTE,
+            n_intentos_contacto=1,
+        )
+        rescate = self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        sin_agenda = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            proxima_atencion=None,
+        )
+        abandono = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            n_inasistencias=2,
+        )
+        sin_telefonos = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            telefono="",
+            telefono_recados="",
+        )
+
+        response = self.client.get("/api/pacientes/alertas-operativas/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertInPaciente(response.data["alta_sin_responsable"], alta)
+        self.assertInPaciente(response.data["sobre_90_dias"], antiguo)
+        self.assertInPaciente(response.data["pendientes_con_1_intento"], intento)
+        self.assertInPaciente(response.data["rescates_activos"], rescate)
+        self.assertInPaciente(
+            response.data["ingresados_sin_proxima_atencion"], sin_agenda
+        )
+        self.assertInPaciente(response.data["posible_abandono"], abandono)
+        self.assertInPaciente(response.data["telefonos_incompletos"], sin_telefonos)
+
+    def test_alertas_operativas_limita_cada_grupo_a_8_pacientes(self):
+        for _ in range(10):
+            self.crear_paciente(estado=Paciente.Estado.RESCATE)
+
+        response = self.client.get("/api/pacientes/alertas-operativas/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["rescates_activos"]["total"], 10)
+        self.assertLessEqual(len(response.data["rescates_activos"]["pacientes"]), 8)
+
+    def assertInPaciente(self, grupo, paciente):
+        ids = {item["id"] for item in grupo["pacientes"]}
+        self.assertIn(paciente.id, ids)

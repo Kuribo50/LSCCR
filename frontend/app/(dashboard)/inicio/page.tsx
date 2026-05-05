@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "react-aria-components";
 import {
@@ -18,7 +19,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import { ESTADO_LABELS } from "@/lib/types";
-import type { Paciente } from "@/lib/types";
+import type { AlertasOperativas, Paciente } from "@/lib/types";
 import { limpiarRut } from "@/lib/rut";
 import { motion, type Variants } from "framer-motion";
 import {
@@ -29,6 +30,8 @@ import {
   Tooltip,
 } from "recharts";
 import { DashboardSkeleton } from "@/components/Skeleton";
+import FichaPaciente from "@/components/FichaPaciente";
+import TrabajoHoy from "@/components/TrabajoHoy";
 
 const ACTION_CARDS = [
   {
@@ -74,9 +77,14 @@ const COLORS = {
 
 export default function InicioPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [alertas, setAlertas] = useState<AlertasOperativas | null>(null);
   const [loading, setLoading] = useState(true);
+  const [alertasLoading, setAlertasLoading] = useState(false);
   const [error, setError] = useState("");
+  const [alertasError, setAlertasError] = useState("");
+  const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [miniCalendarMonth, setMiniCalendarMonth] = useState(() => {
     const now = new Date();
@@ -89,7 +97,9 @@ export default function InicioPage() {
   const cargarDashboard = useCallback(async () => {
     if (!user) return;
     setLoading(true);
+    setAlertasLoading(true);
     setError("");
+    setAlertasError("");
     try {
       const data = isKine
         ? await api.get<Paciente[]>(`/pacientes/?kine=${user.id}`)
@@ -100,6 +110,16 @@ export default function InicioPage() {
       setError("No fue posible cargar el dashboard. Intenta nuevamente.");
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const data = await api.get<AlertasOperativas>("/pacientes/alertas-operativas/");
+      setAlertas(data);
+    } catch {
+      setAlertas(null);
+      setAlertasError("No se pudieron cargar las alertas operativas.");
+    } finally {
+      setAlertasLoading(false);
     }
   }, [user, isKine]);
 
@@ -183,6 +203,22 @@ export default function InicioPage() {
     animate: { opacity: 1, y: 0 },
   };
 
+  const handleVerGrupo = useCallback(
+    (grupo: keyof AlertasOperativas) => {
+      const rutas: Record<keyof AlertasOperativas, string> = {
+        alta_sin_responsable: "/lista-espera?prioridad=ALTA&estado=PENDIENTE&sin_asignar=1",
+        sobre_90_dias: "/lista-espera?ordering=dias",
+        pendientes_con_1_intento: "/lista-espera?estado=PENDIENTE",
+        rescates_activos: "/lista-espera?estado=RESCATE",
+        ingresados_sin_proxima_atencion: "/mis-pacientes",
+        posible_abandono: "/mis-pacientes",
+        telefonos_incompletos: "/lista-espera",
+      };
+      router.push(rutas[grupo]);
+    },
+    [router],
+  );
+
   if (loading) return <DashboardSkeleton />;
 
   const total = pacientes.length;
@@ -237,6 +273,20 @@ export default function InicioPage() {
           {error}
         </motion.div>
       )}
+
+      <motion.div variants={itemVariants}>
+        <TrabajoHoy
+          alertas={alertas}
+          loading={alertasLoading}
+          onVerPaciente={setPacienteSeleccionado}
+          onVerGrupo={handleVerGrupo}
+        />
+        {alertasError && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            {alertasError}
+          </p>
+        )}
+      </motion.div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <motion.section variants={itemVariants} className="ccr-panel ccr-dashboard-card rounded-xl p-6 lg:col-span-8">
@@ -411,6 +461,15 @@ export default function InicioPage() {
           </div>
         </div>
       </motion.section>
+
+      {pacienteSeleccionado && user && (
+        <FichaPaciente
+          paciente={pacienteSeleccionado}
+          usuario={user}
+          onClose={() => setPacienteSeleccionado(null)}
+          onRefresh={() => void cargarDashboard()}
+        />
+      )}
     </motion.div>
   );
 }

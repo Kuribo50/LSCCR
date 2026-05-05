@@ -120,6 +120,21 @@ export interface HistorialCompletoPaciente {
   inasistencias: InasistenciaPaciente[];
 }
 
+export interface AlertaOperativaGrupo {
+  total: number;
+  pacientes: Paciente[];
+}
+
+export interface AlertasOperativas {
+  alta_sin_responsable: AlertaOperativaGrupo;
+  sobre_90_dias: AlertaOperativaGrupo;
+  pendientes_con_1_intento: AlertaOperativaGrupo;
+  rescates_activos: AlertaOperativaGrupo;
+  ingresados_sin_proxima_atencion: AlertaOperativaGrupo;
+  posible_abandono: AlertaOperativaGrupo;
+  telefonos_incompletos: AlertaOperativaGrupo;
+}
+
 export interface ResumenReporte {
   mes: number;
   anio: number;

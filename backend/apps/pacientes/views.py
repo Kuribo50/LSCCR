@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
@@ -62,6 +62,18 @@ class PacienteViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return PacienteCreateSerializer
         return PacienteSerializer
+
+    def _serializar_grupo_alerta(self, queryset):
+        ordenado = queryset.annotate(orden_prioridad=ORDEN_PRIORIDAD).order_by(
+            "orden_prioridad", "fecha_derivacion"
+        )
+        pacientes = list(ordenado[:8])
+        return {
+            "total": queryset.count(),
+            "pacientes": PacienteSerializer(
+                pacientes, many=True, context=self.get_serializer_context()
+            ).data,
+        }
 
     def destroy(self, request, *args, **kwargs):
         if request.user.rol != Usuario.Rol.ADMIN:
@@ -360,6 +372,56 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 "movimientos": MovimientoPacienteSerializer(movimientos, many=True).data,
                 "llamados": LlamadoPacienteSerializer(llamados, many=True).data,
                 "inasistencias": InasistenciaPacienteSerializer(inasistencias, many=True).data,
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="alertas-operativas")
+    def alertas_operativas(self, request):
+        hoy = timezone.localdate()
+        corte_90_dias = hoy - timedelta(days=90)
+        base = Paciente.objects.select_related("kine_asignado").prefetch_related(
+            "llamados", "inasistencias"
+        )
+        estados_activos = [
+            Paciente.Estado.PENDIENTE,
+            Paciente.Estado.RESCATE,
+            Paciente.Estado.INGRESADO,
+        ]
+
+        grupos = {
+            "alta_sin_responsable": base.filter(
+                prioridad=Paciente.Prioridad.ALTA,
+                kine_asignado__isnull=True,
+                estado=Paciente.Estado.PENDIENTE,
+            ),
+            "sobre_90_dias": base.filter(
+                fecha_derivacion__lt=corte_90_dias,
+                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE],
+            ),
+            "pendientes_con_1_intento": base.filter(
+                estado=Paciente.Estado.PENDIENTE,
+                n_intentos_contacto=1,
+            ),
+            "rescates_activos": base.filter(estado=Paciente.Estado.RESCATE),
+            "ingresados_sin_proxima_atencion": base.filter(
+                estado=Paciente.Estado.INGRESADO,
+                proxima_atencion__isnull=True,
+            ),
+            "posible_abandono": base.filter(
+                estado=Paciente.Estado.INGRESADO,
+                n_inasistencias__gte=2,
+            ),
+            "telefonos_incompletos": base.filter(
+                estado__in=estados_activos,
+                telefono="",
+                telefono_recados="",
+            ),
+        }
+
+        return Response(
+            {
+                nombre: self._serializar_grupo_alerta(queryset)
+                for nombre, queryset in grupos.items()
             }
         )
 

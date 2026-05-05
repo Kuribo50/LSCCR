@@ -12,6 +12,10 @@ ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de 
 - Inasistencias: registro de ausencias a sesiones de pacientes `INGRESADOS`; dos inasistencias no justificadas generan alerta para evaluar `ABANDONO`, sin cambiar el estado automaticamente.
 - Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, llamados e inasistencias.
 
+## Trabajo de hoy y alertas operativas
+
+La seccion Trabajo de hoy orienta la gestion diaria del CCR mostrando pacientes que requieren accion, como altas sin responsable, rescates activos, esperas prolongadas, ingresados sin proxima atencion o posibles abandonos. Es una ayuda operativa para priorizar trabajo y no reemplaza el criterio clinico, Trak ni la ficha clinica institucional.
+
 ## Estructura
 
 - `backend/`: API Django + Django REST Framework.
