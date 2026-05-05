@@ -159,7 +159,7 @@ export default function PerfilPage() {
           <h3 className="text-sm font-bold text-gray-700 mb-4">Mi actividad en el sistema</h3>
           <div className={`grid gap-4 ${user.rol === 'KINE' ? 'grid-cols-2' : 'grid-cols-3'}`}>
             {user.rol === 'KINE' && <>
-              <Stat label="Mis pacientes activos" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
+              <Stat label="Mi cartera activa" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
               <Stat label="Lista de espera global" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
             </>}
             {user.rol === 'ADMINISTRATIVO' && <>
@@ -182,7 +182,7 @@ export default function PerfilPage() {
             <a href="/usuarios" className="text-xs font-semibold text-[#335fdb] hover:underline">Gestionar usuarios →</a>
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <Stat label="Kinesiólogos activos" value={kinesActivos} color="#065F46" bg="#ECFDF5" />
+            <Stat label="Responsables CCR activos" value={kinesActivos} color="#065F46" bg="#ECFDF5" />
             <Stat label="Administrativos" value={adminstrativosActivos} color="#335fdb" bg="#ecf5f8" />
             <Stat label="Administradores" value={adminActivos} color="#5B21B6" bg="#F5F3FF" />
           </div>
@@ -214,7 +214,7 @@ export default function PerfilPage() {
             {[
               { label: 'Importar derivaciones', href: '/importar', icon: '📁' },
               { label: 'Historial mensual', href: '/historial-mensual', icon: '📅' },
-              { label: 'Cola de llamadas', href: '/llamados', icon: '📞' },
+              { label: 'Contactabilidad', href: '/llamados', icon: '📞' },
               { label: 'Estadísticas', href: '/analisis/estadisticas', icon: '📊' },
             ].map(link => (
               <a key={link.href} href={link.href}

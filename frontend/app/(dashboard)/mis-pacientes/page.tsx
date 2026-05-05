@@ -319,7 +319,7 @@ export default function MisPacientesPage() {
       setPacientes(data);
     } catch {
       setPacientes([]);
-      setError("No se pudo cargar la cartera de mis pacientes.");
+      setError("No se pudo cargar mi cartera.");
     } finally {
       setLoading(false);
     }
@@ -476,17 +476,17 @@ export default function MisPacientesPage() {
         ? [
             columnHelper.accessor((row) => row.patient.kine_asignado_nombre, {
               id: "kine_asignado_nombre",
-              header: "Kinesiólogo",
+              header: "Responsable CCR",
               enableColumnFilter: true,
               filterFn: multiSelectFilter,
               enableResizing: true,
               size: 160,
               minSize: 120,
-              meta: { label: "Kinesiólogo", filterable: true } satisfies ColumnMeta,
+              meta: { label: "Responsable CCR", filterable: true } satisfies ColumnMeta,
               cell: (info) => (
               <div
                 className="truncate font-semibold text-gray-800"
-                title={info.getValue() || "Sin Kinesiólogo"}
+                title={info.getValue() || "Sin responsable"}
               >
                 {toCapitalizedWords(info.getValue() || "Sin asignar")}
               </div>
@@ -675,7 +675,7 @@ export default function MisPacientesPage() {
                 onClick={() => setSeleccionado(paciente)}
                 className="ccr-table-action ccr-action-view"
               >
-                Ver ficha
+                Ver ficha operativa
               </button>
               {user?.rol === "ADMIN" && (
                 <button

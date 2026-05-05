@@ -105,14 +105,14 @@ def crear_excel_pacientes(
         "Profesional",
         "Prioridad",
         "Categoría",
-        "Responsable",
+        "Responsable CCR",
         "Estado",
-        "Intentos contacto",
+        "Contactos",
         "Inasistencias",
         "Próxima atención",
         "Fecha ingreso",
         "Fecha egreso",
-        "Observaciones",
+        "Observaciones operativas",
     ]
     if incluir_importacion:
         columnas.extend(["Importación origen", "Periodo", "Fecha subida importación"])

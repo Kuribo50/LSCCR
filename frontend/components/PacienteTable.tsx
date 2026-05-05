@@ -75,7 +75,7 @@ export default function PacienteTable({
                   Categoría
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
-                  Responsable
+                  Responsable CCR
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Estado
@@ -94,7 +94,7 @@ export default function PacienteTable({
                     {daysMode === "ingreso"
                       ? "Días desde el ingreso"
                       : daysMode === "llamados"
-                        ? "Días en llamados"
+                        ? "Días en contactabilidad"
                         : "Días en lista"}
                     <span className="text-[10px]">{orderingLabel}</span>
                   </button>
@@ -119,7 +119,7 @@ export default function PacienteTable({
                   onAsignarme={async (p) => {
                     if (
                       !window.confirm(
-                        "¿Estás seguro que deseas tomar a este paciente? Comenzará su seguimiento y pasará a tu sección Mis Pacientes.",
+                        "¿Estás seguro que deseas tomar a este paciente? Comenzará su seguimiento y pasará a tu sección Mi cartera.",
                       )
                     ) {
                       return;

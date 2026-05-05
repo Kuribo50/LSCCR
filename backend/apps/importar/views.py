@@ -208,14 +208,14 @@ def _build_observacion_revision(
     motivo = registro.get("error") or registro.get("motivo") or ""
     if tipo == "RECURRENTE":
         accion = (
-            "El paciente ya existía en lista de espera. Se mantiene su ficha y "
+            "El paciente ya existía en lista de espera. Se mantiene su ficha operativa y "
             "se registra la aparición de este corte para seguimiento."
         )
         motivo = motivo or "Registro repetido en el sistema."
     else:
         accion = (
-            "No se creó una ficha nueva porque el registro trae datos incompletos "
-            "o inconsistentes. Si el RUT coincide con una ficha existente, queda vinculado para revisión."
+            "No se creó una ficha operativa nueva porque el registro trae datos incompletos "
+            "o inconsistentes. Si el RUT coincide con una ficha operativa existente, queda vinculado para revisión."
         )
 
     return {
@@ -304,7 +304,7 @@ def _registrar_observaciones_revision(
                     estado_nuevo=paciente.estado,
                     notas=(
                         f"Observación del corte {observacion['periodo_label']}: "
-                        f"se mantiene ficha existente para revisión. Motivo: {motivo}"
+                        f"se mantiene ficha operativa existente para revisión. Motivo: {motivo}"
                     ),
                 )
             )
@@ -790,9 +790,9 @@ class ObservacionRevisionDetalleView(APIView):
                     observaciones=observaciones_texto,
                     importacion_origen=importacion,
                 )
-                movimiento_nota = "Ficha creada desde revisión de importación."
+                movimiento_nota = "Ficha operativa creada desde revisión de importación."
             else:
-                movimiento_nota = "Observación vinculada a ficha existente desde revisión de importación."
+                movimiento_nota = "Observación vinculada a ficha operativa existente desde revisión de importación."
 
             observacion = {
                 **observacion,
@@ -807,7 +807,7 @@ class ObservacionRevisionDetalleView(APIView):
                 "observaciones": observaciones_texto,
             }
             if not resolucion:
-                resolucion = "Datos completados y ficha vinculada."
+                resolucion = "Datos completados y ficha operativa vinculada."
 
             MovimientoPaciente.objects.create(
                 paciente=paciente,
@@ -1105,7 +1105,7 @@ class PlantillaImportacionView(APIView):
 class ResetPoblacionView(APIView):
     """
     DELETE /api/importar/reset
-    Elimina TODOS los pacientes sin kinesiolo'go asignado.
+    Elimina TODOS los pacientes sin responsable CCR asignado.
     Los pacientes ASIGNADOS se conservan intactos.
     Tambien limpia el historial de importaciones.
     Solo accesible para ADMIN.
@@ -1121,7 +1121,7 @@ class ResetPoblacionView(APIView):
             )
 
         # Solo eliminamos pacientes que:
-        # 1. No tengan kinesiólogo asignado
+        # 1. No tengan responsable CCR asignado.
         # 2. Estén en estado PENDIENTE o RESCATE
         # (Los INGRESADOS, EGRESADOS, ALTA, DERIVADO, ABANDONO se mantienen)
         sin_asignar_qs = Paciente.objects.filter(

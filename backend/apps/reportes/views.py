@@ -229,7 +229,7 @@ def crear_excel_responsables(data):
     ws["A2"] = f"Periodo: {data['periodo_label']}"
     ws["A3"] = f"Fecha de generación: {date.today().strftime('%d/%m/%Y')}"
     headers = [
-        "Responsable",
+        "Responsable CCR",
         "Asignados corte",
         "Pendientes",
         "Rescate",

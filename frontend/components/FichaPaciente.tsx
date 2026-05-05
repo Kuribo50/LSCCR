@@ -246,7 +246,7 @@ export default function FichaPaciente({
                 className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
               >
                 <FiPrinter size={14} />
-                Imprimir ficha
+                Imprimir ficha operativa
               </button>
             </div>
           </div>
@@ -296,7 +296,7 @@ export default function FichaPaciente({
                 className="inline-flex items-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-800"
               >
                 <FiPhone size={14} />
-                Registrar llamado
+                Registrar contacto
               </button>
             )}
             {paciente.estado === "INGRESADO" && puedeCambiarEstado && (
@@ -330,8 +330,8 @@ export default function FichaPaciente({
                 <Field label="Mayor 60" value={paciente.mayor_60 ? "Sí" : "No"} />
                 <Field label="Usuario preferente" value="No registrado" />
                 <Field
-                  label="Responsable"
-                  value={paciente.kine_asignado_nombre ?? "Sin asignar"}
+                  label="Responsable CCR"
+                  value={paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin asignar"}
                 />
               </div>
             </Section>
@@ -360,14 +360,14 @@ export default function FichaPaciente({
                   value={paciente.n_intentos_contacto}
                 />
                 <Field
-                  label="Último llamado"
+                  label="Último contacto"
                   value={
                     ultimoLlamado
                       ? `${formatearFechaHora(ultimoLlamado.fecha)} · ${ultimoLlamado.resultado_label}`
-                      : "Sin llamados"
+                      : "Sin contactos"
                   }
                 />
-                <Field label="Total llamados" value={totalLlamados} />
+                <Field label="Total contactos" value={totalLlamados} />
                 <Field
                   label="Próxima acción"
                   value={ultimoLlamado?.proxima_accion || "-"}
@@ -414,7 +414,7 @@ export default function FichaPaciente({
             </Section>
           </div>
 
-          <Section icon={<FiClock />} title="Historial">
+          <Section icon={<FiClock />} title="Historial operativo">
             <div className="mb-4 flex flex-wrap gap-2">
               {(["movimientos", "llamados", "inasistencias"] as TabHistorial[]).map(
                 (item) => (
@@ -431,7 +431,7 @@ export default function FichaPaciente({
                     {item === "movimientos"
                       ? `Movimientos (${movimientos.length})`
                       : item === "llamados"
-                        ? `Llamados (${llamados.length})`
+                        ? `Contactos (${llamados.length})`
                         : `Inasistencias (${inasistencias.length})`}
                   </button>
                 ),
@@ -588,7 +588,7 @@ function HistorialMovimientos({ items }: { items: MovimientoPaciente[] }) {
 
 function HistorialLlamados({ items }: { items: LlamadoPaciente[] }) {
   if (items.length === 0) {
-    return <p className="text-sm text-slate-500">Sin llamados registrados.</p>;
+    return <p className="text-sm text-slate-500">Sin contactos registrados.</p>;
   }
   return (
     <ol className="space-y-3">

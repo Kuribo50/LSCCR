@@ -303,7 +303,7 @@ export default function CalendarioPage() {
                   <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <div className="min-w-0">
                       <p className="truncate text-xs font-bold text-slate-800">{p.nombre}</p>
-                      <p className="truncate text-[10px] text-slate-500">{p.kine_asignado_nombre || "Sin profesional"}</p>
+                      <p className="truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
                     </div>
                     <button
                       onClick={() => setProgramando(p)}

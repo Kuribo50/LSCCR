@@ -130,7 +130,7 @@ export default function ProximaAtencionModal({
                 <FiCalendar size={20} />
               </div>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Agenda clínica</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Agenda operativa</p>
                 <h3 className="text-lg font-black text-slate-900">Programar atención</h3>
               </div>
             </div>

@@ -44,6 +44,8 @@ export interface Paciente {
   mayor_60: boolean;
   kine_asignado: number | null;
   kine_asignado_nombre: string | null;
+  responsable_asignado?: number | null;
+  responsable_nombre?: string | null;
   estado: Estado;
   fecha_cambio_estado: string | null;
   n_intentos_contacto: number;
@@ -152,6 +154,8 @@ export interface KineReporte {
   rescate: number;
   altas: number;
 }
+
+export type ReporteResponsable = KineReporte;
 
 export interface ReporteResumenMensual {
   mes: number;
@@ -451,7 +455,7 @@ export const PRIORIDAD_LABELS: Record<Prioridad, string> = {
   LICENCIA_MEDICA: "Lic. Médica",
 };
 
-// Colores por kine (nombre → color hex)
+// Colores por responsable CCR (nombre -> color hex)
 export const KINE_COLORES: Record<string, string> = {
   "Seba Salgado": "#2D6CDF",
   "Seba Campos": "#D63384",

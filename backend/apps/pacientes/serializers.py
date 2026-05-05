@@ -14,7 +14,7 @@ from .services import ESTADOS_REQUIEREN_NOTA
 
 class LlamadoPacienteSerializer(serializers.ModelSerializer):
     usuario_nombre = serializers.CharField(source="usuario.nombre", read_only=True)
-    resultado_label = serializers.CharField(source="get_resultado_display", read_only=True)
+    resultado_label = serializers.SerializerMethodField()
 
     class Meta:
         model = LlamadoPaciente
@@ -31,6 +31,11 @@ class LlamadoPacienteSerializer(serializers.ModelSerializer):
             "proxima_accion",
         )
         read_only_fields = ("id", "usuario", "usuario_nombre", "fecha", "resultado_label")
+
+    def get_resultado_label(self, obj: LlamadoPaciente) -> str:
+        if obj.resultado == LlamadoPaciente.Resultado.REAGENDAR_LLAMADO:
+            return "Reagendar contacto"
+        return obj.get_resultado_display()
 
 
 class InasistenciaPacienteSerializer(serializers.ModelSerializer):
@@ -53,6 +58,8 @@ class InasistenciaPacienteSerializer(serializers.ModelSerializer):
 
 class PacienteSerializer(serializers.ModelSerializer):
     kine_asignado_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
+    responsable_asignado = serializers.IntegerField(source="kine_asignado_id", read_only=True)
+    responsable_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
     dias_en_lista = serializers.SerializerMethodField()
     llamados_count = serializers.SerializerMethodField()
     inasistencias_count = serializers.SerializerMethodField()
@@ -76,6 +83,8 @@ class PacienteSerializer(serializers.ModelSerializer):
             "mayor_60",
             "kine_asignado",
             "kine_asignado_nombre",
+            "responsable_asignado",
+            "responsable_nombre",
             "estado",
             "fecha_cambio_estado",
             "n_intentos_contacto",
@@ -104,6 +113,8 @@ class PacienteSerializer(serializers.ModelSerializer):
             "id",
             "id_ccr",
             "mayor_60",
+            "responsable_asignado",
+            "responsable_nombre",
             "fecha_cambio_estado",
             "n_intentos_contacto",
             "n_inasistencias",

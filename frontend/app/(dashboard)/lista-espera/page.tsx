@@ -573,7 +573,7 @@ export default function ListaEsperaPage() {
                 onClick={() => setSeleccionado(paciente)}
                 className="ccr-table-action ccr-action-view"
               >
-                Ver ficha
+                Ver ficha operativa
               </button>
               {user?.rol === "ADMIN" && (
                 <button

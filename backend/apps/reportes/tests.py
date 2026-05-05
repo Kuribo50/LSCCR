@@ -159,4 +159,4 @@ class ReportesOperativosTests(APITestCase):
         workbook = load_workbook(BytesIO(response.content))
         ws = workbook.active
         self.assertEqual(ws["A1"].value, "Reporte por responsable CCR")
-        self.assertIn("Responsable", [cell.value for cell in ws[5]])
+        self.assertIn("Responsable CCR", [cell.value for cell in ws[5]])

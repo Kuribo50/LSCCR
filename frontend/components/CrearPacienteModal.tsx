@@ -282,9 +282,9 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                     </div>
                   </div>
 
-                  {/* Row 3: Clinic Information */}
+                  {/* Bloque de datos de derivación. */}
                   <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
-                    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Informacion Clinica</h3>
+                    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Información de derivación</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1.5 sm:col-span-2">
                         <label className="text-[12px] font-semibold text-[#1D3B2A]">

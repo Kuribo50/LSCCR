@@ -215,9 +215,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
         self.check_object_permissions(request, paciente)
 
         if paciente.kine_asignado_id is not None:
-            nombre_kine = paciente.kine_asignado.nombre if paciente.kine_asignado else "otro kinesiólogo"
+            nombre_responsable = paciente.kine_asignado.nombre if paciente.kine_asignado else "otro responsable CCR"
             return Response(
-                {"detail": f"Este paciente ya fue tomado por {nombre_kine}. No puede asignarse dos veces."},
+                {"detail": f"Este paciente ya fue tomado por {nombre_responsable}. No puede asignarse dos veces."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -231,7 +231,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             Paciente.Estado.INGRESADO,
         }:
             paciente._movimiento_usuario = request.user
-            paciente._movimiento_notas = "Asignado por kinesiólogo. Pasa a seguimiento."
+            paciente._movimiento_notas = "Asignado por responsable CCR. Pasa a seguimiento."
             paciente.estado = Paciente.Estado.PENDIENTE
             paciente.fecha_cambio_estado = timezone.now()
             campos.extend(["estado", "fecha_cambio_estado"])
@@ -257,12 +257,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
         if request.user.rol == Usuario.Rol.ADMINISTRATIVO:
             if estado_nuevo not in {Paciente.Estado.INGRESADO, Paciente.Estado.RESCATE}:
                 return Response(
-                    {"detail": "Administrativo no puede cambiar a estados clínicos."},
+                    {"detail": "Administrativo no puede cambiar a estados de cierre operativo."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
             if estado_nuevo == Paciente.Estado.INGRESADO and paciente.kine_asignado_id is None:
                 return Response(
-                    {"detail": "No puede confirmar asistencia sin kinesiólogo asignado."},
+                    {"detail": "No puede confirmar asistencia sin responsable CCR asignado."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -307,12 +307,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
         if paciente.kine_asignado_id is None:
             return Response(
-                {"detail": "Debe existir un kinesiólogo asignado antes del llamado."},
+                {"detail": "Debe existir un responsable CCR asignado antes del contacto."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if paciente.estado not in {Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE}:
             return Response(
-                {"detail": "Solo se puede registrar llamado en estado PENDIENTE o RESCATE."},
+                {"detail": "Solo se puede registrar contacto en estado PENDIENTE o RESCATE."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

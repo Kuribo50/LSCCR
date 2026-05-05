@@ -37,13 +37,13 @@ const ACTION_CARDS = [
   {
     title: "Lista de espera",
     href: "/lista-espera",
-    description: "Revisa pacientes sin asignar y su prioridad clínica.",
+    description: "Revisa pacientes sin responsable y su prioridad operativa.",
     icon: FiUsers,
     color: "#335fdb",
     tint: "from-blue-100 to-blue-50",
   },
   {
-    title: "Mis pacientes",
+    title: "Mi cartera",
     href: "/mis-pacientes",
     description: "Accede rápido a tu cartera activa de seguimiento.",
     icon: FiUser,
@@ -51,9 +51,9 @@ const ACTION_CARDS = [
     tint: "from-teal-100 to-emerald-50",
   },
   {
-    title: "Cola de llamados",
+    title: "Contactabilidad",
     href: "/llamados",
-    description: "Gestiona rescates y pacientes en contacto telefónico.",
+    description: "Gestiona contactos, rescates e intentos previos al ingreso.",
     icon: FiPhone,
     color: "#ca8702",
     tint: "from-orange-100 to-amber-50",
@@ -236,7 +236,7 @@ export default function InicioPage() {
               <FiActivity size={12} /> Centro Comunitario de Rehabilitación
             </div>
             <div>
-              <h1 className="text-3xl font-black leading-tight text-white sm:text-4xl">Panel de Gestión Clínica</h1>
+              <h1 className="text-3xl font-black leading-tight text-white sm:text-4xl">Panel de Gestión Operativa CCR</h1>
               <p className="mt-2 text-sm text-blue-50 sm:text-base">
                 {isKine
                   ? "Seguimiento de tu cartera activa y agenda diaria de atenciones."

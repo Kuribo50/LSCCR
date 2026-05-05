@@ -142,7 +142,7 @@ export default function Topbar({ user }: { user: Usuario }) {
                       onClick={verPerfil}
                       className="mt-4 w-full rounded-xl bg-[#335fdb] py-2.5 text-sm font-semibold text-white hover:bg-[#284fc0] transition"
                     >
-                      Ver ficha completa →
+                      Ver ficha operativa →
                     </button>
                   </div>
                 </div>

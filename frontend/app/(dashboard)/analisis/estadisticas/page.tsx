@@ -102,7 +102,7 @@ export default function EstadisticasPage() {
       ["Egresos del mes", resumen.actividad_mes.egresos_total],
       ["Sobre 90 dias", resumen.corte.sobre_90_dias],
       [],
-      ["Responsable", "Asignados corte", "Pendientes", "Rescate", "Ingresos mes", "Egresos mes"],
+      ["Responsable CCR", "Asignados corte", "Pendientes", "Rescate", "Ingresos mes", "Egresos mes"],
       ...porResponsable.responsables.map((item) => [
         item.responsable_nombre ?? "Sin nombre",
         item.total_asignados_corte,
@@ -239,7 +239,7 @@ export default function EstadisticasPage() {
 
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <DistributionCard title="Resumen del corte por estado" items={resumen.por_estado} labelKey="label" />
-            <DistributionCard title="Prioridad clínica" items={resumen.por_prioridad} labelKey="label" />
+            <DistributionCard title="Prioridad operativa" items={resumen.por_prioridad} labelKey="label" />
             <DistributionCard title="Categoría" items={resumen.por_categoria} labelKey="label" />
           </section>
 
@@ -390,7 +390,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
       <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
         <thead>
           <tr className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
-            <th className="px-3 py-3">Responsable</th>
+            <th className="px-3 py-3">Responsable CCR</th>
             <th className="px-3 py-3">Asignados corte</th>
             <th className="px-3 py-3">Pendientes</th>
             <th className="px-3 py-3">Rescate</th>

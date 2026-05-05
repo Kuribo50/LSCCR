@@ -138,8 +138,8 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
                    <p>{derivacion.profesional}</p>
                  </div>
                  <div>
-                   <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Kinesiólogo Asignado</p>
-                   <p className="font-medium">{derivacion.kine_asignado_nombre || 'Sin Asignar'}</p>
+                   <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Responsable CCR</p>
+                   <p className="font-medium">{derivacion.responsable_nombre || derivacion.kine_asignado_nombre || 'Sin asignar'}</p>
                  </div>
               </div>
 

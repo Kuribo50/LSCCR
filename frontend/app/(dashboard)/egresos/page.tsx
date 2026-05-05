@@ -208,7 +208,7 @@ export default function EgresosPage() {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') event.preventDefault()
                 }}
-                placeholder="Buscar por nombre, RUT, diagnóstico o kinesiólogo"
+                placeholder="Buscar por nombre, RUT, diagnóstico o responsable"
                 className="ccr-control-input w-full px-9 py-2.5 text-xs"
                 aria-label="Buscar egresos"
               />
@@ -233,7 +233,7 @@ export default function EgresosPage() {
                 onChange={(event) => setFiltroKine(event.target.value)}
                 className="ccr-control-input px-3 py-2.5 text-xs"
               >
-                <option value="">Todos los kinesiólogos</option>
+                <option value="">Todos los responsables</option>
                 {kineOptions.map((kine) => (
                   <option key={kine} value={kine}>
                     {toCapitalizedWords(kine)}
@@ -293,7 +293,7 @@ export default function EgresosPage() {
                     Categoría
                   </th>
                   <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
-                    Kinesiólogo
+                    Responsable CCR
                   </th>
                   <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
                     Tipo de egreso
@@ -342,7 +342,7 @@ export default function EgresosPage() {
                       </td>
                       <td className="max-w-[170px] border-r border-blue-100 px-4 py-2.5 text-slate-700 dark:!border-[#262626] dark:!text-[#daebf1]">
                         <div className="truncate">
-                          {toCapitalizedWords(paciente.kine_asignado_nombre ?? 'Sin asignar')}
+                          {toCapitalizedWords(paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? 'Sin asignar')}
                         </div>
                       </td>
                       <td className="border-r border-blue-100 px-4 py-2.5 dark:!border-[#262626]">
@@ -369,7 +369,7 @@ export default function EgresosPage() {
                           onClick={() => setSeleccionado(paciente)}
                           className="ccr-control-button px-2.5 py-1.5 text-[11px]"
                         >
-                          Ver ficha
+                          Ver ficha operativa
                         </button>
                       </td>
                     </tr>

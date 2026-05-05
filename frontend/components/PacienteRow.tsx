@@ -66,6 +66,7 @@ export default function PacienteRow({
     proximaAtencion && !Number.isNaN(proximaAtencion.getTime());
 
   const kineColor = getKineColor(paciente.kine_asignado_nombre);
+  const responsableNombre = paciente.responsable_nombre ?? paciente.kine_asignado_nombre;
   const diasDesdeIngreso =
     calcularDiasDesde(paciente.fecha_ingreso ?? paciente.fecha_cambio_estado) ??
     paciente.dias_en_lista;
@@ -127,7 +128,7 @@ export default function PacienteRow({
             }}
           />
           <span className="max-w-[110px] truncate text-slate-700 dark:text-[#b5d8e3]">
-            {toCapitalizedWords(paciente.kine_asignado_nombre ?? "Sin asignar")}
+            {toCapitalizedWords(responsableNombre ?? "Sin asignar")}
           </span>
         </div>
       </td>
@@ -159,7 +160,7 @@ export default function PacienteRow({
           daysMode === "ingreso"
             ? "días desde ingreso"
             : daysMode === "llamados"
-              ? "días en llamados"
+              ? "días en contactabilidad"
               : "días en lista"
         }`}
       >
@@ -200,7 +201,7 @@ export default function PacienteRow({
               }}
               className="ccr-table-action ccr-action-call"
             >
-              Llamar
+              Contactar
             </button>
           )}
           <button
@@ -211,7 +212,7 @@ export default function PacienteRow({
             }}
             className="ccr-table-action ccr-action-view"
           >
-            Ver ficha
+            Ver ficha operativa
           </button>
           {onEliminar && usuario.rol === "ADMIN" && (
             <button

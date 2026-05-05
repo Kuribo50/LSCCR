@@ -52,7 +52,7 @@ export default function LlamadosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Filtros locales de la cola de llamados.
+  // Filtros locales del módulo de contactabilidad.
   const [searchQuery, setSearchQuery] = useState("");
   const [prioridadFilter, setPrioridadFilter] = useState("TODAS");
   const [estadoFilter, setEstadoFilter] = useState("TODOS");
@@ -91,7 +91,7 @@ export default function LlamadosPage() {
       setPacientes(todos);
     } catch {
       setPacientes([]);
-      setError("No se pudo cargar la cola de llamados.");
+      setError("No se pudo cargar la lista de contactabilidad.");
     } finally {
       setLoading(false);
     }
@@ -141,9 +141,9 @@ export default function LlamadosPage() {
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Cola de Llamados</h1>
+              <h1 className="text-lg font-bold text-gray-900">Contactabilidad</h1>
               <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Gestión de pacientes en estado pendiente o rescate.
+                Gestión operativa de contactos para pacientes pendientes o en rescate.
               </p>
             </div>
             <button
@@ -160,7 +160,7 @@ export default function LlamadosPage() {
               className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
             >
               <FiPrinter size={13} />
-              Imprimir lista de llamados
+              Imprimir lista de contactabilidad
             </button>
           </div>
 
@@ -247,7 +247,7 @@ export default function LlamadosPage() {
         />
       )}
       <section className="ccr-llamados-print hidden">
-        <h1>Lista de llamados CCR</h1>
+        <h1>Lista de contactabilidad CCR</h1>
         <p>Fecha de impresión: {formatearFechaImpresion()}</p>
         <table>
           <thead>
@@ -255,7 +255,7 @@ export default function LlamadosPage() {
               <th>Nombre</th>
               <th>RUT</th>
               <th>Prioridad</th>
-              <th>Responsable</th>
+              <th>Responsable CCR</th>
               <th>Teléfono</th>
               <th>Intentos contacto</th>
               <th>Estado</th>
@@ -268,7 +268,7 @@ export default function LlamadosPage() {
                 <td>{paciente.nombre}</td>
                 <td>{paciente.rut}</td>
                 <td>{PRIORIDAD_LABELS[paciente.prioridad]}</td>
-                <td>{paciente.kine_asignado_nombre ?? "Sin responsable"}</td>
+                <td>{paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable"}</td>
                 <td>{paciente.telefono || paciente.telefono_recados || "Sin teléfono"}</td>
                 <td>{paciente.n_intentos_contacto}</td>
                 <td>{ESTADO_LABELS[paciente.estado]}</td>

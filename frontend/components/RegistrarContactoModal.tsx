@@ -60,7 +60,7 @@ export default function RegistrarContactoModal({
           ? "Contacto confirmado. Paciente pasa a INGRESADO."
           : actualizado.estado === "RESCATE"
             ? "Segundo intento fallido. Paciente pasa a RESCATE."
-            : "Llamado registrado.";
+            : "Contacto registrado.";
       setSuccess(mensaje);
       onSuccess(actualizado);
       window.setTimeout(onClose, 900);
@@ -145,7 +145,7 @@ export default function RegistrarContactoModal({
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Observaciones del llamado (opcional)
+                  Observación operativa del contacto (opcional)
                 </label>
                 <textarea
                   value={notas}

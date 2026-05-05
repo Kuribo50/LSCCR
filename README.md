@@ -1,16 +1,16 @@
 # Lista de Espera CCR
 
-Sistema web para gestion de lista de espera, pacientes, calendario de citas, llamados, importaciones mensuales y usuarios.
+Sistema web para gestion operativa de lista de espera, pacientes, calendario de citas, contactabilidad, importaciones mensuales y usuarios.
 
 ## Alcance del sistema
 
 ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de lista de espera, contactabilidad, asignacion, seguimiento y reportes del CCR. No reemplaza Trak ni la ficha clinica institucional.
 
-- `RESCATE`: estado previo al ingreso para pacientes con contactabilidad fallida, por ejemplo dos llamados sin respuesta antes de confirmar asistencia.
+- `RESCATE`: estado previo al ingreso para pacientes con contactabilidad fallida, por ejemplo dos contactos sin respuesta antes de confirmar asistencia.
 - `ABANDONO`: cierre posterior al ingreso cuando el equipo evalua que el paciente abandono el proceso. No corresponde usarlo desde `PENDIENTE` ni desde `RESCATE`.
-- Historial de llamados: registro operativo de cada contacto telefonico, separado del contador de intentos de contacto.
+- Historial de contactos: registro operativo de cada contacto, separado del contador de intentos de contacto.
 - Inasistencias: registro de ausencias a sesiones de pacientes `INGRESADOS`; dos inasistencias no justificadas generan alerta para evaluar `ABANDONO`, sin cambiar el estado automaticamente.
-- Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, llamados e inasistencias.
+- Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, contactos e inasistencias.
 
 ## Trabajo de hoy y alertas operativas
 
@@ -22,7 +22,7 @@ Los reportes operativos permiten revisar un resumen mensual del corte de derivac
 
 - Resumen mensual: muestra el estado actual de los pacientes derivados en el mes consultado.
 - Actividad del mes: cuenta ingresos y egresos ocurridos durante el periodo, separados del corte mensual.
-- Reporte por responsable: resume asignados, pendientes, rescates, ingresos y egresos por kinesiólogo responsable, manteniendo compatibilidad con `kine_asignado`.
+- Reporte por responsable: resume asignados, pendientes, rescates, ingresos y egresos por responsable CCR, manteniendo compatibilidad tecnica con `kine_asignado`.
 - Tendencia anual: compara derivaciones, ingresos y egresos por mes para apoyar la gestion.
 
 Estos reportes son apoyo operativo del CCR y no reemplazan Trak, la ficha clinica institucional ni el criterio clinico del equipo.
@@ -46,8 +46,8 @@ El sistema permite sacar respaldos operativos sin volver al Excel manual.
 - Exportar lista filtrada: descarga la lista de espera respetando filtros operativos como alerta, mes, año, importación y búsqueda.
 - Exportar corte mensual: descarga los pacientes derivados en un mes/año con su estado actual e importación de origen.
 - Exportar reporte por responsable: descarga la tabla mensual de carga, ingresos y egresos por responsable.
-- Imprimir ficha operativa: genera una versión legible de la ficha CCR con datos generales, gestión, llamados, inasistencias y movimientos.
-- Imprimir lista de llamados: imprime la cola visible de pacientes pendientes o en rescate.
+- Imprimir ficha operativa: genera una versión legible de la ficha CCR con datos generales, gestión, contactos, inasistencias y movimientos.
+- Imprimir lista de contactabilidad: imprime la lista visible de pacientes pendientes o en rescate.
 
 Las exportaciones `.xlsx` y archivos impresos son material operativo. No subas exportaciones reales al repositorio.
 
@@ -77,6 +77,15 @@ git check-ignore -v .env backend/db.sqlite3 backend/media
 ## Convención de comentarios
 
 Los comentarios nuevos del codigo deben estar en español, con explicaciones simples y orientadas a mantener claras las reglas operativas del CCR.
+
+## Convención de nombres
+
+- Responsable CCR: persona del equipo que toma el seguimiento operativo del paciente.
+- Kinesiólogo: cargo profesional del usuario; no debe usarse como nombre visible de asignación operativa.
+- Contactabilidad: módulo operativo para registrar contactos e intentos previos al ingreso.
+- Ficha operativa: vista interna de seguimiento; no es ficha clínica institucional.
+- Observación operativa: nota interna de gestión; no es evolución clínica oficial.
+- Los nombres internos antiguos, como `kine_asignado`, pueden mantenerse en código por compatibilidad técnica.
 
 ## Desarrollo local
 

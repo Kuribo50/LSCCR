@@ -371,7 +371,7 @@ export default function RevisionImportacionPage() {
                     <td className="px-3 py-3 font-bold text-slate-800 dark:!text-white">
                       <span className="block max-w-[220px] truncate">{item.paciente_nombre || item.nombre || "Paciente sin nombre"}</span>
                       <span className="mt-0.5 block text-[10px] font-semibold text-slate-400 dark:!text-[#6ab0c8]">
-                        {item.paciente_id_ccr || "Sin ficha vinculada"}
+                        {item.paciente_id_ccr || "Sin ficha operativa vinculada"}
                       </span>
                     </td>
                     <td className="px-3 py-3 font-mono text-slate-600 dark:!text-[#b5d8e3]">{item.rut ? formatearRut(item.rut) : "-"}</td>
@@ -436,7 +436,7 @@ export default function RevisionImportacionPage() {
                     <div className="mt-3 space-y-2 text-slate-600 dark:!text-[#b5d8e3]">
                       <p><span className="font-black">Estado:</span> {estadoRevisionLabel(seleccionado)}</p>
                       <p><span className="font-black">Ficha:</span> {seleccionado.paciente_id_ccr || "No vinculada"}</p>
-                      <p><span className="font-black">Kinesiólogo:</span> {seleccionado.kine_asignado_nombre || "Sin asignar"}</p>
+                      <p><span className="font-black">Responsable CCR:</span> {seleccionado.kine_asignado_nombre || "Sin asignar"}</p>
                       <p><span className="font-black">Archivo:</span> {seleccionado.archivo_nombre}</p>
                     </div>
                   </div>

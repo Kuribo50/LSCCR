@@ -61,7 +61,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
       const msg =
         e && typeof e === 'object' && 'detail' in e
           ? (e as { detail: string }).detail
-          : 'Error al registrar llamado'
+          : 'Error al registrar contacto'
       setError(msg)
     } finally {
       setLoading(false)
@@ -71,7 +71,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
   if (cola.length === 0) {
     return (
       <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm" style={{ border: '0.5px solid #a8d4f0' }}>
-        No hay pacientes en cola de llamados.
+        No hay pacientes en contactabilidad.
       </div>
     )
   }
@@ -82,7 +82,8 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
         <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">{error}</p>
       )}
       {cola.map((p) => {
-        const kineColor = getKineColor(p.kine_asignado_nombre)
+        const responsableNombre = p.responsable_nombre ?? p.kine_asignado_nombre
+        const kineColor = getKineColor(responsableNombre)
         const abriendo = llamandoId === p.id
         const intentoUno = p.n_intentos_contacto === 1
         const intentoDosOMas = p.n_intentos_contacto >= 2
@@ -119,7 +120,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                       className="w-2 h-2 rounded-full"
                       style={{ backgroundColor: kineColor }}
                     />
-                    {p.kine_asignado_nombre ?? '—'}
+                    {responsableNombre ?? '—'}
                   </span>
                   <span className={p.dias_en_lista > 90 ? 'text-red-500 font-semibold' : ''}>
                     {p.dias_en_lista} días
@@ -143,7 +144,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                   }}
                   className="flex-shrink-0 bg-verde-ccr text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-900 transition"
                 >
-                  Llamar
+                  Contactar
                 </button>
               )}
             </div>
@@ -153,7 +154,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                 <textarea
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
-                  placeholder="Notas del llamado (opcional)…"
+                  placeholder="Observación operativa del contacto (opcional)..."
                   rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-verde-ccr resize-none"
                 />
@@ -163,7 +164,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                     disabled={loading}
                     className="flex-1 bg-blue-700 text-white rounded-lg py-2 text-xs font-semibold hover:bg-blue-800 disabled:opacity-60"
                   >
-                    Llamó — confirmar
+                    Contestó y confirma
                   </button>
                   <button
                     onClick={() => registrarLlamado(p, false)}

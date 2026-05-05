@@ -48,6 +48,19 @@ class PacienteWorkflowTests(APITestCase):
         data.update(overrides)
         return Paciente.objects.create(**data)
 
+    def test_listado_incluye_aliases_de_responsable_y_campos_compatibles(self):
+        paciente = self.crear_paciente(nombre="Paciente Alias")
+
+        response = self.client.get("/api/pacientes/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        item = next(p for p in data if p["id"] == paciente.id)
+        self.assertEqual(item["kine_asignado"], self.kine.id)
+        self.assertEqual(item["kine_asignado_nombre"], self.kine.nombre)
+        self.assertEqual(item["responsable_asignado"], self.kine.id)
+        self.assertEqual(item["responsable_nombre"], self.kine.nombre)
+
     def test_registrar_llamado_contesto_crea_historial_e_ingresa(self):
         paciente = self.crear_paciente(fecha_ingreso=None)
 

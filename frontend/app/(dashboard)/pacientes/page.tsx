@@ -143,7 +143,7 @@ export default function PacientesPage() {
                 onClick={() => setVista('cola')}
                 className={`px-3 py-2 transition ${vista === 'cola' ? 'bg-verde-ccr text-white' : 'text-verde-ccr hover:bg-green-50'}`}
               >
-                Cola llamados
+                Contactabilidad
               </button>
             </div>
           )}
@@ -207,7 +207,7 @@ export default function PacientesPage() {
             onChange={(e) => setFiltroKine(e.target.value)}
             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-verde-ccr"
           >
-            <option value="">Todos los kines</option>
+            <option value="">Todos los responsables</option>
             {kines.map((k) => <option key={k.id} value={k.id}>{k.nombre}</option>)}
           </select>
         )}
@@ -220,7 +220,7 @@ export default function PacientesPage() {
               onChange={(e) => setSoloMios(e.target.checked)}
               className="accent-verde-ccr"
             />
-            Solo mis pacientes
+            Solo mi cartera
           </label>
         )}
 
