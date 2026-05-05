@@ -47,6 +47,11 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
   }
 
   async function registrarLlamado(paciente: Paciente, contesto: boolean) {
+    if (!contesto && paciente.estado === 'RESCATE' && !notas.trim()) {
+      setError('Debe registrar una observación para egreso administrativo.')
+      return
+    }
+
     setLoading(true)
     setError('')
     try {
@@ -86,7 +91,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
         const kineColor = getKineColor(responsableNombre)
         const abriendo = llamandoId === p.id
         const intentoUno = p.n_intentos_contacto === 1
-        const intentoDosOMas = p.n_intentos_contacto >= 2
+        const requiereNotaEgreso = p.estado === 'RESCATE'
 
         return (
           <div
@@ -107,9 +112,9 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                       1 intento previo
                     </span>
                   )}
-                  {intentoDosOMas && (
-                    <span className="rounded bg-[#FFEBEE] px-1.5 py-0.5 text-[11px] font-semibold text-[#B71C1C]">
-                      Próximo → Rescate
+                  {requiereNotaEgreso && (
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                      Próximo: egreso administrativo
                     </span>
                   )}
                 </div>
@@ -154,7 +159,11 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                 <textarea
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
-                  placeholder="Observación operativa del contacto (opcional)..."
+                  placeholder={
+                    requiereNotaEgreso
+                      ? "Observación obligatoria para egreso administrativo..."
+                      : "Observación operativa del contacto (opcional)..."
+                  }
                   rows={2}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-verde-ccr resize-none"
                 />
@@ -162,7 +171,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                   <button
                     onClick={() => registrarLlamado(p, true)}
                     disabled={loading}
-                    className="flex-1 bg-blue-700 text-white rounded-lg py-2 text-xs font-semibold hover:bg-blue-800 disabled:opacity-60"
+                    className="flex-1 bg-[#1B5E3B] text-white rounded-lg py-2 text-xs font-semibold hover:bg-[#256B47] disabled:opacity-60"
                   >
                     Contestó y confirma
                   </button>
@@ -170,8 +179,8 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                     onClick={() => registrarLlamado(p, false)}
                     disabled={loading}
                     className={`flex-1 text-white rounded-lg py-2 text-xs font-semibold disabled:opacity-60 ${
-                      intentoDosOMas
-                        ? 'bg-[#D32F2F] hover:bg-red-800'
+                      requiereNotaEgreso
+                        ? 'bg-slate-700 hover:bg-slate-800'
                         : 'bg-orange-500 hover:bg-orange-600'
                     }`}
                   >

@@ -10,6 +10,7 @@ const ESTADOS_NOTA_OBLIGATORIA = new Set<Estado>([
   "ABANDONO",
   "ALTA_MEDICA",
   "EGRESO_VOLUNTARIO",
+  "EGRESO_ADMINISTRATIVO",
   "DERIVADO",
 ]);
 
@@ -17,6 +18,7 @@ const ESTADOS_EGRESO = new Set<Estado>([
   "ABANDONO",
   "ALTA_MEDICA",
   "EGRESO_VOLUNTARIO",
+  "EGRESO_ADMINISTRATIVO",
   "DERIVADO",
 ]);
 
@@ -27,6 +29,7 @@ const ESTADO_DESCRIPCIONES: Partial<Record<Estado, string>> = {
   ABANDONO: "Cierre posterior al ingreso por abandono evaluado.",
   ALTA_MEDICA: "Cierre por alta indicada por el profesional.",
   EGRESO_VOLUNTARIO: "Cierre porque el paciente decide terminar el proceso.",
+  EGRESO_ADMINISTRATIVO: "Cierre operativo por contactabilidad fallida antes del ingreso.",
   DERIVADO: "Cierre por derivacion a otro dispositivo o nivel de atencion.",
 };
 
@@ -50,7 +53,7 @@ export default function CambiarEstadoModal({
 
   const estadosPermitidos = useMemo(() => {
     if (rol === "ADMINISTRATIVO") {
-      return ["INGRESADO", "RESCATE"] as Estado[];
+      return ["INGRESADO", "RESCATE", "EGRESO_ADMINISTRATIVO"] as Estado[];
     }
 
     if (ESTADOS_EGRESO.has(paciente.estado)) {
@@ -62,7 +65,7 @@ export default function CambiarEstadoModal({
     }
 
     if (paciente.estado === "RESCATE") {
-      return ["INGRESADO", "PENDIENTE"] as Estado[];
+      return ["INGRESADO", "EGRESO_ADMINISTRATIVO", "PENDIENTE"] as Estado[];
     }
 
     if (paciente.estado === "INGRESADO") {

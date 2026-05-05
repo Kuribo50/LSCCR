@@ -891,25 +891,25 @@ h6 {
 }
 
 .bg-verde-ccr {
-  background-color: #335fdb !important;
+  background-color: #1B5E3B !important;
 }
 
 .text-verde-ccr {
-  color: #335fdb !important;
+  color: #1B5E3B !important;
 }
 
 .border-verde-ccr {
-  border-color: #335fdb !important;
+  border-color: #1B5E3B !important;
 }
 
 .accent-verde-ccr {
-  accent-color: #335fdb !important;
+  accent-color: #1B5E3B !important;
 }
 
 .focus\:border-verde-ccr:focus,
 .focus\:border-\[\#4CAF7D\]:focus,
 .focus\:border-\[\#5FB88C\]:focus {
-  border-color: #335fdb !important;
+  border-color: #1B5E3B !important;
 }
 
 .focus\:ring-verde-ccr:focus,
@@ -922,11 +922,11 @@ h6 {
 .hover\:bg-\[\#256B47\]:hover,
 .hover\:bg-\[\#14472D\]:hover,
 .hover\:bg-\[\#1A4530\]:hover {
-  background-color: #284fc0 !important;
+  background-color: #256B47 !important;
 }
 
 .hover\:bg-green-50:hover {
-  background-color: #e9f4fb !important;
+  background-color: #E7F3EC !important;
 }
 
 .bg-blue-600,

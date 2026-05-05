@@ -61,6 +61,17 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(item["responsable_asignado"], self.kine.id)
         self.assertEqual(item["responsable_nombre"], self.kine.nombre)
 
+    def test_categoria_borrador_mantiene_valor_y_muestra_no_categorizado(self):
+        paciente = self.crear_paciente(categoria=Paciente.Categoria.BORRADOR)
+
+        response = self.client.get("/api/pacientes/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        item = next(p for p in data if p["id"] == paciente.id)
+        self.assertEqual(item["categoria"], Paciente.Categoria.BORRADOR)
+        self.assertEqual(item["categoria_label"], "No categorizado")
+
     def test_registrar_llamado_contesto_crea_historial_e_ingresa(self):
         paciente = self.crear_paciente(fecha_ingreso=None)
 
@@ -81,30 +92,78 @@ class PacienteWorkflowTests(APITestCase):
             LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO,
         )
 
-    def test_registrar_llamado_no_contesta_incrementa_y_segundo_pasa_a_rescate(self):
+    def test_registrar_llamado_no_contesta_desde_pendiente_pasa_a_rescate(self):
         paciente = self.crear_paciente()
 
-        first = self.client.post(
+        response = self.client.post(
             f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": "Sin respuesta"},
+            {"contesto": False, "notas": ""},
             format="json",
         )
-        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         paciente.refresh_from_db()
         self.assertEqual(paciente.n_intentos_contacto, 1)
-        self.assertEqual(paciente.estado, Paciente.Estado.PENDIENTE)
-
-        second = self.client.post(
-            f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": "Sin respuesta nuevamente"},
-            format="json",
-        )
-        self.assertEqual(second.status_code, status.HTTP_200_OK)
-        paciente.refresh_from_db()
-        self.assertEqual(paciente.n_intentos_contacto, 2)
         self.assertEqual(paciente.estado, Paciente.Estado.RESCATE)
         self.assertNotEqual(paciente.estado, Paciente.Estado.ABANDONO)
-        self.assertEqual(LlamadoPaciente.objects.count(), 2)
+        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 1)
+        self.assertEqual(MovimientoPaciente.objects.filter(paciente=paciente).count(), 1)
+        self.assertEqual(
+            MovimientoPaciente.objects.get(paciente=paciente).notas,
+            "Primer contacto sin respuesta. Pasa a RESCATE.",
+        )
+
+    def test_registrar_llamado_rescate_sin_observacion_no_egresa(self):
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.RESCATE,
+            n_intentos_contacto=1,
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-llamado/",
+            {"contesto": False, "notas": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.RESCATE)
+        self.assertEqual(paciente.n_intentos_contacto, 1)
+        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 0)
+
+    def test_registrar_llamado_rescate_con_observacion_egresa_administrativamente(self):
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.RESCATE,
+            n_intentos_contacto=1,
+            fecha_egreso=None,
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-llamado/",
+            {"contesto": False, "notas": "Segundo contacto sin respuesta"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.n_intentos_contacto, 2)
+        self.assertEqual(paciente.estado, Paciente.Estado.EGRESO_ADMINISTRATIVO)
+        self.assertIsNotNone(paciente.fecha_egreso)
+        self.assertNotEqual(paciente.estado, Paciente.Estado.ABANDONO)
+        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 1)
+        self.assertEqual(MovimientoPaciente.objects.filter(paciente=paciente).count(), 1)
+
+    def test_registrar_llamado_rechaza_paciente_ingresado(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-llamado/",
+            {"contesto": False, "notas": "No corresponde"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
 
     def test_cambiar_estado_bloquea_abandono_antes_de_ingreso(self):
         for estado_actual in [Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE]:
@@ -226,6 +285,35 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(len(response.data["movimientos"]), 1)
         self.assertEqual(len(response.data["llamados"]), 1)
         self.assertEqual(len(response.data["inasistencias"]), 1)
+
+    def test_historial_acciones_retorna_eventos_combinados(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        MovimientoPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            estado_anterior=Paciente.Estado.PENDIENTE,
+            estado_nuevo=Paciente.Estado.INGRESADO,
+            notas="Ingreso",
+        )
+        LlamadoPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            resultado=LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO,
+            notas="Confirma",
+        )
+        InasistenciaPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            fecha=timezone.localdate(),
+            motivo="No asiste",
+        )
+
+        response = self.client.get(f"/api/pacientes/{paciente.id}/historial-acciones/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("paciente", response.data)
+        tipos = {accion["tipo"] for accion in response.data["acciones"]}
+        self.assertEqual(tipos, {"CAMBIO_ESTADO", "CONTACTO", "INASISTENCIA"})
 
     def test_alertas_operativas_retorna_grupos_esperados(self):
         alta = self.crear_paciente(
@@ -439,6 +527,17 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(fila[3], "'=cmd")
         self.assertEqual(fila[7], "'+diagnostico")
         self.assertEqual(fila[18], "'@observacion")
+
+    def test_exportar_lista_espera_muestra_no_categorizado(self):
+        self.crear_paciente(categoria=Paciente.Categoria.BORRADOR)
+
+        response = self.client.get("/api/pacientes/exportar/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        workbook = load_workbook(BytesIO(response.content))
+        ws = workbook.active
+        fila = next(row for row in ws.iter_rows(min_row=8, values_only=True) if row[3])
+        self.assertEqual(fila[10], "No categorizado")
 
     def test_usuario_no_autenticado_no_puede_exportar(self):
         self.client.force_authenticate(user=None)

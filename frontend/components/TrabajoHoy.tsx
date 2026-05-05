@@ -2,11 +2,9 @@
 
 import type { IconType } from "react-icons";
 import {
-  FiActivity,
   FiAlertTriangle,
   FiArrowRight,
   FiCalendar,
-  FiClock,
   FiPhoneOff,
   FiUserX,
 } from "react-icons/fi";
@@ -24,6 +22,7 @@ interface Props {
 
 interface CardConfig {
   key: GrupoAlerta;
+  secondaryKey?: GrupoAlerta;
   titulo: string;
   descripcion: string;
   icon: IconType;
@@ -49,39 +48,16 @@ const CARDS: CardConfig[] = [
     },
   },
   {
-    key: "sobre_90_dias",
-    titulo: "Más de 90 días",
-    descripcion: "Pacientes con espera prolongada.",
-    icon: FiClock,
-    tone: {
-      border: "border-orange-200",
-      bg: "bg-orange-50",
-      icon: "text-orange-700",
-      text: "text-orange-800",
-    },
-  },
-  {
-    key: "pendientes_con_1_intento",
-    titulo: "Pendientes con 1 intento",
-    descripcion: "Un nuevo intento puede pasar a rescate.",
+    key: "rescates_activos",
+    secondaryKey: "pendientes_con_1_intento",
+    titulo: "Contactabilidad pendiente",
+    descripcion: "Rescates activos y pacientes que requieren nuevo contacto.",
     icon: FiPhoneOff,
     tone: {
       border: "border-amber-200",
       bg: "bg-amber-50",
       icon: "text-amber-700",
       text: "text-amber-800",
-    },
-  },
-  {
-    key: "rescates_activos",
-    titulo: "Rescates activos",
-    descripcion: "Requieren seguimiento de contactabilidad.",
-    icon: FiActivity,
-    tone: {
-      border: "border-orange-300",
-      bg: "bg-orange-50",
-      icon: "text-orange-800",
-      text: "text-orange-900",
     },
   },
   {
@@ -108,18 +84,6 @@ const CARDS: CardConfig[] = [
       text: "text-red-950",
     },
   },
-  {
-    key: "telefonos_incompletos",
-    titulo: "Teléfonos incompletos",
-    descripcion: "Sin teléfono principal ni recados.",
-    icon: FiPhoneOff,
-    tone: {
-      border: "border-slate-200",
-      bg: "bg-slate-50",
-      icon: "text-slate-500",
-      text: "text-slate-700",
-    },
-  },
 ];
 
 export default function TrabajoHoy({
@@ -129,7 +93,7 @@ export default function TrabajoHoy({
   onVerGrupo,
 }: Props) {
   return (
-    <section className="rounded-xl border border-[#D4E4D4] bg-[#E7F3EC] p-5">
+    <section className="rounded-xl border border-[#D4E4D4] bg-white p-5 shadow-sm">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#1B5E3B]">
@@ -148,6 +112,7 @@ export default function TrabajoHoy({
             key={card.key}
             config={card}
             grupo={alertas?.[card.key] ?? null}
+            grupoSecundario={card.secondaryKey ? (alertas?.[card.secondaryKey] ?? null) : null}
             loading={loading}
             onVerPaciente={onVerPaciente}
             onVerGrupo={onVerGrupo}
@@ -161,19 +126,27 @@ export default function TrabajoHoy({
 function AlertaCard({
   config,
   grupo,
+  grupoSecundario,
   loading,
   onVerPaciente,
   onVerGrupo,
 }: {
   config: CardConfig;
   grupo: AlertasOperativas[GrupoAlerta] | null;
+  grupoSecundario: AlertasOperativas[GrupoAlerta] | null;
   loading: boolean;
   onVerPaciente: (paciente: Paciente) => void;
   onVerGrupo: (grupo: GrupoAlerta) => void;
 }) {
   const Icon = config.icon;
-  const total = grupo?.total ?? 0;
-  const pacientes = grupo?.pacientes.slice(0, 3) ?? [];
+  const total = (grupo?.total ?? 0) + (grupoSecundario?.total ?? 0);
+  const pacientes = Array.from(
+    new Map(
+      [...(grupo?.pacientes ?? []), ...(grupoSecundario?.pacientes ?? [])].map(
+        (paciente) => [paciente.id, paciente],
+      ),
+    ).values(),
+  ).slice(0, 3);
 
   return (
     <article className="flex min-h-[260px] flex-col rounded-lg border border-[#D4E4D4] bg-white p-4 shadow-sm">

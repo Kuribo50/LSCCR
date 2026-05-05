@@ -6,9 +6,11 @@ Sistema web para gestion operativa de lista de espera, pacientes, calendario de 
 
 ListaEsperaCCR es una herramienta interna de apoyo operativo para la gestion de lista de espera, contactabilidad, asignacion, seguimiento y reportes del CCR. No reemplaza Trak ni la ficha clinica institucional.
 
-- `RESCATE`: estado previo al ingreso para pacientes con contactabilidad fallida, por ejemplo dos contactos sin respuesta antes de confirmar asistencia.
+- `RESCATE`: estado previo al ingreso para pacientes con primer contacto sin respuesta.
+- `EGRESO_ADMINISTRATIVO`: cierre operativo previo al ingreso cuando un paciente en `RESCATE` vuelve a no contestar. Requiere observacion obligatoria.
 - `ABANDONO`: cierre posterior al ingreso cuando el equipo evalua que el paciente abandono el proceso. No corresponde usarlo desde `PENDIENTE` ni desde `RESCATE`.
 - Historial de contactos: registro operativo de cada contacto, separado del contador de intentos de contacto.
+- Historial de acciones: linea de tiempo operativa que une cambios de estado, contactos e inasistencias.
 - Inasistencias: registro de ausencias a sesiones de pacientes `INGRESADOS`; dos inasistencias no justificadas generan alerta para evaluar `ABANDONO`, sin cambiar el estado automaticamente.
 - Ficha operativa: vista consolidada para seguimiento CCR con datos generales, derivacion, contacto, gestion, movimientos, contactos e inasistencias.
 
@@ -88,7 +90,7 @@ El sistema permite sacar respaldos operativos sin volver al Excel manual.
 - Exportar lista filtrada: descarga la lista de espera respetando filtros operativos como alerta, mes, año, importación y búsqueda.
 - Exportar corte mensual: descarga los pacientes derivados en un mes/año con su estado actual e importación de origen.
 - Exportar reporte por responsable: descarga la tabla mensual de carga, ingresos y egresos por responsable.
-- Imprimir ficha operativa: genera una versión legible de la ficha CCR con datos generales, gestión, contactos, inasistencias y movimientos.
+- Imprimir ficha operativa: genera una version legible con datos operativos principales, sin historial de acciones ni controles de pantalla.
 - Imprimir lista de contactabilidad: imprime la lista visible de pacientes pendientes o en rescate.
 
 Las exportaciones `.xlsx` y archivos impresos son material operativo. No subas exportaciones reales al repositorio.
@@ -128,6 +130,14 @@ Los comentarios nuevos del codigo deben estar en español, con explicaciones sim
 - Ficha operativa: vista interna de seguimiento; no es ficha clínica institucional.
 - Observación operativa: nota interna de gestión; no es evolución clínica oficial.
 - Los nombres internos antiguos, como `kine_asignado`, pueden mantenerse en código por compatibilidad técnica.
+
+## Ajustes fase 2 inicial
+
+- Contactabilidad: primer contacto sin respuesta pasa a `RESCATE`; segundo contacto sin respuesta desde `RESCATE` pasa a `EGRESO_ADMINISTRATIVO` con observacion obligatoria.
+- `ABANDONO` sigue reservado para pacientes ya `INGRESADOS`, asociado a inasistencias o abandono del tratamiento.
+- La categoria interna `BORRADOR` se muestra al usuario como "No categorizado" y puede editarse desde la ficha operativa.
+- La ficha operativa muestra un Historial de acciones unificado para leer cambios de estado, contactos e inasistencias en una sola linea de tiempo.
+- El dashboard Inicio queda enfocado en Trabajo de hoy, acciones prioritarias y resumen rapido; las estadisticas detalladas viven en Estadisticas CCR.
 
 ## Desarrollo local
 

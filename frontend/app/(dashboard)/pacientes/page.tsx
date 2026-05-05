@@ -191,7 +191,9 @@ export default function PacientesPage() {
               <option value="">Cualquier tipo de Egreso</option>
               <option value="ALTA_MEDICA">Alta Médica</option>
               <option value="EGRESO_VOLUNTARIO">Egreso Voluntario</option>
+              <option value="EGRESO_ADMINISTRATIVO">Egreso administrativo</option>
               <option value="ABANDONO">Abandono</option>
+              <option value="DERIVADO">Derivado</option>
             </>
           ) : (
             <>

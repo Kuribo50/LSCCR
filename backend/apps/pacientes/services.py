@@ -4,6 +4,7 @@ from .models import Paciente
 ESTADOS_FINALES = {
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.EGRESO_ADMINISTRATIVO,
     Paciente.Estado.DERIVADO,
     Paciente.Estado.ABANDONO,
 }
@@ -11,13 +12,18 @@ ESTADOS_FINALES = {
 ESTADOS_REQUIEREN_NOTA = {
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.EGRESO_ADMINISTRATIVO,
     Paciente.Estado.DERIVADO,
     Paciente.Estado.ABANDONO,
 }
 
 TRANSICIONES_VALIDAS: dict[str, set[str]] = {
     Paciente.Estado.PENDIENTE: {Paciente.Estado.INGRESADO, Paciente.Estado.RESCATE},
-    Paciente.Estado.RESCATE: {Paciente.Estado.INGRESADO, Paciente.Estado.PENDIENTE},
+    Paciente.Estado.RESCATE: {
+        Paciente.Estado.INGRESADO,
+        Paciente.Estado.EGRESO_ADMINISTRATIVO,
+        Paciente.Estado.PENDIENTE,
+    },
     Paciente.Estado.INGRESADO: {
         Paciente.Estado.ABANDONO,
         Paciente.Estado.ALTA_MEDICA,
@@ -39,6 +45,11 @@ TRANSICIONES_VALIDAS: dict[str, set[str]] = {
         Paciente.Estado.INGRESADO,
         Paciente.Estado.RESCATE,
     },
+    Paciente.Estado.EGRESO_ADMINISTRATIVO: {
+        Paciente.Estado.PENDIENTE,
+        Paciente.Estado.INGRESADO,
+        Paciente.Estado.RESCATE,
+    },
     Paciente.Estado.DERIVADO: {
         Paciente.Estado.PENDIENTE,
         Paciente.Estado.INGRESADO,
@@ -46,6 +57,7 @@ TRANSICIONES_VALIDAS: dict[str, set[str]] = {
         Paciente.Estado.ABANDONO,
         Paciente.Estado.ALTA_MEDICA,
         Paciente.Estado.EGRESO_VOLUNTARIO,
+        Paciente.Estado.EGRESO_ADMINISTRATIVO,
     },
 }
 

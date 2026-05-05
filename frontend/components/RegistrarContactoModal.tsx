@@ -37,6 +37,10 @@ export default function RegistrarContactoModal({
       setError("Selecciona fecha y hora para programar la atención.");
       return;
     }
+    if (!contesto && requiereNotaEgreso && !notas.trim()) {
+      setError("Debe registrar una observación para egreso administrativo.");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -59,7 +63,9 @@ export default function RegistrarContactoModal({
         actualizado.estado === "INGRESADO"
           ? "Contacto confirmado. Paciente pasa a INGRESADO."
           : actualizado.estado === "RESCATE"
-            ? "Segundo intento fallido. Paciente pasa a RESCATE."
+            ? "Contacto sin respuesta. Paciente pasa a RESCATE."
+            : actualizado.estado === "EGRESO_ADMINISTRATIVO"
+              ? "Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO."
             : "Contacto registrado.";
       setSuccess(mensaje);
       onSuccess(actualizado);
@@ -81,8 +87,8 @@ export default function RegistrarContactoModal({
     setFechaHora(`${fecha}T${hora}`);
   }
 
+  const requiereNotaEgreso = paciente.estado === "RESCATE";
   const intentoUno = paciente.n_intentos_contacto === 1;
-  const intentoDosOMas = paciente.n_intentos_contacto >= 2;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm dark:bg-black/70">
@@ -90,8 +96,8 @@ export default function RegistrarContactoModal({
         className="ccr-fade-up w-full max-w-md overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-[#2a2a2a] dark:bg-[#111111]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
-          <div className="flex items-center gap-2 text-blue-700 dark:text-white">
+        <div className="flex items-center justify-between border-b border-[#D4E4D4] bg-[#E7F3EC] px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
+          <div className="flex items-center gap-2 text-[#1B5E3B] dark:text-white">
             <FiPhone className="text-xl" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.05em]">
               Registrar Contacto
@@ -134,9 +140,9 @@ export default function RegistrarContactoModal({
                 1 intento previo registrado
               </p>
             )}
-            {intentoDosOMas && (
+            {requiereNotaEgreso && (
               <p className="mt-1 text-xs font-semibold text-red-600 dark:text-red-300">
-                El próximo intento fallido mantiene al paciente en Rescate
+                El próximo contacto sin respuesta requiere observación y egresa administrativamente.
               </p>
             )}
           </div>
@@ -145,14 +151,14 @@ export default function RegistrarContactoModal({
             <div className="space-y-4">
               <div>
                 <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-[#ecf5f8]">
-                  Observación operativa del contacto (opcional)
+                  Observación operativa del contacto {requiereNotaEgreso ? "(obligatoria)" : "(opcional)"}
                 </label>
                 <textarea
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
                   placeholder="Ej. Dejó mensaje, número equivocado, etc."
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:placeholder:text-[#6b7280] dark:focus:ring-blue-500/20"
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:placeholder:text-[#6b7280] dark:focus:ring-emerald-500/20"
                 />
               </div>
 
@@ -161,7 +167,7 @@ export default function RegistrarContactoModal({
                   type="button"
                   onClick={() => setShowScheduler(true)}
                   disabled={loading}
-                  className="rounded-lg bg-[#335fdb] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#284fc0] disabled:opacity-50"
+                  className="rounded-lg bg-[#1B5E3B] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#256B47] disabled:opacity-50"
                 >
                   Contestó
                 </button>
@@ -170,17 +176,17 @@ export default function RegistrarContactoModal({
                   onClick={() => void handleSubmit(false)}
                   disabled={loading}
                   className={`rounded-lg py-2.5 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50 ${
-                    intentoDosOMas ? "bg-[#D32F2F] hover:bg-red-800" : "bg-[#ED8121] hover:bg-[#C96B18]"
+                    requiereNotaEgreso ? "bg-slate-700 hover:bg-slate-800" : "bg-[#ED8121] hover:bg-[#C96B18]"
                   }`}
                 >
-                  No Contestó
+                  No contestó
                 </button>
               </div>
             </div>
           ) : (
             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
-                <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-white">Paciente contestó</p>
+              <div className="rounded-lg border border-[#D4E4D4] bg-[#E7F3EC] p-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
+                <p className="mb-2 text-xs font-semibold text-[#1B5E3B] dark:text-white">Paciente contestó</p>
                 <p className="text-[11px] text-gray-600 dark:text-[#b5d8e3]">Ahora programa la fecha de su atención, el paciente pasará directo a estado INGRESADO.</p>
               </div>
 
@@ -192,27 +198,27 @@ export default function RegistrarContactoModal({
                   type="datetime-local"
                   value={fechaHora}
                   onChange={(e) => setFechaHora(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#2694d9] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#1B5E3B] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
                 />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("09:00")}
-                    className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-[#D4E4D4] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#1B5E3B] transition hover:bg-[#E7F3EC] dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
                   >
                     09:00
                   </button>
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("12:00")}
-                    className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-[#D4E4D4] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#1B5E3B] transition hover:bg-[#E7F3EC] dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
                   >
                     12:00
                   </button>
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("15:00")}
-                    className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-[#D4E4D4] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#1B5E3B] transition hover:bg-[#E7F3EC] dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
                   >
                     15:00
                   </button>
@@ -227,7 +233,7 @@ export default function RegistrarContactoModal({
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
                   rows={2}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:focus:ring-blue-500/20"
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:focus:ring-emerald-500/20"
                 />
               </div>
 
@@ -244,7 +250,7 @@ export default function RegistrarContactoModal({
                   type="button"
                   onClick={() => void handleSubmit(true)}
                   disabled={loading}
-                  className="flex-1 rounded-lg bg-[#335fdb] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#284fc0] disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-[#1B5E3B] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#256B47] disabled:opacity-50"
                 >
                   {loading ? "Guardando..." : "Confirmar"}
                 </button>

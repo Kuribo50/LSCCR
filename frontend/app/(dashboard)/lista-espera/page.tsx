@@ -804,7 +804,7 @@ export default function ListaEsperaPage() {
               <button
                 type="button"
                 onClick={() => void cargar()}
-                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto sm:justify-start"
+                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-[#1B5E3B] sm:w-auto sm:justify-start"
               >
                 <FiRefreshCw size={13} />
                 Recargar
@@ -887,7 +887,7 @@ export default function ListaEsperaPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#daebf1]">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600" />
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#1B5E3B]" />
                   Actualizando...
                 </div>
               )}
@@ -1046,7 +1046,7 @@ export default function ListaEsperaPage() {
                           onDoubleClick={() => header.column.resetSize()}
                           onMouseDown={header.getResizeHandler()}
                           onTouchStart={header.getResizeHandler()}
-                          className={`ccr-column-resizer absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-blue-200/50 ${header.column.getIsResizing() ? "bg-blue-300/60" : ""}`}
+                          className={`ccr-column-resizer absolute right-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize touch-none bg-transparent transition hover:bg-emerald-200/50 ${header.column.getIsResizing() ? "bg-emerald-300/60" : ""}`}
                           aria-label={`Redimensionar columna ${meta.label}`}
                         />
                       )}
@@ -1072,7 +1072,7 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={row.id}
-                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-[#E7F3EC]/60 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       style={{
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
@@ -1318,7 +1318,7 @@ function AsignarContactoModal({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-xl bg-[#1B5E3B] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#256B47] disabled:opacity-50"
           >
             {loading ? "Asignando..." : "Guardar y tomar"}
           </button>
@@ -1408,14 +1408,14 @@ function FilterPopover({
           <button
             type="button"
             onClick={onSortAsc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-[#E7F3EC] text-[#1B5E3B] dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de menor a mayor
           </button>
           <button
             type="button"
             onClick={onSortDesc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
+            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-[#E7F3EC] text-[#1B5E3B] dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
           >
             Ordenar de mayor a menor
           </button>
@@ -1436,7 +1436,7 @@ function FilterPopover({
           if (event.key === "Enter") event.preventDefault();
         }}
         placeholder="Buscar opción"
-        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
+        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-[#1B5E3B] focus:ring-2 focus:ring-[#E7F3EC] dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
       />
 
       <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px]">
@@ -1455,7 +1455,7 @@ function FilterPopover({
               Array.from(new Set([...selectedValues, ...visibleOptions])),
             );
           }}
-          className="font-semibold text-blue-600 hover:underline"
+          className="font-semibold text-[#1B5E3B] hover:underline"
         >
           Seleccionar todo
         </button>
@@ -1485,7 +1485,7 @@ function FilterPopover({
                       onSelectionChange([...selectedValues, option]);
                     }
                   }}
-                  className="h-3.5 w-3.5 accent-blue-600"
+                  className="h-3.5 w-3.5 accent-[#1B5E3B]"
                 />
                 <span className="truncate text-gray-700 dark:text-[#b5d8e3]" title={option}>
                   {option}
@@ -1509,7 +1509,7 @@ function FilterPopover({
           onClick={() =>
             onApply(shouldApplyVisibleOnly ? visibleOptions : undefined)
           }
-          className="ccr-filter-apply rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-700"
+          className="ccr-filter-apply rounded-md bg-[#1B5E3B] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#256B47]"
         >
           Aplicar
         </button>

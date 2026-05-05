@@ -5,10 +5,11 @@ import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import type {
   Estado,
+  HistorialAccionesPaciente,
+  HistorialAccionPaciente,
   HistorialCompletoPaciente,
   InasistenciaPaciente,
   LlamadoPaciente,
-  MovimientoPaciente,
   Paciente,
   Usuario,
 } from "@/lib/types";
@@ -41,8 +42,6 @@ interface Props {
   onRefresh: () => void;
 }
 
-type TabHistorial = "movimientos" | "llamados" | "inasistencias";
-
 function calcularDiasDesde(fecha: string | null | undefined) {
   if (!fecha) return 0;
   const inicio = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
@@ -74,13 +73,28 @@ function formatearFechaHora(fecha: string | null | undefined) {
 }
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
+  const displayValue = value === null || value === undefined || value === "" ? "-" : value;
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
         {label}
       </p>
       <div className="mt-1 break-words text-sm font-medium text-slate-800">
-        {value || "-"}
+        {displayValue}
+      </div>
+    </div>
+  );
+}
+
+function PrintField({ label, value }: { label: string; value: ReactNode }) {
+  const displayValue = value === null || value === undefined || value === "" ? "-" : value;
+  return (
+    <div className="border-b border-slate-200 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <div className="mt-0.5 text-sm font-semibold text-slate-900">
+        {displayValue}
       </div>
     </div>
   );
@@ -115,10 +129,9 @@ export default function FichaPaciente({
   onRefresh,
 }: Props) {
   const [paciente, setPaciente] = useState<Paciente>(pacienteInicial);
-  const [movimientos, setMovimientos] = useState<MovimientoPaciente[]>([]);
   const [llamados, setLlamados] = useState<LlamadoPaciente[]>([]);
   const [inasistencias, setInasistencias] = useState<InasistenciaPaciente[]>([]);
-  const [tab, setTab] = useState<TabHistorial>("movimientos");
+  const [acciones, setAcciones] = useState<HistorialAccionPaciente[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(true);
   const [error, setError] = useState("");
   const [mostrarCambioEstado, setMostrarCambioEstado] = useState(false);
@@ -163,15 +176,26 @@ export default function FichaPaciente({
         `/pacientes/${id}/historial-completo/`,
       );
       setPaciente(data.paciente);
-      setMovimientos(data.movimientos);
       setLlamados(data.llamados);
       setInasistencias(data.inasistencias);
     } catch {
-      setMovimientos([]);
       setLlamados([]);
       setInasistencias([]);
       setError(
         "No se pudo cargar el historial completo. Se mantienen los datos básicos del paciente.",
+      );
+    }
+
+    try {
+      const data = await api.get<HistorialAccionesPaciente>(
+        `/pacientes/${id}/historial-acciones/`,
+      );
+      setAcciones(data.acciones);
+    } catch {
+      setAcciones([]);
+      setError((prev) =>
+        prev ||
+        "No se pudo cargar el historial de acciones. Se mantienen los datos básicos del paciente.",
       );
     } finally {
       setLoadingHistorial(false);
@@ -216,6 +240,7 @@ export default function FichaPaciente({
         className="ccr-ficha-printable h-[min(92vh,920px)] w-full max-w-6xl overflow-y-auto rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.5)]"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="ccr-ficha-screen">
         <div className="sticky top-0 z-10 border-b border-emerald-100 bg-white/95 px-5 py-4 backdrop-blur">
           <div className="flex flex-col gap-3 pr-12 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
@@ -293,7 +318,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarContacto(true)}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-800"
+                className="inline-flex items-center gap-2 rounded-md bg-[#1B5E3B] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#256B47]"
               >
                 <FiPhone size={14} />
                 Registrar contacto
@@ -414,40 +439,56 @@ export default function FichaPaciente({
             </Section>
           </div>
 
-          <Section icon={<FiClock />} title="Historial operativo">
-            <div className="mb-4 flex flex-wrap gap-2">
-              {(["movimientos", "llamados", "inasistencias"] as TabHistorial[]).map(
-                (item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setTab(item)}
-                    className={`rounded-md px-3 py-2 text-xs font-semibold transition ${
-                      tab === item
-                        ? "bg-emerald-800 text-white"
-                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {item === "movimientos"
-                      ? `Movimientos (${movimientos.length})`
-                      : item === "llamados"
-                        ? `Contactos (${llamados.length})`
-                        : `Inasistencias (${inasistencias.length})`}
-                  </button>
-                ),
-              )}
-            </div>
-
+          <Section icon={<FiClock />} title="Historial de acciones">
             {loadingHistorial ? (
               <p className="text-sm text-slate-500">Cargando historial...</p>
-            ) : tab === "movimientos" ? (
-              <HistorialMovimientos items={movimientos} />
-            ) : tab === "llamados" ? (
-              <HistorialLlamados items={llamados} />
             ) : (
-              <HistorialInasistencias items={inasistencias} />
+              <HistorialAcciones items={acciones} />
             )}
           </Section>
+        </div>
+        </div>
+
+        <div className="ccr-ficha-print-only hidden bg-white p-8 text-slate-900">
+          <div className="mb-6 border-b-2 border-[#1B5E3B] pb-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#1B5E3B]">
+              Ficha operativa CCR
+            </p>
+            <h1 className="mt-2 text-2xl font-black">
+              {paciente.id_ccr} · {paciente.nombre}
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Documento operativo interno. No reemplaza Trak ni ficha clínica institucional.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-8 gap-y-1">
+            <PrintField label="ID CCR" value={paciente.id_ccr} />
+            <PrintField label="Nombre" value={paciente.nombre} />
+            <PrintField label="RUT" value={formatearRut(paciente.rut)} />
+            <PrintField label="Edad" value={`${paciente.edad} años`} />
+            <PrintField label="Mayor 60" value={paciente.mayor_60 ? "Sí" : "No"} />
+            <PrintField
+              label="Responsable CCR"
+              value={paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin asignar"}
+            />
+            <PrintField label="Fecha derivación" value={formatearFecha(paciente.fecha_derivacion)} />
+            <PrintField label="Desde" value={paciente.percapita_desde || "-"} />
+            <PrintField label="Diagnóstico" value={paciente.diagnostico || "-"} />
+            <PrintField label="Profesional" value={paciente.profesional || "-"} />
+            <PrintField label="Categoría" value={CATEGORIA_LABELS[paciente.categoria]} />
+            <PrintField label="Prioridad" value={PRIORIDAD_LABELS[paciente.prioridad]} />
+            <PrintField label="Estado actual" value={ESTADO_LABELS[paciente.estado]} />
+            <PrintField label="Fecha ingreso" value={formatearFecha(paciente.fecha_ingreso)} />
+            <PrintField label="Próxima atención" value={formatearFechaHora(paciente.proxima_atencion)} />
+            <PrintField label="Fecha egreso" value={formatearFecha(paciente.fecha_egreso)} />
+            <PrintField label="Teléfono" value={paciente.telefono || "Sin teléfono"} />
+            <PrintField label="Teléfono recados" value={paciente.telefono_recados || "Sin teléfono de recados"} />
+            <PrintField label="Email" value={paciente.email || "Sin email"} />
+            <div className="col-span-2">
+              <PrintField label="Observaciones operativas" value={paciente.observaciones || "-"} />
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -533,6 +574,14 @@ export default function FichaPaciente({
           .ccr-ficha-printable * {
             visibility: visible !important;
           }
+          .ccr-ficha-screen {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          .ccr-ficha-print-only {
+            display: block !important;
+            visibility: visible !important;
+          }
           .ccr-ficha-overlay {
             position: static !important;
             display: block !important;
@@ -561,75 +610,54 @@ export default function FichaPaciente({
   );
 }
 
-function HistorialMovimientos({ items }: { items: MovimientoPaciente[] }) {
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-500">Sin movimientos registrados.</p>;
+function badgeAccion(tipo: HistorialAccionPaciente["tipo"]) {
+  if (tipo === "CONTACTO") {
+    return "border-blue-100 bg-blue-50 text-blue-700";
   }
-  return (
-    <ol className="space-y-3">
-      {items.map((mov) => (
-        <li key={mov.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
-          <p className="text-xs font-semibold text-slate-800">
-            {mov.estado_anterior
-              ? `${ESTADO_LABELS[mov.estado_anterior as Estado] ?? mov.estado_anterior} -> ${
-                  ESTADO_LABELS[mov.estado_nuevo as Estado] ?? mov.estado_nuevo
-                }`
-              : ESTADO_LABELS[mov.estado_nuevo as Estado] ?? mov.estado_nuevo}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {formatearFechaHora(mov.fecha)} · {mov.usuario_nombre ?? "Sistema"}
-          </p>
-          {mov.notas && <p className="mt-2 text-xs text-slate-700">{mov.notas}</p>}
-        </li>
-      ))}
-    </ol>
-  );
+  if (tipo === "INASISTENCIA") {
+    return "border-amber-100 bg-amber-50 text-amber-800";
+  }
+  return "border-emerald-100 bg-emerald-50 text-emerald-800";
 }
 
-function HistorialLlamados({ items }: { items: LlamadoPaciente[] }) {
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-500">Sin contactos registrados.</p>;
-  }
-  return (
-    <ol className="space-y-3">
-      {items.map((llamado) => (
-        <li key={llamado.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
-          <p className="text-xs font-semibold text-slate-800">
-            {llamado.resultado_label}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {formatearFechaHora(llamado.fecha)} · {llamado.usuario_nombre ?? "Sistema"} ·{" "}
-            {llamado.telefono_usado || "Sin teléfono registrado"}
-          </p>
-          {llamado.notas && <p className="mt-2 text-xs text-slate-700">{llamado.notas}</p>}
-        </li>
-      ))}
-    </ol>
-  );
+function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
+  if (tipo === "CONTACTO") return "Contacto";
+  if (tipo === "INASISTENCIA") return "Inasistencia";
+  return "Estado";
 }
 
-function HistorialInasistencias({ items }: { items: InasistenciaPaciente[] }) {
+function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
   if (items.length === 0) {
-    return <p className="text-sm text-slate-500">Sin inasistencias registradas.</p>;
+    return <p className="text-sm text-slate-500">Sin acciones registradas.</p>;
   }
   return (
-    <ol className="space-y-3">
-      {items.map((inasistencia) => (
-        <li
-          key={inasistencia.id}
-          className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3"
-        >
-          <p className="text-xs font-semibold text-slate-800">
-            {formatearFecha(inasistencia.fecha)} ·{" "}
-            {inasistencia.justificada ? "Justificada" : "No justificada"}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Registrada por {inasistencia.usuario_nombre ?? "Sistema"} ·{" "}
-            {formatearFechaHora(inasistencia.creado_en)}
-          </p>
-          {inasistencia.motivo && (
-            <p className="mt-2 text-xs text-slate-700">{inasistencia.motivo}</p>
-          )}
+    <ol className="relative space-y-4 border-l border-emerald-100 pl-4">
+      {items.map((accion, index) => (
+        <li key={`${accion.tipo}-${accion.fecha}-${index}`} className="relative">
+          <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#1B5E3B] shadow" />
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-slate-900">
+                  {accion.titulo}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {accion.descripcion}
+                </p>
+              </div>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeAccion(accion.tipo)}`}>
+                {labelAccion(accion.tipo)}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {formatearFechaHora(accion.fecha)} · {accion.usuario_nombre ?? "Sistema"}
+            </p>
+            {accion.observacion && (
+              <p className="mt-2 rounded-md border border-white bg-white px-2 py-2 text-xs text-slate-700">
+                {accion.observacion}
+              </p>
+            )}
+          </div>
         </li>
       ))}
     </ol>

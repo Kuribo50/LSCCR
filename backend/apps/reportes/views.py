@@ -30,6 +30,7 @@ MESES = {
 ESTADOS_FINALES = {
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.EGRESO_ADMINISTRATIVO,
     Paciente.Estado.ABANDONO,
     Paciente.Estado.DERIVADO,
 }
@@ -105,6 +106,9 @@ def resumen_corte(corte, hoy=None):
         "ingresados_actuales": conteo_estado(corte, Paciente.Estado.INGRESADO),
         "altas_medicas": conteo_estado(corte, Paciente.Estado.ALTA_MEDICA),
         "egresos_voluntarios": conteo_estado(corte, Paciente.Estado.EGRESO_VOLUNTARIO),
+        "egresos_administrativos": conteo_estado(
+            corte, Paciente.Estado.EGRESO_ADMINISTRATIVO
+        ),
         "abandonos": conteo_estado(corte, Paciente.Estado.ABANDONO),
         "derivados": conteo_estado(corte, Paciente.Estado.DERIVADO),
         "sin_responsable": corte.filter(kine_asignado__isnull=True).count(),
@@ -132,6 +136,9 @@ def resumen_actividad_mes(mes, anio, queryset=None):
         "egresos_total": egresos.count(),
         "altas_medicas": conteo_estado(egresos, Paciente.Estado.ALTA_MEDICA),
         "egresos_voluntarios": conteo_estado(egresos, Paciente.Estado.EGRESO_VOLUNTARIO),
+        "egresos_administrativos": conteo_estado(
+            egresos, Paciente.Estado.EGRESO_ADMINISTRATIVO
+        ),
         "abandonos": conteo_estado(egresos, Paciente.Estado.ABANDONO),
         "derivados": conteo_estado(egresos, Paciente.Estado.DERIVADO),
         "promedio_dias_hasta_ingreso": promedio_dias(ingresos, "fecha_derivacion", "fecha_ingreso"),
@@ -190,6 +197,9 @@ def reporte_por_responsable_data(mes, anio):
                 "egresos_voluntarios_mes": conteo_estado(
                     egresos_mes, Paciente.Estado.EGRESO_VOLUNTARIO
                 ),
+                "egresos_administrativos_mes": conteo_estado(
+                    egresos_mes, Paciente.Estado.EGRESO_ADMINISTRATIVO
+                ),
                 "abandonos_mes": conteo_estado(egresos_mes, Paciente.Estado.ABANDONO),
                 "derivados_mes": conteo_estado(egresos_mes, Paciente.Estado.DERIVADO),
                 "promedio_dias_hasta_ingreso": promedio_dias(
@@ -238,6 +248,7 @@ def crear_excel_responsables(data):
         "Egresos mes",
         "Altas médicas",
         "Egresos voluntarios",
+        "Egresos administrativos",
         "Abandonos",
         "Derivados",
         "Promedio días hasta ingreso",
@@ -262,6 +273,7 @@ def crear_excel_responsables(data):
             item["egresos_mes"],
             item["altas_medicas_mes"],
             item["egresos_voluntarios_mes"],
+            item["egresos_administrativos_mes"],
             item["abandonos_mes"],
             item["derivados_mes"],
             item["promedio_dias_hasta_ingreso"],
@@ -269,8 +281,8 @@ def crear_excel_responsables(data):
         ]
         ws.append([sanitizar_celda_excel(valor) for valor in fila])
     ws.freeze_panes = "A6"
-    ws.auto_filter.ref = f"A{header_row}:M{max(header_row, ws.max_row)}"
-    for index, width in enumerate([28, 16, 12, 12, 18, 14, 14, 14, 20, 12, 12, 24, 26], start=1):
+    ws.auto_filter.ref = f"A{header_row}:N{max(header_row, ws.max_row)}"
+    for index, width in enumerate([28, 16, 12, 12, 18, 14, 14, 14, 20, 22, 12, 12, 24, 26], start=1):
         ws.column_dimensions[ws.cell(row=1, column=index).column_letter].width = width
     return wb
 
@@ -340,6 +352,7 @@ class SerieMensualReporteView(APIView):
                     "abandonos": actividad["abandonos"],
                     "altas_medicas": actividad["altas_medicas"],
                     "egresos_voluntarios": actividad["egresos_voluntarios"],
+                    "egresos_administrativos": actividad["egresos_administrativos"],
                     "derivados": actividad["derivados"],
                 }
             )

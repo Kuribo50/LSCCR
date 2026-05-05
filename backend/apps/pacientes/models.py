@@ -10,7 +10,7 @@ class Paciente(models.Model):
         LICENCIA_MEDICA = "LICENCIA_MEDICA", "Licencia Medica"
 
     class Categoria(models.TextChoices):
-        BORRADOR = "BORRADOR", "Borrador"
+        BORRADOR = "BORRADOR", "No categorizado"
         MAS65 = "MAS65", "Mayor o igual 65"
         OA_MENOS65 = "OA_MENOS65", "OA menor 65"
         HOMBROS = "HOMBROS", "Hombros"
@@ -28,6 +28,7 @@ class Paciente(models.Model):
         ABANDONO = "ABANDONO", "Abandono"
         ALTA_MEDICA = "ALTA_MEDICA", "Alta medica"
         EGRESO_VOLUNTARIO = "EGRESO_VOLUNTARIO", "Egreso voluntario"
+        EGRESO_ADMINISTRATIVO = "EGRESO_ADMINISTRATIVO", "Egreso administrativo"
         DERIVADO = "DERIVADO", "Derivado"
 
     id_ccr = models.CharField(max_length=12, unique=True, blank=True, editable=False)
@@ -49,7 +50,7 @@ class Paciente(models.Model):
         related_name="pacientes_asignados",
     )
     estado = models.CharField(
-        max_length=20, choices=Estado.choices, default=Estado.PENDIENTE, db_index=True
+        max_length=30, choices=Estado.choices, default=Estado.PENDIENTE, db_index=True
     )
     fecha_cambio_estado = models.DateTimeField(null=True, blank=True)
     n_intentos_contacto = models.PositiveIntegerField(default=0)
@@ -108,8 +109,8 @@ class MovimientoPaciente(models.Model):
     usuario = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
-    estado_anterior = models.CharField(max_length=20, blank=True, null=True)
-    estado_nuevo = models.CharField(max_length=20)
+    estado_anterior = models.CharField(max_length=30, blank=True, null=True)
+    estado_nuevo = models.CharField(max_length=30)
     fecha = models.DateTimeField(auto_now_add=True)
     notas = models.TextField(blank=True)
 

@@ -66,6 +66,10 @@ class ReportesOperativosTests(APITestCase):
             fecha_egreso=date(2025, 7, 20),
         )
         self.crear_paciente(
+            estado=Paciente.Estado.EGRESO_ADMINISTRATIVO,
+            fecha_egreso=date(2025, 7, 25),
+        )
+        self.crear_paciente(
             fecha_derivacion=date(2025, 8, 1),
             estado=Paciente.Estado.PENDIENTE,
         )
@@ -74,14 +78,16 @@ class ReportesOperativosTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["periodo_label"], "Julio 2025")
-        self.assertEqual(response.data["corte"]["total_derivados"], 4)
+        self.assertEqual(response.data["corte"]["total_derivados"], 5)
         self.assertEqual(response.data["corte"]["pendientes"], 1)
         self.assertEqual(response.data["corte"]["rescate"], 1)
         self.assertEqual(response.data["corte"]["ingresados_actuales"], 1)
         self.assertEqual(response.data["corte"]["altas_medicas"], 1)
+        self.assertEqual(response.data["corte"]["egresos_administrativos"], 1)
         self.assertEqual(response.data["actividad_mes"]["ingresos"], 1)
-        self.assertEqual(response.data["actividad_mes"]["egresos_total"], 1)
+        self.assertEqual(response.data["actividad_mes"]["egresos_total"], 2)
         self.assertEqual(response.data["actividad_mes"]["altas_medicas"], 1)
+        self.assertEqual(response.data["actividad_mes"]["egresos_administrativos"], 1)
         self.assertEqual(response.data["actividad_mes"]["promedio_dias_hasta_ingreso"], 5)
 
     def test_por_responsable_incluye_kines_y_sin_responsable(self):

@@ -55,6 +55,7 @@ MESES_LABEL = {
 ESTADOS_EGRESADOS = [
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
+    Paciente.Estado.EGRESO_ADMINISTRATIVO,
     Paciente.Estado.ABANDONO,
     Paciente.Estado.DERIVADO,
 ]

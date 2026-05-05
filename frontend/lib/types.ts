@@ -18,6 +18,7 @@ export type Estado =
   | "ABANDONO"
   | "ALTA_MEDICA"
   | "EGRESO_VOLUNTARIO"
+  | "EGRESO_ADMINISTRATIVO"
   | "DERIVADO";
 
 export interface Usuario {
@@ -41,6 +42,7 @@ export interface Paciente {
   profesional: string;
   prioridad: Prioridad;
   categoria: Categoria;
+  categoria_label?: string;
   mayor_60: boolean;
   kine_asignado: number | null;
   kine_asignado_nombre: string | null;
@@ -122,6 +124,24 @@ export interface HistorialCompletoPaciente {
   inasistencias: InasistenciaPaciente[];
 }
 
+export type HistorialAccionTipo = "CAMBIO_ESTADO" | "CONTACTO" | "INASISTENCIA";
+
+export interface HistorialAccionPaciente {
+  tipo: HistorialAccionTipo;
+  fecha: string;
+  usuario_nombre: string | null;
+  titulo: string;
+  descripcion: string;
+  observacion: string;
+  estado_anterior: Estado | null;
+  estado_nuevo: Estado | null;
+}
+
+export interface HistorialAccionesPaciente {
+  paciente: Paciente;
+  acciones: HistorialAccionPaciente[];
+}
+
 export interface AlertaOperativaGrupo {
   total: number;
   pacientes: Paciente[];
@@ -168,6 +188,7 @@ export interface ReporteResumenMensual {
     ingresados_actuales: number;
     altas_medicas: number;
     egresos_voluntarios: number;
+    egresos_administrativos?: number;
     abandonos: number;
     derivados: number;
     sin_responsable: number;
@@ -180,6 +201,7 @@ export interface ReporteResumenMensual {
     egresos_total: number;
     altas_medicas: number;
     egresos_voluntarios: number;
+    egresos_administrativos?: number;
     abandonos: number;
     derivados: number;
     promedio_dias_hasta_ingreso: number;
@@ -200,6 +222,7 @@ export interface ReporteResponsableItem {
   egresos_mes: number;
   altas_medicas_mes: number;
   egresos_voluntarios_mes: number;
+  egresos_administrativos_mes?: number;
   abandonos_mes: number;
   derivados_mes: number;
   promedio_dias_hasta_ingreso: number;
@@ -229,6 +252,7 @@ export interface ReporteSerieMensualItem {
   abandonos: number;
   altas_medicas: number;
   egresos_voluntarios: number;
+  egresos_administrativos?: number;
   derivados: number;
 }
 
@@ -426,7 +450,7 @@ export interface ImportacionRevisionActionResultado {
 }
 
 export const CATEGORIA_LABELS: Record<Categoria, string> = {
-  BORRADOR: "Borrador",
+  BORRADOR: "No categorizado",
   MAS65: "Mayor 65",
   OA_MENOS65: "OA <65",
   HOMBROS: "Hombros",
@@ -445,6 +469,7 @@ export const ESTADO_LABELS: Record<Estado, string> = {
   ABANDONO: "Abandono",
   ALTA_MEDICA: "Alta Médica",
   EGRESO_VOLUNTARIO: "Egreso Voluntario",
+  EGRESO_ADMINISTRATIVO: "Egreso administrativo",
   DERIVADO: "Derivado",
 };
 

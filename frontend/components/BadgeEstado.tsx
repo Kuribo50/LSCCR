@@ -8,6 +8,7 @@ const ESTILOS: Record<Estado, { bg: string; color: string }> = {
   ABANDONO: { bg: '#ffe6e6', color: '#970502' },
   ALTA_MEDICA: { bg: '#ffe6e6', color: '#970502' },
   EGRESO_VOLUNTARIO: { bg: '#ffe6e6', color: '#970502' },
+  EGRESO_ADMINISTRATIVO: { bg: '#e2e8f0', color: '#334155' },
   DERIVADO: { bg: '#ffe6e6', color: '#970502' },
 }
 

@@ -182,7 +182,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(estado__in=[
                 Paciente.Estado.ALTA_MEDICA,
                 Paciente.Estado.EGRESO_VOLUNTARIO,
-                Paciente.Estado.ABANDONO
+                Paciente.Estado.EGRESO_ADMINISTRATIVO,
+                Paciente.Estado.ABANDONO,
+                Paciente.Estado.DERIVADO,
             ])
             
         if search:
@@ -252,10 +254,14 @@ class PacienteViewSet(viewsets.ModelViewSet):
         serializer = CambiarEstadoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         estado_nuevo = serializer.validated_data["estado"]
-        notas = serializer.validated_data["notas"]
+        notas = serializer.validated_data["notas"].strip()
 
         if request.user.rol == Usuario.Rol.ADMINISTRATIVO:
-            if estado_nuevo not in {Paciente.Estado.INGRESADO, Paciente.Estado.RESCATE}:
+            if estado_nuevo not in {
+                Paciente.Estado.INGRESADO,
+                Paciente.Estado.RESCATE,
+                Paciente.Estado.EGRESO_ADMINISTRATIVO,
+            }:
                 return Response(
                     {"detail": "Administrativo no puede cambiar a estados de cierre operativo."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -323,7 +329,18 @@ class PacienteViewSet(viewsets.ModelViewSet):
         telefono_usado = serializer.validated_data.get("telefono_usado", "")
         proxima_accion = serializer.validated_data.get("proxima_accion", "")
 
+        if not contesto and paciente.estado == Paciente.Estado.RESCATE and not notas:
+            return Response(
+                {"detail": "Debe registrar una observación para egreso administrativo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         with transaction.atomic():
+            estado_anterior = paciente.estado
+            observacion = notas
+            if not contesto and paciente.estado == Paciente.Estado.PENDIENTE and not observacion:
+                observacion = "Primer contacto sin respuesta. Pasa a RESCATE."
+
             LlamadoPaciente.objects.create(
                 paciente=paciente,
                 usuario=request.user,
@@ -333,12 +350,12 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     if contesto
                     else LlamadoPaciente.Resultado.NO_CONTESTA
                 ),
-                notas=notas,
+                notas=observacion,
                 proxima_accion=proxima_accion,
             )
 
             paciente._movimiento_usuario = request.user
-            paciente._movimiento_notas = notas
+            paciente._movimiento_notas = observacion
 
             if contesto:
                 paciente.estado = Paciente.Estado.INGRESADO
@@ -349,11 +366,17 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     campos.append("fecha_ingreso")
             else:
                 paciente.n_intentos_contacto += 1
-                campos = ["n_intentos_contacto", "actualizado_en"]
-                if paciente.n_intentos_contacto >= 2:
+                paciente.fecha_cambio_estado = timezone.now()
+                campos = ["n_intentos_contacto", "fecha_cambio_estado", "actualizado_en"]
+                if estado_anterior == Paciente.Estado.PENDIENTE:
                     paciente.estado = Paciente.Estado.RESCATE
-                    paciente.fecha_cambio_estado = timezone.now()
-                    campos.extend(["estado", "fecha_cambio_estado"])
+                    campos.append("estado")
+                elif estado_anterior == Paciente.Estado.RESCATE:
+                    paciente.estado = Paciente.Estado.EGRESO_ADMINISTRATIVO
+                    campos.append("estado")
+                    if paciente.fecha_egreso is None:
+                        paciente.fecha_egreso = timezone.localdate()
+                        campos.append("fecha_egreso")
 
             paciente.save(update_fields=campos)
 
@@ -431,6 +454,85 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 "movimientos": MovimientoPacienteSerializer(movimientos, many=True).data,
                 "llamados": LlamadoPacienteSerializer(llamados, many=True).data,
                 "inasistencias": InasistenciaPacienteSerializer(inasistencias, many=True).data,
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="historial-acciones")
+    def historial_acciones(self, request, pk=None):
+        paciente = self.get_object()
+        movimientos = MovimientoPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        llamados = LlamadoPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        inasistencias = InasistenciaPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        acciones = []
+        estado_labels = dict(Paciente.Estado.choices)
+
+        for mov in movimientos:
+            anterior = mov.estado_anterior
+            nuevo = mov.estado_nuevo
+            descripcion = (
+                (
+                    f"{estado_labels.get(anterior, 'Sin estado previo')} -> "
+                    f"{estado_labels.get(nuevo, nuevo)}"
+                )
+                if anterior != nuevo
+                else estado_labels.get(nuevo, nuevo)
+            )
+            acciones.append(
+                {
+                    "tipo": "CAMBIO_ESTADO",
+                    "fecha": mov.fecha,
+                    "usuario_nombre": mov.usuario.nombre if mov.usuario else None,
+                    "titulo": "Cambio de estado",
+                    "descripcion": descripcion,
+                    "observacion": mov.notas,
+                    "estado_anterior": anterior,
+                    "estado_nuevo": nuevo,
+                }
+            )
+
+        for llamado in llamados:
+            titulo = (
+                "Contacto confirmado"
+                if llamado.resultado == LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO
+                else "Contacto sin respuesta"
+            )
+            acciones.append(
+                {
+                    "tipo": "CONTACTO",
+                    "fecha": llamado.fecha,
+                    "usuario_nombre": llamado.usuario.nombre if llamado.usuario else None,
+                    "titulo": titulo,
+                    "descripcion": f"Resultado: {llamado.get_resultado_display()}",
+                    "observacion": llamado.notas,
+                    "estado_anterior": None,
+                    "estado_nuevo": None,
+                }
+            )
+
+        for inasistencia in inasistencias:
+            fecha = timezone.make_aware(
+                datetime.combine(inasistencia.fecha, datetime.min.time())
+            )
+            acciones.append(
+                {
+                    "tipo": "INASISTENCIA",
+                    "fecha": fecha,
+                    "usuario_nombre": inasistencia.usuario.nombre if inasistencia.usuario else None,
+                    "titulo": "Inasistencia",
+                    "descripcion": "Justificada" if inasistencia.justificada else "No justificada",
+                    "observacion": inasistencia.motivo,
+                    "estado_anterior": None,
+                    "estado_nuevo": None,
+                }
+            )
+
+        acciones.sort(key=lambda item: item["fecha"], reverse=True)
+        return Response(
+            {
+                "paciente": PacienteSerializer(
+                    paciente, context=self.get_serializer_context()
+                ).data,
+                "acciones": acciones,
             }
         )
 

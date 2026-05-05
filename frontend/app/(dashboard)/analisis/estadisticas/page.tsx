@@ -250,10 +250,11 @@ export default function EstadisticasPage() {
                 <p className="text-xs font-semibold text-slate-500">{resumen.periodo_label}</p>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
               <MiniMetric label="Ingresos" value={resumen.actividad_mes.ingresos} />
               <MiniMetric label="Altas médicas" value={resumen.actividad_mes.altas_medicas} />
               <MiniMetric label="Egresos voluntarios" value={resumen.actividad_mes.egresos_voluntarios} />
+              <MiniMetric label="Egresos admin." value={resumen.actividad_mes.egresos_administrativos ?? 0} />
               <MiniMetric label="Abandonos" value={resumen.actividad_mes.abandonos} />
               <MiniMetric label="Derivados" value={resumen.actividad_mes.derivados} />
             </div>
@@ -397,6 +398,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
             <th className="px-3 py-3">Ingresos mes</th>
             <th className="px-3 py-3">Egresos mes</th>
             <th className="px-3 py-3">Altas</th>
+            <th className="px-3 py-3">Egresos admin.</th>
             <th className="px-3 py-3">Abandonos</th>
             <th className="px-3 py-3">Prom. días</th>
           </tr>
@@ -413,6 +415,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
               <td className="px-3 py-3 font-semibold text-slate-700">{item.ingresos_mes}</td>
               <td className="px-3 py-3 font-semibold text-slate-700">{item.egresos_mes}</td>
               <td className="px-3 py-3 font-semibold text-slate-700">{item.altas_medicas_mes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700">{item.egresos_administrativos_mes ?? 0}</td>
               <td className="px-3 py-3 font-semibold text-slate-700">{item.abandonos_mes}</td>
               <td className="px-3 py-3 font-semibold text-slate-700">{item.promedio_dias_hasta_ingreso}</td>
             </tr>

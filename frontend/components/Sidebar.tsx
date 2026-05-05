@@ -279,7 +279,7 @@ export default function Sidebar({
 
         setCounts({
           total: total.length,
-          mios: mios.filter((p) => !["ALTA_MEDICA", "EGRESO_VOLUNTARIO", "ABANDONO", "DERIVADO"].includes(p.estado)).length,
+          mios: mios.filter((p) => !["ALTA_MEDICA", "EGRESO_VOLUNTARIO", "EGRESO_ADMINISTRATIVO", "ABANDONO", "DERIVADO"].includes(p.estado)).length,
           rescates: rescates.length,
           cola,
           revision: revision?.pendientes ?? 0,

@@ -60,6 +60,7 @@ class PacienteSerializer(serializers.ModelSerializer):
     kine_asignado_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
     responsable_asignado = serializers.IntegerField(source="kine_asignado_id", read_only=True)
     responsable_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
+    categoria_label = serializers.CharField(source="get_categoria_display", read_only=True)
     dias_en_lista = serializers.SerializerMethodField()
     llamados_count = serializers.SerializerMethodField()
     inasistencias_count = serializers.SerializerMethodField()
@@ -80,6 +81,7 @@ class PacienteSerializer(serializers.ModelSerializer):
             "profesional",
             "prioridad",
             "categoria",
+            "categoria_label",
             "mayor_60",
             "kine_asignado",
             "kine_asignado_nombre",
@@ -113,6 +115,7 @@ class PacienteSerializer(serializers.ModelSerializer):
             "id",
             "id_ccr",
             "mayor_60",
+            "categoria_label",
             "responsable_asignado",
             "responsable_nombre",
             "fecha_cambio_estado",

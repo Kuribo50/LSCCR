@@ -11,11 +11,12 @@ import { CATEGORIA_LABELS, ESTADO_LABELS } from '@/lib/types'
 import FichaPaciente from '@/components/FichaPaciente'
 import BadgePrioridad from '@/components/BadgePrioridad'
 
-type EgresoState = Extract<Estado, 'ALTA_MEDICA' | 'EGRESO_VOLUNTARIO' | 'ABANDONO' | 'DERIVADO'>
+type EgresoState = Extract<Estado, 'ALTA_MEDICA' | 'EGRESO_VOLUNTARIO' | 'EGRESO_ADMINISTRATIVO' | 'ABANDONO' | 'DERIVADO'>
 
 const EGRESO_STATES: EgresoState[] = [
   'ALTA_MEDICA',
   'EGRESO_VOLUNTARIO',
+  'EGRESO_ADMINISTRATIVO',
   'ABANDONO',
   'DERIVADO',
 ]
@@ -23,6 +24,7 @@ const EGRESO_STATES: EgresoState[] = [
 const EGRESO_COLORS: Record<EgresoState, { bg: string; text: string; border: string }> = {
   ALTA_MEDICA: { bg: '#ffe6e6', text: '#970502', border: '#fd9c9b' },
   EGRESO_VOLUNTARIO: { bg: '#ecf5f8', text: '#335fdb', border: '#BFDBFE' },
+  EGRESO_ADMINISTRATIVO: { bg: '#E2E8F0', text: '#334155', border: '#CBD5E1' },
   ABANDONO: { bg: '#FFF7ED', text: '#9A3412', border: '#fdcb68' },
   DERIVADO: { bg: '#F5F3FF', text: '#5B21B6', border: '#C4B5FD' },
 }

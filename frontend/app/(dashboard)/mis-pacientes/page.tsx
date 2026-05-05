@@ -55,6 +55,7 @@ const ESTADO_ORDER: Record<Estado, number> = {
   ABANDONO: 4,
   ALTA_MEDICA: 5,
   EGRESO_VOLUNTARIO: 6,
+  EGRESO_ADMINISTRATIVO: 7,
 };
 
 type MyPatientRow = {
@@ -91,6 +92,7 @@ type PatientTab = "INGRESADOS" | "SELECCIONADOS" | "EGRESADOS";
 const EGRESO_STATES: Estado[] = [
   "ALTA_MEDICA",
   "EGRESO_VOLUNTARIO",
+  "EGRESO_ADMINISTRATIVO",
   "ABANDONO",
   "DERIVADO",
 ];
