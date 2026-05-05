@@ -129,7 +129,13 @@ def _resumen_pacientes_corte(mes: int, anio: int) -> dict:
     }
 
 
+def _id_ccr_desde_pk(pk: int) -> str:
+    return f"CCR-{pk:04d}"
+
+
 def _vaciar_importaciones(importaciones: list[ImportacionMensual], *, borrar_importacion: bool) -> dict:
+    # Acción destructiva de mantenimiento: solo borra pacientes importados sin asignación activa.
+    # TODO: evaluar archivado lógico de cortes para conservar trazabilidad sin borrar datos físicos.
     pacientes_eliminados = 0
     importaciones_eliminadas = 0
     archivos_eliminados = 0
@@ -507,7 +513,7 @@ class ImportarDerivacionesView(APIView):
             pacientes_a_crear = resultado.get("pacientes", [])
             if pacientes_a_crear:
                 import uuid as _uuid
-                batch_prefix = _uuid.uuid4().hex[:8].upper()
+                batch_prefix = _uuid.uuid4().hex[:6].upper()
                 # Vincula cada paciente con la importación del mes de su derivación.
                 for i, p in enumerate(pacientes_a_crear):
                     mes_derivacion = p.fecha_derivacion.month
@@ -517,11 +523,11 @@ class ImportarDerivacionesView(APIView):
                     elif nuevas_importaciones:
                         p.importacion_origen = list(nuevas_importaciones.values())[0]
                     # Usa un id temporal único porque bulk_create no ejecuta save().
-                    p.id_ccr = f"TMP-{batch_prefix}-{i + 1:06d}"
+                    p.id_ccr = f"T{batch_prefix}{i + 1:05d}"
 
                 creados = Paciente.objects.bulk_create(pacientes_a_crear, batch_size=200)
                 for paciente in creados:
-                    paciente.id_ccr = str(paciente.pk)
+                    paciente.id_ccr = _id_ccr_desde_pk(paciente.pk)
                 Paciente.objects.bulk_update(creados, ["id_ccr"], batch_size=200)
                 resultado["importados"] = len(creados)
 

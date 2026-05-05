@@ -106,9 +106,12 @@ class ImportacionesMensualesTests(APITestCase):
         importacion = ImportacionMensual.objects.get()
         self.assertEqual(importacion.registros_importados, 2)
         self.assertEqual(importacion.pacientes_creados.count(), 2)
-        self.assertTrue(
-            Paciente.objects.filter(importacion_origen=importacion, id_ccr__in=["1", "2"]).exists()
-        )
+        pacientes_importados = list(Paciente.objects.filter(importacion_origen=importacion))
+        self.assertEqual(len(pacientes_importados), 2)
+        for paciente in pacientes_importados:
+            self.assertTrue(paciente.id_ccr)
+            self.assertTrue(paciente.id_ccr.startswith("CCR-"))
+            self.assertEqual(paciente.importacion_origen, importacion)
 
     def test_recurrentes_no_crean_duplicados_y_quedan_en_revision(self):
         Paciente.objects.create(

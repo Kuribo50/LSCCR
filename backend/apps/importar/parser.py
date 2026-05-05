@@ -319,7 +319,7 @@ def _procesar_hoja(ws, sheet_name: str, columnas: dict, header_row: int,
 
             duplicados_vistos.add(dup_key)
             pacientes_a_crear.append(Paciente(
-                id_ccr=f"TMP-{uuid.uuid4().hex[:12].upper()}",
+                id_ccr=f"TMP{uuid.uuid4().hex[:9].upper()}",
                 fecha_derivacion=fecha_derivacion,
                 percapita_desde=desde,
                 nombre=nombre.upper(),
