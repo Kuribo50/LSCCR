@@ -114,6 +114,7 @@ export default function CalendarioPage() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(new Date()));
   const [programando, setProgramando] = useState<Paciente | null>(null);
   const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
+  const [gestionandoCita, setGestionandoCita] = useState<Paciente | null>(null);
   const [inasistenciaAgenda, setInasistenciaAgenda] = useState<Paciente | null>(null);
   const [eliminandoCita, setEliminandoCita] = useState<Paciente | null>(null);
   const [accionEnCurso, setAccionEnCurso] = useState("");
@@ -204,8 +205,6 @@ export default function CalendarioPage() {
 
   const pacientesDelDia = porFecha.get(fechaSeleccionada) ?? [];
   const pacientesSinFecha = pacientesProgramables.filter((p) => !p.proxima_atencion);
-  const ingresadosSinAgenda = pacientesSinFecha.filter((p) => p.estado === "INGRESADO").length;
-  const rescatesSinAgenda = pacientesSinFecha.filter((p) => p.estado === "RESCATE").length;
   const citasHoy = porFecha.get(toDateKey(new Date()))?.length ?? 0;
 
   async function handleAsistencia(paciente: Paciente) {
@@ -336,35 +335,40 @@ export default function CalendarioPage() {
         </motion.div>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <motion.aside variants={itemVariants} className="order-2 space-y-4 xl:order-1">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_420px]">
+        <motion.main variants={itemVariants} className="space-y-4">
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Calendario mensual</p>
-                <h2 className="mt-1 text-sm font-black capitalize text-slate-900">{formatMonthYear(mesActual)}</h2>
+                <h2 className="mt-1 text-xl font-black capitalize text-slate-950">{formatMonthYear(mesActual)}</h2>
               </div>
-              <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                Hoy: {citasHoy}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                  Hoy: {citasHoy} cita{citasHoy !== 1 ? "s" : ""}
+                </span>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                  Seleccionado: {pacientesDelDia.length}
+                </span>
+              </div>
             </div>
 
-            <div className="mb-2 grid grid-cols-7 gap-1 text-center">
+            <div className="mb-2 grid grid-cols-7 gap-2 text-center">
               {["D", "L", "M", "M", "J", "V", "S"].map((d, i) => (
-                <div key={`${d}-${i}`} className="py-1 text-[10px] font-bold uppercase text-slate-400">{d}</div>
+                <div key={`${d}-${i}`} className="py-2 text-xs font-bold uppercase text-slate-400">{d}</div>
               ))}
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-7 gap-1.5">
+              <div className="grid grid-cols-7 gap-2">
                 {Array.from({ length: 35 }).map((_, i) => (
-                  <div key={i} className="h-11 animate-pulse rounded-md bg-slate-100" />
+                  <div key={i} className="h-20 animate-pulse rounded-lg bg-slate-100 lg:h-24" />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-7 gap-1.5">
+              <div className="grid grid-cols-7 gap-2">
                 {diasDelMes.map((dia, index) => {
-                  if (!dia) return <div key={`empty-${index}`} />;
+                  if (!dia) return <div key={`empty-${index}`} className="h-20 rounded-lg border border-transparent lg:h-24" />;
                   const dateKey = toDateKey(dia);
                   const items = porFecha.get(dateKey) ?? [];
                   const isSelected = fechaSeleccionada === dateKey;
@@ -375,18 +379,18 @@ export default function CalendarioPage() {
                       key={dateKey}
                       type="button"
                       onClick={() => setFechaSeleccionada(dateKey)}
-                      className={`relative flex h-11 flex-col items-center justify-center rounded-md border text-xs font-black transition ${
+                      className={`relative flex h-20 flex-col items-start justify-between rounded-lg border p-2 text-left transition lg:h-24 ${
                         isSelected
-                          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                          ? "border-blue-600 bg-blue-600 text-white shadow-md"
                           : isToday
                             ? "border-blue-200 bg-blue-50 text-blue-800"
                             : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50"
                       }`}
                     >
-                      <span>{dia.getDate()}</span>
+                      <span className="text-sm font-black lg:text-base">{dia.getDate()}</span>
                       {items.length > 0 && (
-                        <span className={`absolute bottom-1 rounded-full px-1 text-[8px] leading-3 ${isSelected ? "bg-white text-blue-700" : "bg-blue-100 text-blue-700"}`}>
-                          {items.length}
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${isSelected ? "bg-white text-blue-700" : "bg-blue-100 text-blue-700"}`}>
+                          {items.length} cita{items.length !== 1 ? "s" : ""}
                         </span>
                       )}
                     </button>
@@ -396,6 +400,46 @@ export default function CalendarioPage() {
             )}
           </section>
 
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda del día</p>
+                  <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatDay(fechaSeleccionada)}</h2>
+                </div>
+                <p className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                  {pacientesDelDia.length} cita{pacientesDelDia.length !== 1 ? "s" : ""} programada{pacientesDelDia.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="custom-scrollbar max-h-[360px] space-y-2 overflow-y-auto p-4">
+              {loading ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="h-24 animate-pulse rounded-lg bg-slate-100" />
+                ))
+              ) : pacientesDelDia.length > 0 ? (
+                pacientesDelDia.map((p) => (
+                  <AgendaDiaCard
+                    key={p.id}
+                    paciente={p}
+                    puedeGestionar={puedeGestionarAgenda(p)}
+                    disabled={accionEnCurso.endsWith(`-${p.id}`)}
+                    onEditar={() => setGestionandoCita(p)}
+                    onFicha={() => setFichaPaciente(p)}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  title="Sin citas para este día"
+                  description="Selecciona otro día en el calendario o programa una atención desde pendientes de agenda."
+                />
+              )}
+            </div>
+          </section>
+        </motion.main>
+
+        <motion.aside variants={itemVariants} className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -405,7 +449,7 @@ export default function CalendarioPage() {
               <FiUserPlus className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[430px] space-y-2 overflow-y-auto pr-1">
+            <div className="custom-scrollbar max-h-[740px] space-y-2 overflow-y-auto pr-1">
               {pacientesSinFecha.length > 0 ? (
                 pacientesSinFecha.map((p) => (
                   <PendienteAgendaItem
@@ -422,56 +466,6 @@ export default function CalendarioPage() {
             </div>
           </section>
         </motion.aside>
-
-        <motion.main variants={itemVariants} className="order-1 space-y-4 xl:order-2">
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <ResumenDiaCard label="Citas del día" value={pacientesDelDia.length} tone="blue" />
-            <ResumenDiaCard label="Pendientes de agenda" value={pacientesSinFecha.length} tone="slate" />
-            <ResumenDiaCard label="Ingresados sin agenda" value={ingresadosSinAgenda} tone="amber" />
-            <ResumenDiaCard label="Rescate sin agenda" value={rescatesSinAgenda} tone="red" />
-          </section>
-
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-4">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda del día</p>
-                  <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatDay(fechaSeleccionada)}</h2>
-                </div>
-                <p className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                  {pacientesDelDia.length} cita{pacientesDelDia.length !== 1 ? "s" : ""} programada{pacientesDelDia.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-            </div>
-
-            <div className="custom-scrollbar max-h-[640px] space-y-3 overflow-y-auto p-4">
-              {loading ? (
-                Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-32 animate-pulse rounded-lg bg-slate-100" />
-                ))
-              ) : pacientesDelDia.length > 0 ? (
-                pacientesDelDia.map((p) => (
-                  <AgendaDiaCard
-                    key={p.id}
-                    paciente={p}
-                    puedeGestionar={puedeGestionarAgenda(p)}
-                    accionEnCurso={accionEnCurso}
-                    onAsistencia={() => void handleAsistencia(p)}
-                    onInasistencia={() => setInasistenciaAgenda(p)}
-                    onReagendar={() => setProgramando(p)}
-                    onEliminar={() => setEliminandoCita(p)}
-                    onFicha={() => setFichaPaciente(p)}
-                  />
-                ))
-              ) : (
-                <EmptyState
-                  title="Sin citas para este día"
-                  description="Selecciona otro día en el calendario o programa una atención desde pendientes de agenda."
-                />
-              )}
-            </div>
-          </section>
-        </motion.main>
       </div>
 
       <AnimatePresence>
@@ -506,6 +500,35 @@ export default function CalendarioPage() {
         )}
       </AnimatePresence>
 
+      {gestionandoCita && (
+        <GestionarCitaModal
+          paciente={gestionandoCita}
+          puedeGestionar={puedeGestionarAgenda(gestionandoCita)}
+          accionEnCurso={accionEnCurso}
+          onClose={() => setGestionandoCita(null)}
+          onAsistencia={async () => {
+            await handleAsistencia(gestionandoCita);
+            setGestionandoCita(null);
+          }}
+          onInasistencia={() => {
+            setInasistenciaAgenda(gestionandoCita);
+            setGestionandoCita(null);
+          }}
+          onReagendar={() => {
+            setProgramando(gestionandoCita);
+            setGestionandoCita(null);
+          }}
+          onEliminar={() => {
+            setEliminandoCita(gestionandoCita);
+            setGestionandoCita(null);
+          }}
+          onFicha={() => {
+            setFichaPaciente(gestionandoCita);
+            setGestionandoCita(null);
+          }}
+        />
+      )}
+
       {inasistenciaAgenda && (
         <InasistenciaAgendaModal
           paciente={inasistenciaAgenda}
@@ -539,47 +562,24 @@ export default function CalendarioPage() {
   );
 }
 
-function ResumenDiaCard({ label, value, tone }: { label: string; value: number; tone: "blue" | "slate" | "amber" | "red" }) {
-  const toneClass = {
-    blue: "border-blue-100 bg-blue-50 text-blue-700",
-    slate: "border-slate-200 bg-white text-slate-700",
-    amber: "border-amber-100 bg-amber-50 text-amber-800",
-    red: "border-red-100 bg-red-50 text-red-700",
-  }[tone];
-
-  return (
-    <div className={`rounded-xl border px-4 py-3 shadow-sm ${toneClass}`}>
-      <p className="text-[10px] font-bold uppercase tracking-wide">{label}</p>
-      <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
-    </div>
-  );
-}
-
 function AgendaDiaCard({
   paciente,
   puedeGestionar,
-  accionEnCurso,
-  onAsistencia,
-  onInasistencia,
-  onReagendar,
-  onEliminar,
+  disabled,
+  onEditar,
   onFicha,
 }: {
   paciente: Paciente;
   puedeGestionar: boolean;
-  accionEnCurso: string;
-  onAsistencia: () => void;
-  onInasistencia: () => void;
-  onReagendar: () => void;
-  onEliminar: () => void;
+  disabled: boolean;
+  onEditar: () => void;
   onFicha: () => void;
 }) {
-  const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
   const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <article className="rounded-lg border border-slate-200 bg-white p-3 transition hover:border-blue-100 hover:shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
@@ -590,8 +590,8 @@ function AgendaDiaCard({
             <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
           </div>
 
-          <h3 className="mt-3 truncate text-base font-black text-slate-950">{paciente.nombre}</h3>
-          <div className="mt-2 grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-2">
+          <h3 className="mt-2 truncate text-sm font-black text-slate-950">{paciente.nombre}</h3>
+          <div className="mt-2 grid gap-x-3 gap-y-1 text-xs font-semibold text-slate-600 md:grid-cols-2">
             <p>ID {paciente.id_ccr}</p>
             <p>RUT {formatearRut(paciente.rut)}</p>
             <p>Responsable: {responsable}</p>
@@ -600,63 +600,149 @@ function AgendaDiaCard({
               {paciente.telefono || "Sin teléfono"}
             </p>
           </div>
-          <p className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-            Acción sugerida: registrar asistencia, inasistencia o reagendar según resultado de la atención.
+        </div>
+
+        <div className="flex shrink-0 flex-wrap gap-2 lg:w-[190px] lg:flex-col">
+          {puedeGestionar && (
+            <button
+              type="button"
+              onClick={onEditar}
+              disabled={disabled}
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            >
+              <FiEdit3 size={14} />
+              Editar
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onFicha}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+          >
+            <FiEye size={14} />
+            Ver ficha
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function GestionarCitaModal({
+  paciente,
+  puedeGestionar,
+  accionEnCurso,
+  onClose,
+  onAsistencia,
+  onInasistencia,
+  onReagendar,
+  onEliminar,
+  onFicha,
+}: {
+  paciente: Paciente;
+  puedeGestionar: boolean;
+  accionEnCurso: string;
+  onClose: () => void;
+  onAsistencia: () => void | Promise<void>;
+  onInasistencia: () => void;
+  onReagendar: () => void;
+  onEliminar: () => void;
+  onFicha: () => void;
+}) {
+  const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda operativa</p>
+          <h3 className="mt-1 text-lg font-black text-slate-900">Editar cita</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}
           </p>
         </div>
 
-        <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:w-[300px]">
-          {puedeGestionar && (
-            <>
+        <div className="space-y-4 p-5">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
+              <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
+            </div>
+            <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 sm:grid-cols-2">
+              <p>ID {paciente.id_ccr}</p>
+              <p>RUT {formatearRut(paciente.rut)}</p>
+              <p>Responsable: {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}</p>
+              <p>Teléfono: {paciente.telefono || "Sin teléfono"}</p>
+            </div>
+          </div>
+
+          {puedeGestionar ? (
+            <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={onAsistencia}
+                onClick={() => void onAsistencia()}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
               >
-                <FiCheckCircle size={14} />
-                Llegó
+                <FiCheckCircle size={15} />
+                Llegó / asistió
               </button>
               <button
                 type="button"
                 onClick={onInasistencia}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
               >
-                <FiXCircle size={14} />
+                <FiXCircle size={15} />
                 No asistió
               </button>
               <button
                 type="button"
                 onClick={onReagendar}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-[#335FDB] px-3 py-3 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
               >
-                <FiEdit3 size={14} />
+                <FiEdit3 size={15} />
                 Reagendar
               </button>
               <button
                 type="button"
                 onClick={onEliminar}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 py-3 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
               >
-                <FiTrash2 size={14} />
-                Eliminar
+                <FiTrash2 size={15} />
+                Eliminar cita
               </button>
-            </>
+            </div>
+          ) : (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-600">
+              No tienes permisos para modificar esta cita.
+            </p>
           )}
+        </div>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={disabled}
+            className="ccr-control-button px-4 py-2 text-xs disabled:opacity-50"
+          >
+            Cerrar
+          </button>
           <button
             type="button"
             onClick={onFicha}
-            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 sm:col-span-2"
+            disabled={disabled}
+            className="inline-flex items-center gap-2 rounded-md border border-emerald-700 bg-white px-4 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50"
           >
             <FiEye size={14} />
             Ver ficha operativa
           </button>
         </div>
       </div>
-    </article>
+    </div>
   );
 }
 
