@@ -547,26 +547,47 @@ export default function FichaPaciente({
           paciente={paciente}
           onClose={() => setMostrarProgramacion(false)}
           onConfirm={async (fechaHora) => {
-            const actualizado = await api.post<Paciente>(
-              `/pacientes/${paciente.id}/programar-atencion/`,
-              { fecha_hora: fechaHora },
-            );
+            const actualizado = paciente.proxima_atencion
+              ? await api.post<Paciente>(
+                  `/pacientes/${paciente.id}/reagendar-atencion/`,
+                  {
+                    fecha_programada: paciente.proxima_atencion,
+                    nueva_fecha: fechaHora,
+                    observacion: "Atención reagendada desde ficha operativa.",
+                  },
+                )
+              : await api.post<Paciente>(
+                  `/pacientes/${paciente.id}/programar-atencion/`,
+                  { fecha_hora: fechaHora },
+                );
             setPaciente(actualizado);
             onRefresh();
+            await cargarHistorial(actualizado.id);
             setMostrarProgramacion(false);
           }}
           onClear={
             paciente.proxima_atencion
               ? async () => {
-                  const actualizado = await api.delete<Paciente>(
-                    `/pacientes/${paciente.id}/programar-atencion/`,
+                  const actualizado = await api.post<Paciente>(
+                    `/pacientes/${paciente.id}/eliminar-cita/`,
+                    {
+                      fecha_programada: paciente.proxima_atencion,
+                      observacion: "Cita eliminada desde ficha operativa.",
+                    },
                   );
                   setPaciente(actualizado);
                   onRefresh();
+                  await cargarHistorial(actualizado.id);
                   setMostrarProgramacion(false);
                 }
               : undefined
           }
+          successMessage={
+            paciente.proxima_atencion
+              ? "Atención reagendada correctamente."
+              : "Atención programada correctamente."
+          }
+          clearSuccessMessage="Cita eliminada. Paciente vuelve a pendientes de agenda."
         />
       )}
 
@@ -634,12 +655,19 @@ function badgeAccion(tipo: HistorialAccionPaciente["tipo"]) {
   if (tipo === "INASISTENCIA") {
     return "border-amber-100 bg-amber-50 text-amber-800";
   }
+  if (tipo.startsWith("AGENDA_")) {
+    if (tipo === "AGENDA_NO_ASISTIO") return "border-amber-100 bg-amber-50 text-amber-800";
+    if (tipo === "AGENDA_CANCELADO") return "border-red-100 bg-red-50 text-red-700";
+    if (tipo === "AGENDA_REAGENDADO") return "border-blue-100 bg-blue-50 text-blue-700";
+    return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  }
   return "border-slate-100 bg-slate-50 text-slate-700";
 }
 
 function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
   if (tipo === "CONTACTO") return "Contacto";
   if (tipo === "INASISTENCIA") return "Inasistencia";
+  if (tipo.startsWith("AGENDA_")) return "Agenda";
   return "Estado";
 }
 
@@ -669,6 +697,22 @@ function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
             <p className="mt-2 text-xs text-slate-500">
               {formatearFechaHora(accion.fecha)} · {accion.usuario_nombre ?? "Sistema"}
             </p>
+            {(accion.fecha_programada || accion.nueva_fecha) && (
+              <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                {accion.fecha_programada && (
+                  <p>
+                    <span className="font-semibold">Fecha programada:</span>{" "}
+                    {formatearFechaHora(accion.fecha_programada)}
+                  </p>
+                )}
+                {accion.nueva_fecha && (
+                  <p>
+                    <span className="font-semibold">Nueva fecha:</span>{" "}
+                    {formatearFechaHora(accion.nueva_fecha)}
+                  </p>
+                )}
+              </div>
+            )}
             {accion.observacion && (
               <p className="mt-2 rounded-md border border-white bg-white px-2 py-2 text-xs text-slate-700">
                 {accion.observacion}

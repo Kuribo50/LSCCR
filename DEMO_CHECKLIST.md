@@ -29,6 +29,11 @@ Usar solo datos ficticios. No cargar Excel reales, RUT reales, bases locales ni 
 11. Registrar dos inasistencias no justificadas y confirmar alerta de posible `ABANDONO`.
 12. Cambiar estado a `ALTA_MEDICA`, `EGRESO_VOLUNTARIO`, `DERIVADO` o `ABANDONO` con observación operativa.
 13. Confirmar que `ABANDONO` solo se permite desde `INGRESADO`.
+14. Abrir Calendario y programar atención para un paciente pendiente de agenda.
+15. Marcar `Llegó` y confirmar que el paciente vuelve a pendientes de agenda.
+16. Registrar inasistencia desde una cita del calendario.
+17. Reagendar una cita y confirmar que queda en la nueva fecha.
+18. Eliminar una cita y confirmar que no se borra el paciente ni su historial.
 
 ## Importación y revisión
 

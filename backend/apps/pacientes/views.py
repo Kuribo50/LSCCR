@@ -10,7 +10,13 @@ from rest_framework.response import Response
 from apps.usuarios.models import Usuario
 
 from .exports import crear_excel_pacientes, excel_response, fecha_archivo_hoy
-from .models import InasistenciaPaciente, LlamadoPaciente, MovimientoPaciente, Paciente
+from .models import (
+    InasistenciaPaciente,
+    LlamadoPaciente,
+    MovimientoPaciente,
+    Paciente,
+    RegistroAgendaPaciente,
+)
 from .permissions import (
     PuedeAsignarPaciente,
     PuedeCambiarEstado,
@@ -19,12 +25,16 @@ from .permissions import (
 )
 from .serializers import (
     CambiarEstadoSerializer,
+    AgendaFechaSerializer,
     InasistenciaPacienteSerializer,
     LlamadoPacienteSerializer,
     MovimientoPacienteSerializer,
     PacienteCreateSerializer,
     PacienteSerializer,
     ProgramarAtencionSerializer,
+    ReagendarAtencionSerializer,
+    RegistrarInasistenciaAgendaSerializer,
+    RegistroAgendaPacienteSerializer,
     RegistrarInasistenciaSerializer,
     RegistrarLlamadoSerializer,
 )
@@ -56,6 +66,13 @@ ALERTAS_OPERATIVAS = (
     "telefonos_incompletos",
 )
 
+AGENDA_MOVIMIENTO_NOTAS = {
+    "Paciente asistió a atención programada.",
+    "No asiste a atención programada.",
+    "Atención reagendada.",
+    "Cita eliminada desde calendario.",
+}
+
 
 class PacienteViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -73,6 +90,18 @@ class PacienteViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return PacienteCreateSerializer
         return PacienteSerializer
+
+    def _fecha_programada_agenda(self, paciente, serializer):
+        return serializer.validated_data.get("fecha_programada") or paciente.proxima_atencion
+
+    def _crear_movimiento_agenda(self, paciente, usuario, nota, estado_anterior=None):
+        MovimientoPaciente.objects.create(
+            paciente=paciente,
+            usuario=usuario,
+            estado_anterior=estado_anterior or paciente.estado,
+            estado_nuevo=paciente.estado,
+            notas=nota,
+        )
 
     def _serializar_grupo_alerta(self, queryset):
         ordenado = queryset.annotate(orden_prioridad=ORDEN_PRIORIDAD).order_by(
@@ -442,18 +471,230 @@ class PacienteViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="registrar-asistencia",
+        permission_classes=[PuedeProgramarAtencion],
+    )
+    def registrar_asistencia(self, request, pk=None):
+        paciente = self.get_object()
+        self.check_object_permissions(request, paciente)
+
+        if paciente.proxima_atencion is None:
+            return Response(
+                {"detail": "El paciente no tiene una atención programada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AgendaFechaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        fecha_programada = self._fecha_programada_agenda(paciente, serializer)
+        observacion = serializer.validated_data.get("observacion", "").strip()
+        nota_movimiento = "Paciente asistió a atención programada."
+
+        with transaction.atomic():
+            estado_anterior = paciente.estado
+            RegistroAgendaPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                fecha_programada=fecha_programada,
+                resultado=RegistroAgendaPaciente.Resultado.ASISTIO,
+                observacion=observacion,
+            )
+
+            campos = ["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"]
+            if paciente.estado in {Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE}:
+                paciente._movimiento_usuario = request.user
+                paciente._movimiento_notas = nota_movimiento
+                paciente.estado = Paciente.Estado.INGRESADO
+                paciente.fecha_cambio_estado = timezone.now()
+                campos.extend(["estado", "fecha_cambio_estado"])
+                if paciente.fecha_ingreso is None:
+                    paciente.fecha_ingreso = timezone.localdate()
+                    campos.append("fecha_ingreso")
+
+            paciente.proxima_atencion = None
+            paciente.fecha_siguiente_cita = None
+            paciente.save(update_fields=campos)
+
+            if estado_anterior == paciente.estado:
+                self._crear_movimiento_agenda(
+                    paciente,
+                    request.user,
+                    nota_movimiento,
+                    estado_anterior=estado_anterior,
+                )
+
+        return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="registrar-inasistencia-agenda",
+        permission_classes=[PuedeProgramarAtencion],
+    )
+    def registrar_inasistencia_agenda(self, request, pk=None):
+        paciente = self.get_object()
+        self.check_object_permissions(request, paciente)
+
+        if paciente.proxima_atencion is None:
+            return Response(
+                {"detail": "El paciente no tiene una atención programada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = RegistrarInasistenciaAgendaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        fecha_programada = self._fecha_programada_agenda(paciente, serializer)
+        motivo = serializer.validated_data.get("motivo", "").strip()
+        justificada = serializer.validated_data["justificada"]
+        inasistencia = None
+
+        with transaction.atomic():
+            RegistroAgendaPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                fecha_programada=fecha_programada,
+                resultado=RegistroAgendaPaciente.Resultado.NO_ASISTIO,
+                observacion=motivo,
+            )
+
+            campos = ["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"]
+            if paciente.estado == Paciente.Estado.INGRESADO:
+                inasistencia = InasistenciaPaciente.objects.create(
+                    paciente=paciente,
+                    usuario=request.user,
+                    fecha=timezone.localdate(fecha_programada),
+                    justificada=justificada,
+                    motivo=motivo,
+                )
+                paciente.fecha_ultima_inasistencia = inasistencia.fecha
+                paciente.motivo_ultima_inasistencia = inasistencia.motivo
+                campos.extend(["fecha_ultima_inasistencia", "motivo_ultima_inasistencia"])
+                if not justificada:
+                    paciente.n_inasistencias += 1
+                    campos.append("n_inasistencias")
+
+            paciente.proxima_atencion = None
+            paciente.fecha_siguiente_cita = None
+            paciente.save(update_fields=campos)
+            self._crear_movimiento_agenda(
+                paciente,
+                request.user,
+                "No asiste a atención programada.",
+            )
+
+        alerta_abandono = paciente.estado == Paciente.Estado.INGRESADO and paciente.n_inasistencias >= 2
+        payload = {
+            "paciente": PacienteSerializer(paciente, context=self.get_serializer_context()).data,
+            "alerta_abandono": alerta_abandono,
+            "mensaje": (
+                "Paciente tiene 2 inasistencias no justificadas. Evaluar marcar como ABANDONO."
+                if alerta_abandono
+                else ""
+            ),
+        }
+        if inasistencia is not None:
+            payload["inasistencia"] = InasistenciaPacienteSerializer(inasistencia).data
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="reagendar-atencion",
+        permission_classes=[PuedeProgramarAtencion],
+    )
+    def reagendar_atencion(self, request, pk=None):
+        paciente = self.get_object()
+        self.check_object_permissions(request, paciente)
+
+        if paciente.proxima_atencion is None:
+            return Response(
+                {"detail": "El paciente no tiene una atención programada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ReagendarAtencionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        fecha_programada = self._fecha_programada_agenda(paciente, serializer)
+        nueva_fecha = serializer.validated_data["nueva_fecha"]
+        observacion = serializer.validated_data.get("observacion", "").strip()
+
+        with transaction.atomic():
+            RegistroAgendaPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                fecha_programada=fecha_programada,
+                resultado=RegistroAgendaPaciente.Resultado.REAGENDADO,
+                observacion=observacion,
+                nueva_fecha=nueva_fecha,
+            )
+            paciente.proxima_atencion = nueva_fecha
+            paciente.fecha_siguiente_cita = timezone.localdate(nueva_fecha)
+            paciente.save(update_fields=["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"])
+            self._crear_movimiento_agenda(
+                paciente,
+                request.user,
+                "Atención reagendada.",
+            )
+
+        return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="eliminar-cita",
+        permission_classes=[PuedeProgramarAtencion],
+    )
+    def eliminar_cita(self, request, pk=None):
+        paciente = self.get_object()
+        self.check_object_permissions(request, paciente)
+
+        if paciente.proxima_atencion is None:
+            return Response(
+                {"detail": "El paciente no tiene una atención programada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = AgendaFechaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        fecha_programada = self._fecha_programada_agenda(paciente, serializer)
+        observacion = serializer.validated_data.get("observacion", "").strip()
+
+        with transaction.atomic():
+            RegistroAgendaPaciente.objects.create(
+                paciente=paciente,
+                usuario=request.user,
+                fecha_programada=fecha_programada,
+                resultado=RegistroAgendaPaciente.Resultado.CANCELADO,
+                observacion=observacion,
+            )
+            paciente.proxima_atencion = None
+            paciente.fecha_siguiente_cita = None
+            paciente.save(update_fields=["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"])
+            self._crear_movimiento_agenda(
+                paciente,
+                request.user,
+                "Cita eliminada desde calendario.",
+            )
+
+        return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
+
     @action(detail=True, methods=["get"], url_path="historial-completo")
     def historial_completo(self, request, pk=None):
         paciente = self.get_object()
         movimientos = MovimientoPaciente.objects.filter(paciente=paciente).select_related("usuario")
         llamados = LlamadoPaciente.objects.filter(paciente=paciente).select_related("usuario")
         inasistencias = InasistenciaPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        registros_agenda = RegistroAgendaPaciente.objects.filter(paciente=paciente).select_related("usuario")
         return Response(
             {
                 "paciente": PacienteSerializer(paciente, context=self.get_serializer_context()).data,
                 "movimientos": MovimientoPacienteSerializer(movimientos, many=True).data,
                 "llamados": LlamadoPacienteSerializer(llamados, many=True).data,
                 "inasistencias": InasistenciaPacienteSerializer(inasistencias, many=True).data,
+                "registros_agenda": RegistroAgendaPacienteSerializer(registros_agenda, many=True).data,
             }
         )
 
@@ -463,10 +704,13 @@ class PacienteViewSet(viewsets.ModelViewSet):
         movimientos = MovimientoPaciente.objects.filter(paciente=paciente).select_related("usuario")
         llamados = LlamadoPaciente.objects.filter(paciente=paciente).select_related("usuario")
         inasistencias = InasistenciaPaciente.objects.filter(paciente=paciente).select_related("usuario")
+        registros_agenda = RegistroAgendaPaciente.objects.filter(paciente=paciente).select_related("usuario")
         acciones = []
         estado_labels = dict(Paciente.Estado.choices)
 
         for mov in movimientos:
+            if mov.estado_anterior == mov.estado_nuevo and mov.notas in AGENDA_MOVIMIENTO_NOTAS:
+                continue
             anterior = mov.estado_anterior
             nuevo = mov.estado_nuevo
             descripcion = (
@@ -506,6 +750,45 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     "observacion": llamado.notas,
                     "estado_anterior": None,
                     "estado_nuevo": None,
+                }
+            )
+
+        agenda_tipos = {
+            RegistroAgendaPaciente.Resultado.ASISTIO: (
+                "AGENDA_ASISTIO",
+                "Asistió a atención",
+                "Paciente asistió a la atención programada.",
+            ),
+            RegistroAgendaPaciente.Resultado.NO_ASISTIO: (
+                "AGENDA_NO_ASISTIO",
+                "No asistió a atención",
+                "Paciente no asistió a la atención programada.",
+            ),
+            RegistroAgendaPaciente.Resultado.REAGENDADO: (
+                "AGENDA_REAGENDADO",
+                "Atención reagendada",
+                "Se actualizó la fecha de atención.",
+            ),
+            RegistroAgendaPaciente.Resultado.CANCELADO: (
+                "AGENDA_CANCELADO",
+                "Cita eliminada",
+                "Se eliminó la próxima atención programada.",
+            ),
+        }
+        for registro in registros_agenda:
+            tipo, titulo, descripcion = agenda_tipos[registro.resultado]
+            acciones.append(
+                {
+                    "tipo": tipo,
+                    "fecha": registro.creado_en,
+                    "usuario_nombre": registro.usuario.nombre if registro.usuario else None,
+                    "titulo": titulo,
+                    "descripcion": descripcion,
+                    "observacion": registro.observacion,
+                    "estado_anterior": None,
+                    "estado_nuevo": None,
+                    "fecha_programada": registro.fecha_programada,
+                    "nueva_fecha": registro.nueva_fecha,
                 }
             )
 

@@ -8,6 +8,7 @@ from .models import (
     LlamadoPaciente,
     MovimientoPaciente,
     Paciente,
+    RegistroAgendaPaciente,
 )
 from .services import ESTADOS_REQUIEREN_NOTA
 
@@ -54,6 +55,33 @@ class InasistenciaPacienteSerializer(serializers.ModelSerializer):
             "creado_en",
         )
         read_only_fields = ("id", "usuario", "usuario_nombre", "creado_en")
+
+
+class RegistroAgendaPacienteSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source="usuario.nombre", read_only=True)
+    resultado_label = serializers.CharField(source="get_resultado_display", read_only=True)
+
+    class Meta:
+        model = RegistroAgendaPaciente
+        fields = (
+            "id",
+            "paciente",
+            "usuario",
+            "usuario_nombre",
+            "fecha_programada",
+            "resultado",
+            "resultado_label",
+            "observacion",
+            "nueva_fecha",
+            "creado_en",
+        )
+        read_only_fields = (
+            "id",
+            "usuario",
+            "usuario_nombre",
+            "resultado_label",
+            "creado_en",
+        )
 
 
 class PacienteSerializer(serializers.ModelSerializer):
@@ -192,6 +220,23 @@ class CambiarEstadoSerializer(serializers.Serializer):
 
 class ProgramarAtencionSerializer(serializers.Serializer):
     fecha_hora = serializers.DateTimeField(required=True)
+
+
+class AgendaFechaSerializer(serializers.Serializer):
+    fecha_programada = serializers.DateTimeField(required=False)
+    observacion = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RegistrarInasistenciaAgendaSerializer(serializers.Serializer):
+    fecha_programada = serializers.DateTimeField(required=False)
+    motivo = serializers.CharField(required=False, allow_blank=True, default="")
+    justificada = serializers.BooleanField(default=False)
+
+
+class ReagendarAtencionSerializer(serializers.Serializer):
+    fecha_programada = serializers.DateTimeField(required=False)
+    nueva_fecha = serializers.DateTimeField(required=True)
+    observacion = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RegistrarLlamadoSerializer(serializers.Serializer):

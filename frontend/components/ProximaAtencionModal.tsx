@@ -14,6 +14,8 @@ interface Props {
   onClose: () => void;
   onConfirm: (fechaHora: string) => Promise<void>;
   onClear?: () => Promise<void>;
+  successMessage?: string;
+  clearSuccessMessage?: string;
 }
 
 function toInputDateTime(value: string | null | undefined) {
@@ -54,6 +56,8 @@ export default function ProximaAtencionModal({
   onClose,
   onConfirm,
   onClear,
+  successMessage = "Atención programada correctamente.",
+  clearSuccessMessage = "Atención eliminada correctamente.",
 }: Props) {
   const { toast } = useToast();
   const [fechaHora, setFechaHora] = useState(
@@ -77,7 +81,7 @@ export default function ProximaAtencionModal({
     setError("");
     try {
       await onConfirm(isoValue);
-      toast.success("Atención programada correctamente.");
+      toast.success(successMessage);
       onClose();
     } catch (e: unknown) {
       const message = getErrorMessage(e, "Error al programar.");
@@ -94,7 +98,7 @@ export default function ProximaAtencionModal({
     setError("");
     try {
       await onClear();
-      toast.success("Atención eliminada correctamente.");
+      toast.success(clearSuccessMessage);
       onClose();
     } catch (error) {
       const message = getErrorMessage(error, "No se pudo eliminar.");

@@ -8,7 +8,13 @@ from rest_framework.test import APITestCase
 
 from apps.usuarios.models import Usuario
 
-from .models import InasistenciaPaciente, LlamadoPaciente, MovimientoPaciente, Paciente
+from .models import (
+    InasistenciaPaciente,
+    LlamadoPaciente,
+    MovimientoPaciente,
+    Paciente,
+    RegistroAgendaPaciente,
+)
 
 
 EXCEL_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -256,6 +262,168 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(ingresado.estado, Paciente.Estado.INGRESADO)
         self.assertEqual(InasistenciaPaciente.objects.filter(paciente=ingresado).count(), 3)
 
+    def test_registrar_asistencia_ingresa_pendiente_y_limpia_agenda(self):
+        fecha = timezone.now() + timedelta(days=1)
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.PENDIENTE,
+            fecha_ingreso=None,
+            proxima_atencion=fecha,
+            fecha_siguiente_cita=timezone.localdate(fecha),
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-asistencia/",
+            {"fecha_programada": fecha.isoformat(), "observacion": "Asiste"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+        self.assertIsNotNone(paciente.fecha_ingreso)
+        self.assertIsNone(paciente.proxima_atencion)
+        self.assertIsNone(paciente.fecha_siguiente_cita)
+        self.assertEqual(
+            RegistroAgendaPaciente.objects.get(paciente=paciente).resultado,
+            RegistroAgendaPaciente.Resultado.ASISTIO,
+        )
+        self.assertTrue(
+            MovimientoPaciente.objects.filter(
+                paciente=paciente,
+                notas="Paciente asistió a atención programada.",
+            ).exists()
+        )
+
+    def test_registrar_asistencia_ingresado_mantiene_estado_y_limpia_agenda(self):
+        fecha = timezone.now() + timedelta(days=1)
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            proxima_atencion=fecha,
+            fecha_siguiente_cita=timezone.localdate(fecha),
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-asistencia/",
+            {"fecha_programada": fecha.isoformat()},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+        self.assertIsNone(paciente.proxima_atencion)
+        self.assertEqual(
+            RegistroAgendaPaciente.objects.filter(
+                paciente=paciente,
+                resultado=RegistroAgendaPaciente.Resultado.ASISTIO,
+            ).count(),
+            1,
+        )
+
+    def test_registrar_inasistencia_agenda_incrementa_y_alerta_sin_abandono(self):
+        fecha = timezone.now() + timedelta(days=1)
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            n_inasistencias=1,
+            proxima_atencion=fecha,
+            fecha_siguiente_cita=timezone.localdate(fecha),
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-inasistencia-agenda/",
+            {
+                "fecha_programada": fecha.isoformat(),
+                "motivo": "No asiste a atención programada.",
+                "justificada": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.n_inasistencias, 2)
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+        self.assertIsNone(paciente.proxima_atencion)
+        self.assertTrue(response.data["alerta_abandono"])
+        self.assertEqual(InasistenciaPaciente.objects.filter(paciente=paciente).count(), 1)
+        self.assertEqual(
+            RegistroAgendaPaciente.objects.get(paciente=paciente).resultado,
+            RegistroAgendaPaciente.Resultado.NO_ASISTIO,
+        )
+        self.assertTrue(
+            MovimientoPaciente.objects.filter(
+                paciente=paciente,
+                notas="No asiste a atención programada.",
+            ).exists()
+        )
+
+    def test_reagendar_atencion_actualiza_proxima_y_no_cambia_estado(self):
+        fecha = timezone.now() + timedelta(days=1)
+        nueva_fecha = fecha + timedelta(days=3)
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.RESCATE,
+            proxima_atencion=fecha,
+            fecha_siguiente_cita=timezone.localdate(fecha),
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/reagendar-atencion/",
+            {
+                "fecha_programada": fecha.isoformat(),
+                "nueva_fecha": nueva_fecha.isoformat(),
+                "observacion": "Solicitud del paciente.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.RESCATE)
+        self.assertEqual(paciente.proxima_atencion, nueva_fecha)
+        self.assertEqual(paciente.fecha_siguiente_cita, timezone.localdate(nueva_fecha))
+        registro = RegistroAgendaPaciente.objects.get(paciente=paciente)
+        self.assertEqual(registro.resultado, RegistroAgendaPaciente.Resultado.REAGENDADO)
+        self.assertEqual(registro.nueva_fecha, nueva_fecha)
+
+    def test_eliminar_cita_limpia_proxima_y_no_borra_paciente(self):
+        fecha = timezone.now() + timedelta(days=1)
+        paciente = self.crear_paciente(
+            estado=Paciente.Estado.INGRESADO,
+            proxima_atencion=fecha,
+            fecha_siguiente_cita=timezone.localdate(fecha),
+        )
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/eliminar-cita/",
+            {"fecha_programada": fecha.isoformat(), "observacion": "Cita eliminada."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertIsNone(paciente.proxima_atencion)
+        self.assertTrue(Paciente.objects.filter(pk=paciente.pk).exists())
+        self.assertEqual(
+            RegistroAgendaPaciente.objects.get(paciente=paciente).resultado,
+            RegistroAgendaPaciente.Resultado.CANCELADO,
+        )
+
+    def test_acciones_de_agenda_requieren_proxima_atencion(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO, proxima_atencion=None)
+
+        endpoints = [
+            ("registrar-asistencia", {}),
+            ("registrar-inasistencia-agenda", {"motivo": "No asiste"}),
+            ("eliminar-cita", {}),
+        ]
+        for endpoint, payload in endpoints:
+            response = self.client.post(
+                f"/api/pacientes/{paciente.id}/{endpoint}/",
+                payload,
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_historial_completo_retorna_componentes_operativos(self):
         paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
         MovimientoPaciente.objects.create(
@@ -277,6 +445,12 @@ class PacienteWorkflowTests(APITestCase):
             fecha=timezone.localdate(),
             motivo="No asiste",
         )
+        RegistroAgendaPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            fecha_programada=timezone.now(),
+            resultado=RegistroAgendaPaciente.Resultado.ASISTIO,
+        )
 
         response = self.client.get(f"/api/pacientes/{paciente.id}/historial-completo/")
 
@@ -285,6 +459,7 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(len(response.data["movimientos"]), 1)
         self.assertEqual(len(response.data["llamados"]), 1)
         self.assertEqual(len(response.data["inasistencias"]), 1)
+        self.assertEqual(len(response.data["registros_agenda"]), 1)
 
     def test_historial_acciones_retorna_eventos_combinados(self):
         paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
@@ -307,13 +482,20 @@ class PacienteWorkflowTests(APITestCase):
             fecha=timezone.localdate(),
             motivo="No asiste",
         )
+        RegistroAgendaPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            fecha_programada=timezone.now(),
+            resultado=RegistroAgendaPaciente.Resultado.ASISTIO,
+            observacion="Asiste",
+        )
 
         response = self.client.get(f"/api/pacientes/{paciente.id}/historial-acciones/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("paciente", response.data)
         tipos = {accion["tipo"] for accion in response.data["acciones"]}
-        self.assertEqual(tipos, {"CAMBIO_ESTADO", "CONTACTO", "INASISTENCIA"})
+        self.assertEqual(tipos, {"CAMBIO_ESTADO", "CONTACTO", "INASISTENCIA", "AGENDA_ASISTIO"})
 
     def test_alertas_operativas_retorna_grupos_esperados(self):
         alta = self.crear_paciente(

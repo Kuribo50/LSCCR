@@ -118,14 +118,41 @@ export interface InasistenciaPaciente {
   creado_en: string;
 }
 
+export type ResultadoAgenda =
+  | "ASISTIO"
+  | "NO_ASISTIO"
+  | "REAGENDADO"
+  | "CANCELADO";
+
+export interface RegistroAgendaPaciente {
+  id: number;
+  paciente: number;
+  usuario: number | null;
+  usuario_nombre: string | null;
+  fecha_programada: string;
+  resultado: ResultadoAgenda;
+  resultado_label: string;
+  observacion: string;
+  nueva_fecha: string | null;
+  creado_en: string;
+}
+
 export interface HistorialCompletoPaciente {
   paciente: Paciente;
   movimientos: MovimientoPaciente[];
   llamados: LlamadoPaciente[];
   inasistencias: InasistenciaPaciente[];
+  registros_agenda?: RegistroAgendaPaciente[];
 }
 
-export type HistorialAccionTipo = "CAMBIO_ESTADO" | "CONTACTO" | "INASISTENCIA";
+export type HistorialAccionTipo =
+  | "CAMBIO_ESTADO"
+  | "CONTACTO"
+  | "INASISTENCIA"
+  | "AGENDA_ASISTIO"
+  | "AGENDA_NO_ASISTIO"
+  | "AGENDA_REAGENDADO"
+  | "AGENDA_CANCELADO";
 
 export interface HistorialAccionPaciente {
   tipo: HistorialAccionTipo;
@@ -136,6 +163,8 @@ export interface HistorialAccionPaciente {
   observacion: string;
   estado_anterior: Estado | null;
   estado_nuevo: Estado | null;
+  fecha_programada?: string | null;
+  nueva_fecha?: string | null;
 }
 
 export interface HistorialAccionesPaciente {

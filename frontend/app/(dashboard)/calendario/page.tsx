@@ -4,16 +4,26 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
 import { ESTADO_LABELS } from "@/lib/types";
+import { formatearRut } from "@/lib/rut";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import ProximaAtencionModal from "@/components/ProximaAtencionModal";
+import FichaPaciente from "@/components/FichaPaciente";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { useAuth } from "@/lib/auth-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FiCalendar,
+  FiCheckCircle,
   FiChevronLeft,
   FiChevronRight,
   FiClock,
+  FiEdit3,
+  FiEye,
   FiRefreshCw,
+  FiTrash2,
   FiUserPlus,
+  FiXCircle,
 } from "react-icons/fi";
 
 function toDateKey(date: Date) {
@@ -37,6 +47,19 @@ function formatDay(dateKey: string) {
     day: "numeric",
     month: "long",
   }).format(fromDateKey(dateKey));
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 const ESTADOS_PROGRAMABLES = new Set(["PENDIENTE", "RESCATE", "INGRESADO"]);
@@ -64,8 +87,15 @@ const itemVariants = {
   animate: { opacity: 1, y: 0 },
 };
 
+interface InasistenciaAgendaResponse {
+  paciente: Paciente;
+  alerta_abandono: boolean;
+  mensaje?: string;
+}
+
 export default function CalendarioPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -75,6 +105,10 @@ export default function CalendarioPage() {
   });
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(new Date()));
   const [programando, setProgramando] = useState<Paciente | null>(null);
+  const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
+  const [inasistenciaAgenda, setInasistenciaAgenda] = useState<Paciente | null>(null);
+  const [eliminandoCita, setEliminandoCita] = useState<Paciente | null>(null);
+  const [accionEnCurso, setAccionEnCurso] = useState("");
 
   const cargar = useCallback(async () => {
     if (!user) return;
@@ -84,12 +118,14 @@ export default function CalendarioPage() {
       const endpoint = user.rol === "KINE" ? "/pacientes/?solo_mios=1" : "/pacientes/";
       const data = await api.get<Paciente[]>(endpoint);
       setPacientes(data);
-    } catch {
-      setError("No se pudo cargar el calendario.");
+    } catch (error) {
+      const message = getErrorMessage(error, "No se pudo cargar el calendario.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [toast, user]);
 
   useEffect(() => {
     if (user) void cargar();
@@ -100,6 +136,17 @@ export default function CalendarioPage() {
       setFechaSeleccionada(toDateKey(new Date(mesActual.getFullYear(), mesActual.getMonth(), 1)));
     }
   }, [mesActual, fechaSeleccionada]);
+
+  function actualizarPaciente(actualizado: Paciente) {
+    setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));
+    setFichaPaciente((prev) => (prev?.id === actualizado.id ? actualizado : prev));
+  }
+
+  function puedeGestionarAgenda(paciente: Paciente) {
+    if (!user) return false;
+    if (user.rol === "ADMIN") return true;
+    return user.rol === "KINE" && paciente.kine_asignado === user.id;
+  }
 
   const pacientesProgramables = useMemo(() => {
     if (!user) return [] as Paciente[];
@@ -120,6 +167,11 @@ export default function CalendarioPage() {
       const fecha = dateKeyFromDateTime(p.proxima_atencion);
       const lista = mapa.get(fecha) ?? [];
       lista.push(p);
+      lista.sort((a, b) => {
+        const fechaA = a.proxima_atencion ? new Date(a.proxima_atencion).getTime() : 0;
+        const fechaB = b.proxima_atencion ? new Date(b.proxima_atencion).getTime() : 0;
+        return fechaA - fechaB;
+      });
       mapa.set(fecha, lista);
     }
     return mapa;
@@ -150,6 +202,76 @@ export default function CalendarioPage() {
 
   const citasHoy = porFecha.get(toDateKey(new Date()))?.length ?? 0;
 
+  async function handleAsistencia(paciente: Paciente) {
+    if (!paciente.proxima_atencion) return;
+    setAccionEnCurso(`asistencia-${paciente.id}`);
+    try {
+      const actualizado = await api.post<Paciente>(
+        `/pacientes/${paciente.id}/registrar-asistencia/`,
+        {
+          fecha_programada: paciente.proxima_atencion,
+          observacion: "Paciente asistió a atención programada.",
+        },
+      );
+      actualizarPaciente(actualizado);
+      toast.success("Asistencia registrada. El paciente vuelve a pendientes de agenda.");
+      await cargar();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo registrar asistencia."));
+    } finally {
+      setAccionEnCurso("");
+    }
+  }
+
+  async function handleInasistencia(paciente: Paciente, motivo: string, justificada: boolean) {
+    if (!paciente.proxima_atencion) return;
+    setAccionEnCurso(`inasistencia-${paciente.id}`);
+    try {
+      const data = await api.post<InasistenciaAgendaResponse>(
+        `/pacientes/${paciente.id}/registrar-inasistencia-agenda/`,
+        {
+          fecha_programada: paciente.proxima_atencion,
+          motivo,
+          justificada,
+        },
+      );
+      actualizarPaciente(data.paciente);
+      setInasistenciaAgenda(null);
+      if (data.alerta_abandono) {
+        toast.warning("Paciente con 2 inasistencias. Evaluar ABANDONO.");
+      } else {
+        toast.warning("Inasistencia registrada.");
+      }
+      await cargar();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo registrar inasistencia."));
+    } finally {
+      setAccionEnCurso("");
+    }
+  }
+
+  async function handleEliminarCita() {
+    if (!eliminandoCita?.proxima_atencion) return;
+    setAccionEnCurso(`eliminar-${eliminandoCita.id}`);
+    try {
+      const actualizado = await api.post<Paciente>(
+        `/pacientes/${eliminandoCita.id}/eliminar-cita/`,
+        {
+          fecha_programada: eliminandoCita.proxima_atencion,
+          observacion: "Cita eliminada desde calendario.",
+        },
+      );
+      actualizarPaciente(actualizado);
+      setEliminandoCita(null);
+      toast.info("Cita eliminada. Paciente vuelve a pendientes de agenda.");
+      await cargar();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo eliminar la cita."));
+    } finally {
+      setAccionEnCurso("");
+    }
+  }
+
   return (
     <motion.div variants={tunnelVariants} initial="initial" animate="animate" className="ccr-dashboard-content mx-auto max-w-[1600px] space-y-4">
       <motion.header variants={itemVariants} className="ccr-panel ccr-dashboard-card rounded-xl p-5">
@@ -168,6 +290,7 @@ export default function CalendarioPage() {
             <button
               onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1, 1))}
               className="ccr-calendar-action-button rounded-md p-2 transition"
+              aria-label="Mes anterior"
             >
               <FiChevronLeft size={18} />
             </button>
@@ -177,6 +300,7 @@ export default function CalendarioPage() {
             <button
               onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 1))}
               className="ccr-calendar-action-button rounded-md p-2 transition"
+              aria-label="Mes siguiente"
             >
               <FiChevronRight size={18} />
             </button>
@@ -226,7 +350,7 @@ export default function CalendarioPage() {
                     whileHover={{ y: -1 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => setFechaSeleccionada(dateKey)}
-                    className={`ccr-calendar-day relative h-16 sm:h-20 rounded-md border text-center transition ${
+                    className={`ccr-calendar-day relative h-16 rounded-md border text-center transition sm:h-20 ${
                       isSelected
                         ? "is-selected border-blue-600 bg-blue-600 text-white shadow-sm"
                         : isToday
@@ -255,30 +379,20 @@ export default function CalendarioPage() {
               <FiClock className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[300px] space-y-2 overflow-y-auto pr-2">
+            <div className="custom-scrollbar max-h-[520px] space-y-3 overflow-y-auto pr-2">
               {pacientesDelDia.length > 0 ? (
                 pacientesDelDia.map((p) => (
-                  <div key={p.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-800">{p.nombre}</p>
-                        <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                          {p.proxima_atencion
-                            ? new Date(p.proxima_atencion).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                            : "--:--"}
-                          {" · "}
-                          {ESTADO_LABELS[p.estado]}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setProgramando(p)}
-                        className="ccr-calendar-action-button inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[10px] font-bold transition"
-                      >
-                        <FiRefreshCw size={11} />
-                        Editar
-                      </button>
-                    </div>
-                  </div>
+                  <CitaCard
+                    key={p.id}
+                    paciente={p}
+                    puedeGestionar={puedeGestionarAgenda(p)}
+                    accionEnCurso={accionEnCurso}
+                    onAsistencia={() => void handleAsistencia(p)}
+                    onInasistencia={() => setInasistenciaAgenda(p)}
+                    onReagendar={() => setProgramando(p)}
+                    onEliminar={() => setEliminandoCita(p)}
+                    onFicha={() => setFichaPaciente(p)}
+                  />
                 ))
               ) : (
                 <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-sm font-semibold text-slate-500">
@@ -297,20 +411,37 @@ export default function CalendarioPage() {
               <FiUserPlus className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[280px] space-y-2 overflow-y-auto pr-2">
+            <div className="custom-scrollbar max-h-[320px] space-y-2 overflow-y-auto pr-2">
               {pacientesSinFecha.length > 0 ? (
-                pacientesSinFecha.slice(0, 6).map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-slate-800">{p.nombre}</p>
-                      <p className="truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
+                pacientesSinFecha.slice(0, 10).map((p) => (
+                  <div key={p.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-bold text-slate-800">{p.nombre}</p>
+                        <p className="truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
+                      </div>
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600">
+                        {ESTADO_LABELS[p.estado]}
+                      </span>
                     </div>
-                    <button
-                      onClick={() => setProgramando(p)}
-                      className="ccr-calendar-action-button rounded-md px-2.5 py-1.5 text-[10px] font-bold transition"
-                    >
-                      Agendar
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {puedeGestionarAgenda(p) && (
+                        <button
+                          onClick={() => setProgramando(p)}
+                          className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
+                        >
+                          <FiCalendar size={11} />
+                          Programar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setFichaPaciente(p)}
+                        className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+                      >
+                        <FiEye size={11} />
+                        Ver ficha operativa
+                      </button>
+                    </div>
                   </div>
                 ))
               ) : (
@@ -328,20 +459,60 @@ export default function CalendarioPage() {
             fechaInicial={`${fechaSeleccionada}T09:00`}
             onClose={() => setProgramando(null)}
             onConfirm={async (fechaHora) => {
-              await api.post(`/pacientes/${programando.id}/programar-atencion/`, { fecha_hora: fechaHora });
+              const actualizado = programando.proxima_atencion
+                ? await api.post<Paciente>(
+                    `/pacientes/${programando.id}/reagendar-atencion/`,
+                    {
+                      fecha_programada: programando.proxima_atencion,
+                      nueva_fecha: fechaHora,
+                      observacion: "Atención reagendada desde calendario.",
+                    },
+                  )
+                : await api.post<Paciente>(
+                    `/pacientes/${programando.id}/programar-atencion/`,
+                    { fecha_hora: fechaHora },
+                  );
+              actualizarPaciente(actualizado);
               await cargar();
             }}
-            onClear={
+            successMessage={
               programando.proxima_atencion
-                ? async () => {
-                    await api.delete(`/pacientes/${programando.id}/programar-atencion/`);
-                    await cargar();
-                  }
-                : undefined
+                ? "Atención reagendada correctamente."
+                : "Atención programada correctamente."
             }
           />
         )}
       </AnimatePresence>
+
+      {inasistenciaAgenda && (
+        <InasistenciaAgendaModal
+          paciente={inasistenciaAgenda}
+          loading={accionEnCurso === `inasistencia-${inasistenciaAgenda.id}`}
+          onClose={() => setInasistenciaAgenda(null)}
+          onConfirm={(motivo, justificada) => void handleInasistencia(inasistenciaAgenda, motivo, justificada)}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={Boolean(eliminandoCita)}
+        title="Eliminar cita"
+        message="Esta acción elimina la próxima atención programada, pero no borra al paciente ni su historial."
+        confirmLabel="Eliminar cita"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={eliminandoCita ? accionEnCurso === `eliminar-${eliminandoCita.id}` : false}
+        onConfirm={() => void handleEliminarCita()}
+        onCancel={() => setEliminandoCita(null)}
+      />
+
+      {fichaPaciente && user && (
+        <FichaPaciente
+          paciente={fichaPaciente}
+          usuario={user}
+          onClose={() => setFichaPaciente(null)}
+          onRefresh={() => void cargar()}
+        />
+      )}
     </motion.div>
   );
 }
@@ -351,6 +522,172 @@ function Kpi({ label, value }: { label: string; value: number }) {
     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
       <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</p>
       <p className="mt-1 text-xl font-black text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function CitaCard({
+  paciente,
+  puedeGestionar,
+  accionEnCurso,
+  onAsistencia,
+  onInasistencia,
+  onReagendar,
+  onEliminar,
+  onFicha,
+}: {
+  paciente: Paciente;
+  puedeGestionar: boolean;
+  accionEnCurso: string;
+  onAsistencia: () => void;
+  onInasistencia: () => void;
+  onReagendar: () => void;
+  onEliminar: () => void;
+  onFicha: () => void;
+}) {
+  const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-slate-800">{paciente.nombre}</p>
+          <p className="mt-1 text-[11px] font-semibold text-slate-500">
+            {paciente.proxima_atencion
+              ? new Date(paciente.proxima_atencion).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              : "--:--"}
+            {" · "}
+            {ESTADO_LABELS[paciente.estado]}
+          </p>
+          <p className="mt-1 text-[10px] font-semibold text-slate-400">
+            {formatearRut(paciente.rut)} · {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+          {formatDateTime(paciente.proxima_atencion)}
+        </span>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {puedeGestionar && (
+          <>
+            <button
+              type="button"
+              onClick={onAsistencia}
+              disabled={disabled}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+            >
+              <FiCheckCircle size={12} />
+              Llegó
+            </button>
+            <button
+              type="button"
+              onClick={onInasistencia}
+              disabled={disabled}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+            >
+              <FiXCircle size={12} />
+              No asistió
+            </button>
+            <button
+              type="button"
+              onClick={onReagendar}
+              disabled={disabled}
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            >
+              <FiEdit3 size={12} />
+              Reagendar
+            </button>
+            <button
+              type="button"
+              onClick={onEliminar}
+              disabled={disabled}
+              className="inline-flex items-center justify-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+            >
+              <FiTrash2 size={12} />
+              Eliminar cita
+            </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={onFicha}
+          className="col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+        >
+          <FiEye size={12} />
+          Ver ficha operativa
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InasistenciaAgendaModal({
+  paciente,
+  loading,
+  onClose,
+  onConfirm,
+}: {
+  paciente: Paciente;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: (motivo: string, justificada: boolean) => void;
+}) {
+  const [motivo, setMotivo] = useState("");
+  const [justificada, setJustificada] = useState(false);
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Agenda operativa</p>
+          <h3 className="mt-1 text-lg font-black text-slate-900">Registrar inasistencia</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}</p>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-600">Motivo u observación</span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={4}
+              className="ccr-control-input mt-2 w-full px-3 py-2 text-sm"
+              placeholder="No asiste a atención programada."
+            />
+          </label>
+
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={justificada}
+              onChange={(e) => setJustificada(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-[#335FDB] focus:ring-[#335FDB]"
+            />
+            Inasistencia justificada
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="ccr-control-button px-4 py-2 text-xs disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(motivo.trim(), justificada)}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+          >
+            {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiXCircle size={13} />}
+            {loading ? "Guardando..." : "Guardar inasistencia"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

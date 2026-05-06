@@ -169,6 +169,32 @@ class InasistenciaPaciente(models.Model):
         return f"{self.paciente_id}: {self.fecha}"
 
 
+class RegistroAgendaPaciente(models.Model):
+    class Resultado(models.TextChoices):
+        ASISTIO = "ASISTIO", "Asistió"
+        NO_ASISTIO = "NO_ASISTIO", "No asistió"
+        REAGENDADO = "REAGENDADO", "Reagendado"
+        CANCELADO = "CANCELADO", "Cita eliminada"
+
+    paciente = models.ForeignKey(
+        Paciente, related_name="registros_agenda", on_delete=models.CASCADE
+    )
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    fecha_programada = models.DateTimeField()
+    resultado = models.CharField(max_length=20, choices=Resultado.choices)
+    observacion = models.TextField(blank=True, default="")
+    nueva_fecha = models.DateTimeField(null=True, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado_en", "-id"]
+
+    def __str__(self):
+        return f"{self.paciente_id}: {self.resultado}"
+
+
 class DiagnosticoCatalogo(models.Model):
     categoria = models.CharField(max_length=20, choices=Paciente.Categoria.choices)
     diagnostico = models.CharField(max_length=255, unique=True)
