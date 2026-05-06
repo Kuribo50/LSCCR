@@ -79,6 +79,20 @@ function sameMonth(dateKey: string, reference: Date) {
   return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth();
 }
 
+function mondayStartOffset(date: Date) {
+  return (date.getDay() + 6) % 7;
+}
+
+const DIAS_SEMANA = [
+  { label: "L", className: "text-slate-400" },
+  { label: "M", className: "text-slate-400" },
+  { label: "M", className: "text-slate-400" },
+  { label: "J", className: "text-slate-400" },
+  { label: "V", className: "text-slate-400" },
+  { label: "S", className: "text-slate-400" },
+  { label: "D", className: "text-red-500" },
+];
+
 const ESTADOS_PROGRAMABLES = new Set(["PENDIENTE", "RESCATE", "INGRESADO"]);
 
 const tunnelVariants = {
@@ -166,10 +180,9 @@ export default function CalendarioPage() {
   const pacientesProgramables = useMemo(() => {
     if (!user) return [] as Paciente[];
     return pacientes.filter((paciente) => {
-      const asignado = paciente.kine_asignado !== null;
       const estadoProgramable = ESTADOS_PROGRAMABLES.has(paciente.estado);
       const esPropio = paciente.kine_asignado === user.id;
-      if (!asignado || !estadoProgramable) return false;
+      if (!estadoProgramable) return false;
       if (user.rol === "KINE") return esPropio;
       return user.rol === "ADMIN" || user.rol === "ADMINISTRATIVO";
     });
@@ -195,7 +208,7 @@ export default function CalendarioPage() {
   const diasDelMes = useMemo(() => {
     const inicio = new Date(mesActual.getFullYear(), mesActual.getMonth(), 1);
     const fin = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0);
-    const celdas: Array<Date | null> = Array(inicio.getDay()).fill(null);
+    const celdas: Array<Date | null> = Array(mondayStartOffset(inicio)).fill(null);
     for (let d = 1; d <= fin.getDate(); d++) {
       celdas.push(new Date(mesActual.getFullYear(), mesActual.getMonth(), d));
     }
@@ -335,13 +348,13 @@ export default function CalendarioPage() {
         </motion.div>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.35fr)_420px]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_430px]">
         <motion.main variants={itemVariants} className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Calendario mensual</p>
-                <h2 className="mt-1 text-xl font-black capitalize text-slate-950">{formatMonthYear(mesActual)}</h2>
+                <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatMonthYear(mesActual)}</h2>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
@@ -353,44 +366,57 @@ export default function CalendarioPage() {
               </div>
             </div>
 
-            <div className="mb-2 grid grid-cols-7 gap-2 text-center">
-              {["D", "L", "M", "M", "J", "V", "S"].map((d, i) => (
-                <div key={`${d}-${i}`} className="py-2 text-xs font-bold uppercase text-slate-400">{d}</div>
+            <div className="mb-2 grid grid-cols-7 gap-1.5 text-center">
+              {DIAS_SEMANA.map((dia, i) => (
+                <div key={`${dia.label}-${i}`} className={`py-1.5 text-xs font-bold uppercase ${dia.className}`}>{dia.label}</div>
               ))}
             </div>
 
             {loading ? (
-              <div className="grid grid-cols-7 gap-2">
+              <div className="grid grid-cols-7 gap-1.5">
                 {Array.from({ length: 35 }).map((_, i) => (
-                  <div key={i} className="h-20 animate-pulse rounded-lg bg-slate-100 lg:h-24" />
+                  <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100 lg:h-16" />
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-7 gap-2">
+              <div className="grid grid-cols-7 gap-1.5">
                 {diasDelMes.map((dia, index) => {
-                  if (!dia) return <div key={`empty-${index}`} className="h-20 rounded-lg border border-transparent lg:h-24" />;
+                  if (!dia) return <div key={`empty-${index}`} className="h-14 rounded-lg border border-transparent lg:h-16" />;
                   const dateKey = toDateKey(dia);
                   const items = porFecha.get(dateKey) ?? [];
                   const isSelected = fechaSeleccionada === dateKey;
                   const isToday = dateKey === toDateKey(new Date());
+                  const isSunday = dia.getDay() === 0;
+                  const dayClass = isSelected
+                    ? isSunday
+                      ? "border-red-600 bg-red-600 text-white shadow-md"
+                      : "border-blue-600 bg-blue-600 text-white shadow-md"
+                    : isToday
+                      ? isSunday
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-blue-200 bg-blue-50 text-blue-800"
+                      : isSunday
+                        ? "border-red-100 bg-red-50 text-red-700 hover:border-red-200 hover:bg-red-100"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50";
+                  const countClass = isSelected
+                    ? isSunday
+                      ? "bg-white text-red-700"
+                      : "bg-white text-blue-700"
+                    : isSunday
+                      ? "bg-red-100 text-red-700"
+                      : "bg-blue-100 text-blue-700";
 
                   return (
                     <button
                       key={dateKey}
                       type="button"
                       onClick={() => setFechaSeleccionada(dateKey)}
-                      className={`relative flex h-20 flex-col items-start justify-between rounded-lg border p-2 text-left transition lg:h-24 ${
-                        isSelected
-                          ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                          : isToday
-                            ? "border-blue-200 bg-blue-50 text-blue-800"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50"
-                      }`}
+                      className={`relative flex h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition lg:h-16 ${dayClass}`}
                     >
-                      <span className="text-sm font-black lg:text-base">{dia.getDate()}</span>
+                      <span className="text-sm font-black">{dia.getDate()}</span>
                       {items.length > 0 && (
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${isSelected ? "bg-white text-blue-700" : "bg-blue-100 text-blue-700"}`}>
-                          {items.length} cita{items.length !== 1 ? "s" : ""}
+                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${countClass}`}>
+                          {items.length}
                         </span>
                       )}
                     </button>
@@ -399,7 +425,9 @@ export default function CalendarioPage() {
               </div>
             )}
           </section>
+        </motion.main>
 
+        <motion.aside variants={itemVariants} className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -437,9 +465,7 @@ export default function CalendarioPage() {
               )}
             </div>
           </section>
-        </motion.main>
 
-        <motion.aside variants={itemVariants} className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div>
