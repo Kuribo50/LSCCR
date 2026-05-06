@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FiAlertTriangle, FiCalendar, FiX } from "react-icons/fi";
+import { FiAlertTriangle, FiCalendar, FiRefreshCw, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
@@ -68,24 +68,30 @@ export default function RegistrarInasistenciaModal({
 
   return (
     <div
-      className="fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-emerald-100 bg-emerald-50 px-5 py-4">
-          <div className="flex items-center gap-2 text-emerald-800">
-            <FiCalendar />
-            <h2 className="text-sm font-semibold uppercase tracking-[0.05em]">
+        <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+              <FiCalendar size={14} />
+              Ficha operativa
+            </p>
+            <h2 className="mt-1 text-lg font-black text-slate-900">
               Registrar inasistencia
             </h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {paciente.nombre} · {paciente.id_ccr}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1.5 text-slate-500 transition hover:bg-emerald-100 hover:text-slate-900"
+            className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             aria-label="Cerrar"
           >
             <FiX size={18} />
@@ -93,11 +99,6 @@ export default function RegistrarInasistenciaModal({
         </div>
 
         <div className="space-y-4 p-5">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">{paciente.nombre}</p>
-            <p className="text-xs text-slate-500">{paciente.id_ccr}</p>
-          </div>
-
           {error && (
             <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
               {error}
@@ -121,16 +122,16 @@ export default function RegistrarInasistenciaModal({
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              className="ccr-control-input w-full px-3 py-2 text-sm"
             />
           </label>
 
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
               checked={justificada}
               onChange={(e) => setJustificada(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+              className="h-4 w-4 rounded border-slate-300 text-[#335FDB] focus:ring-[#335FDB]"
             />
             Inasistencia justificada
           </label>
@@ -144,15 +145,16 @@ export default function RegistrarInasistenciaModal({
               onChange={(e) => setMotivo(e.target.value)}
               rows={4}
               placeholder="No asiste a sesión programada"
-              className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+              className="ccr-control-input w-full resize-none px-3 py-2 text-sm"
             />
           </label>
 
-          <div className="flex gap-3 pt-2">
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-lg border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              disabled={loading}
+              className="ccr-control-button px-4 py-2 text-xs disabled:opacity-50"
             >
               Cerrar
             </button>
@@ -160,8 +162,9 @@ export default function RegistrarInasistenciaModal({
               type="button"
               onClick={() => void handleSubmit()}
               disabled={loading || !fecha}
-              className="flex-1 rounded-lg bg-emerald-800 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-900 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-60"
             >
+              {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiCalendar size={13} />}
               {loading ? "Guardando..." : "Registrar"}
             </button>
           </div>

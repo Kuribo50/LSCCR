@@ -77,10 +77,10 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
   const displayValue = value === null || value === undefined || value === "" ? "-" : value;
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">
+      <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-500">
         {label}
       </p>
-      <div className="mt-1 break-words text-sm font-medium text-slate-800">
+      <div className="mt-1 break-words text-base font-semibold text-slate-800">
         {displayValue}
       </div>
     </div>
@@ -114,7 +114,7 @@ function Section({
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center gap-2 text-blue-700">
         {icon}
-        <h3 className="text-sm font-semibold uppercase tracking-[0.06em]">
+        <h3 className="text-base font-black uppercase tracking-[0.06em]">
           {title}
         </h3>
       </div>
@@ -234,6 +234,11 @@ export default function FichaPaciente({
     await cargarHistorial(paciente.id);
   }
 
+  function imprimirFicha() {
+    toastInfo("Preparando impresión de ficha operativa.");
+    window.requestAnimationFrame(() => window.print());
+  }
+
   return (
     <div
       className="ccr-ficha-overlay fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm"
@@ -263,18 +268,15 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={() => setMostrarEdicion(true)}
-                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                className="ccr-no-print inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0]"
               >
                 <FiEdit2 size={14} />
-                Editar contacto
+                Editar
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  toastInfo("Preparando impresión de ficha operativa.");
-                  window.print();
-                }}
-                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
+                onClick={imprimirFicha}
+                className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
               >
                 <FiPrinter size={14} />
                 Imprimir ficha operativa
@@ -449,7 +451,7 @@ export default function FichaPaciente({
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-blue-700">
                 <FiClock />
-                <h3 className="text-sm font-semibold uppercase tracking-[0.06em]">
+                <h3 className="text-base font-black uppercase tracking-[0.06em]">
                   Historial de acciones
                 </h3>
               </div>
@@ -605,6 +607,15 @@ export default function FichaPaciente({
       )}
       <style jsx global>{`
         @media print {
+          @page {
+            size: letter;
+            margin: 14mm;
+          }
+          html,
+          body {
+            overflow: visible !important;
+            background: white !important;
+          }
           body * {
             visibility: hidden !important;
           }
@@ -673,54 +684,55 @@ function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
 
 function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
   if (items.length === 0) {
-    return <p className="text-sm text-slate-500">Sin acciones registradas.</p>;
+    return <p className="text-base font-semibold text-slate-500">Sin acciones registradas.</p>;
   }
   return (
-    <ol className="relative space-y-4 border-l border-blue-100 pl-4">
-      {items.map((accion, index) => (
-        <li key={`${accion.tipo}-${accion.fecha}-${index}`} className="relative">
-          <span className="absolute -left-[21px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-[#335FDB] shadow" />
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="text-xs font-semibold text-slate-900">
-                  {accion.titulo}
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  {accion.descripcion}
-                </p>
-              </div>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeAccion(accion.tipo)}`}>
-                {labelAccion(accion.tipo)}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {formatearFechaHora(accion.fecha)} · {accion.usuario_nombre ?? "Sistema"}
-            </p>
-            {(accion.fecha_programada || accion.nueva_fecha) && (
-              <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
-                {accion.fecha_programada && (
-                  <p>
-                    <span className="font-semibold">Fecha programada:</span>{" "}
-                    {formatearFechaHora(accion.fecha_programada)}
-                  </p>
+    <div className="custom-scrollbar overflow-x-auto rounded-xl border border-slate-200">
+      <table className="min-w-[920px] w-full border-collapse bg-white text-sm">
+        <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="w-[150px] px-4 py-3">Fecha</th>
+            <th className="w-[120px] px-4 py-3">Tipo</th>
+            <th className="px-4 py-3">Acción</th>
+            <th className="w-[150px] px-4 py-3">Usuario</th>
+            <th className="w-[230px] px-4 py-3">Observación</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-base">
+          {items.map((accion, index) => (
+            <tr key={`${accion.tipo}-${accion.fecha}-${index}`} className="align-top hover:bg-blue-50/40">
+              <td className="px-4 py-3 font-semibold text-slate-700">
+                {formatearFechaHora(accion.fecha)}
+              </td>
+              <td className="px-4 py-3">
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${badgeAccion(accion.tipo)}`}>
+                  {labelAccion(accion.tipo)}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <p className="font-black text-slate-950">{accion.titulo}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">{accion.descripcion}</p>
+                {(accion.fecha_programada || accion.nueva_fecha) && (
+                  <div className="mt-2 space-y-1 text-sm font-semibold text-slate-500">
+                    {accion.fecha_programada && (
+                      <p>Programada: {formatearFechaHora(accion.fecha_programada)}</p>
+                    )}
+                    {accion.nueva_fecha && (
+                      <p>Nueva fecha: {formatearFechaHora(accion.nueva_fecha)}</p>
+                    )}
+                  </div>
                 )}
-                {accion.nueva_fecha && (
-                  <p>
-                    <span className="font-semibold">Nueva fecha:</span>{" "}
-                    {formatearFechaHora(accion.nueva_fecha)}
-                  </p>
-                )}
-              </div>
-            )}
-            {accion.observacion && (
-              <p className="mt-2 rounded-md border border-white bg-white px-2 py-2 text-xs text-slate-700">
-                {accion.observacion}
-              </p>
-            )}
-          </div>
-        </li>
-      ))}
-    </ol>
+              </td>
+              <td className="px-4 py-3 font-semibold text-slate-700">
+                {accion.usuario_nombre ?? "Sistema"}
+              </td>
+              <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                {accion.observacion || "-"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

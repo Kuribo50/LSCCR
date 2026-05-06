@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { FiEdit3, FiRefreshCw, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
@@ -159,22 +160,26 @@ export default function EditarPacienteModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm dark:bg-black/75"
+      className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-900/45 px-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="ccr-edit-patient-modal max-h-[90vh] w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="ccr-edit-patient-modal max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="ccr-edit-patient-modal-header flex items-start justify-between border-b border-blue-100 bg-blue-50 px-6 py-4">
+        <div className="ccr-edit-patient-modal-header flex items-start justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-gray-800">
+            <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+              <FiEdit3 size={14} />
+              Ficha operativa
+            </p>
+            <h2 className="mt-1 text-lg font-black text-slate-900">
               {isContactOnly
                 ? "Editar contacto y categoría"
                 : "Editar datos del paciente"}
             </h2>
-            <p className="mt-0.5 text-xs text-gray-500">
-              <span className="font-semibold text-gray-700">
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              <span className="text-slate-700">
                 {paciente.nombre}
               </span>
               {" — "}
@@ -183,15 +188,16 @@ export default function EditarPacienteModal({
           </div>
           <button
             onClick={onClose}
-            className="mt-0.5 text-xl leading-none text-gray-400 hover:text-gray-600"
+            className="rounded-full p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Cerrar"
           >
-            ×
+            <FiX size={18} />
           </button>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="ccr-edit-patient-modal-body max-h-[68vh] overflow-y-auto px-6 py-5"
+          className="ccr-edit-patient-modal-body custom-scrollbar max-h-[68vh] overflow-y-auto px-6 py-5"
         >
           {isContactOnly ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -424,21 +430,23 @@ export default function EditarPacienteModal({
           )}
         </form>
 
-        <div className="ccr-edit-patient-modal-footer flex gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="ccr-edit-patient-modal-footer flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="ccr-control-button px-4 py-2 text-xs disabled:opacity-50"
+          >
+            Cancelar
+          </button>
           <button
             type="submit"
             onClick={handleSubmit}
             disabled={loading}
-            className="flex-1 rounded-md bg-[#335FDB] py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
           >
-            {loading ? "Guardando…" : "Guardar cambios"}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-gray-200 px-5 py-2.5 text-sm text-gray-600 transition hover:bg-gray-100"
-          >
-            Cancelar
+            {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiEdit3 size={13} />}
+            {loading ? "Guardando..." : "Guardar cambios"}
           </button>
         </div>
       </div>
