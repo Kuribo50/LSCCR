@@ -12,7 +12,7 @@ interface Props {
   paciente: Paciente;
   fechaInicial?: string;
   onClose: () => void;
-  onConfirm: (fechaHora: string) => Promise<void>;
+  onConfirm: (fechaHora: string, observacion?: string) => Promise<void>;
   onClear?: () => Promise<void>;
   successMessage?: string;
   clearSuccessMessage?: string;
@@ -65,6 +65,7 @@ export default function ProximaAtencionModal({
       toInputDateTime(paciente.proxima_atencion) ||
       fechaHoraLocalDefault(),
   );
+  const [observacion, setObservacion] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -80,7 +81,7 @@ export default function ProximaAtencionModal({
     setLoading(true);
     setError("");
     try {
-      await onConfirm(isoValue);
+      await onConfirm(isoValue, observacion.trim());
       toast.success(successMessage);
       onClose();
     } catch (e: unknown) {
@@ -199,6 +200,19 @@ export default function ProximaAtencionModal({
             <p className="mt-3 text-xs text-slate-500">
               Al confirmar, el paciente quedará con esta cita programada en calendario.
             </p>
+
+            <label className="mt-5 block">
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                Observación opcional
+              </span>
+              <textarea
+                value={observacion}
+                onChange={(e) => setObservacion(e.target.value)}
+                rows={3}
+                className="ccr-control-input mt-2 w-full px-4 py-3 text-sm font-semibold"
+                placeholder="Motivo de reagendamiento o nota operativa."
+              />
+            </label>
 
             <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex gap-2">

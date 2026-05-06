@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
-import { ESTADO_LABELS } from "@/lib/types";
+import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
@@ -21,6 +20,7 @@ import {
   FiClock,
   FiEdit3,
   FiEye,
+  FiPhone,
   FiRefreshCw,
   FiTrash2,
   FiUserPlus,
@@ -63,7 +63,12 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
-const ESTADOS_PROGRAMABLES = new Set(["PENDIENTE", "RESCATE", "INGRESADO"]);
+function formatTime(value: string | null | undefined) {
+  if (!value) return "--:--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+}
 
 function dateKeyFromDateTime(value: string) {
   return toDateKey(new Date(value));
@@ -73,6 +78,8 @@ function sameMonth(dateKey: string, reference: Date) {
   const date = fromDateKey(dateKey);
   return date.getFullYear() === reference.getFullYear() && date.getMonth() === reference.getMonth();
 }
+
+const ESTADOS_PROGRAMABLES = new Set(["PENDIENTE", "RESCATE", "INGRESADO"]);
 
 const tunnelVariants = {
   initial: { opacity: 0, y: 8 },
@@ -107,7 +114,6 @@ export default function CalendarioPage() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(new Date()));
   const [programando, setProgramando] = useState<Paciente | null>(null);
   const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
-  const [pacienteAcciones, setPacienteAcciones] = useState<Paciente | null>(null);
   const [inasistenciaAgenda, setInasistenciaAgenda] = useState<Paciente | null>(null);
   const [eliminandoCita, setEliminandoCita] = useState<Paciente | null>(null);
   const [accionEnCurso, setAccionEnCurso] = useState("");
@@ -142,7 +148,12 @@ export default function CalendarioPage() {
   function actualizarPaciente(actualizado: Paciente) {
     setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));
     setFichaPaciente((prev) => (prev?.id === actualizado.id ? actualizado : prev));
-    setPacienteAcciones((prev) => (prev?.id === actualizado.id ? actualizado : prev));
+  }
+
+  function irAHoy() {
+    const hoy = new Date();
+    setMesActual(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+    setFechaSeleccionada(toDateKey(hoy));
   }
 
   function puedeGestionarAgenda(paciente: Paciente) {
@@ -184,25 +195,17 @@ export default function CalendarioPage() {
     const inicio = new Date(mesActual.getFullYear(), mesActual.getMonth(), 1);
     const fin = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0);
     const celdas: Array<Date | null> = Array(inicio.getDay()).fill(null);
-    for (let d = 1; d <= fin.getDate(); d++) celdas.push(new Date(mesActual.getFullYear(), mesActual.getMonth(), d));
+    for (let d = 1; d <= fin.getDate(); d++) {
+      celdas.push(new Date(mesActual.getFullYear(), mesActual.getMonth(), d));
+    }
     while (celdas.length % 7 !== 0) celdas.push(null);
     return celdas;
   }, [mesActual]);
 
   const pacientesDelDia = porFecha.get(fechaSeleccionada) ?? [];
   const pacientesSinFecha = pacientesProgramables.filter((p) => !p.proxima_atencion);
-
-  const citasMes = useMemo(() => {
-    const mes = mesActual.getMonth();
-    const anio = mesActual.getFullYear();
-    let total = 0;
-    porFecha.forEach((_pacientes, dateKey) => {
-      const d = fromDateKey(dateKey);
-      if (d.getMonth() === mes && d.getFullYear() === anio) total += 1;
-    });
-    return total;
-  }, [porFecha, mesActual]);
-
+  const ingresadosSinAgenda = pacientesSinFecha.filter((p) => p.estado === "INGRESADO").length;
+  const rescatesSinAgenda = pacientesSinFecha.filter((p) => p.estado === "RESCATE").length;
   const citasHoy = porFecha.get(toDateKey(new Date()))?.length ?? 0;
 
   async function handleAsistencia(paciente: Paciente) {
@@ -277,43 +280,53 @@ export default function CalendarioPage() {
 
   return (
     <motion.div variants={tunnelVariants} initial="initial" animate="animate" className="ccr-dashboard-content mx-auto max-w-[1600px] space-y-4">
-      <motion.header variants={itemVariants} className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-              <FiCalendar size={22} />
+      <motion.header variants={itemVariants} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+              <FiCalendar size={21} />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-900">Calendario de Citas</h1>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Planificación diaria y seguimiento</p>
+              <h1 className="text-xl font-black text-slate-950">Agenda CCR</h1>
+              <p className="mt-0.5 text-sm font-medium text-slate-500">Planificación diaria y seguimiento operativo.</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button
-              onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1, 1))}
-              className="ccr-calendar-action-button rounded-md p-2 transition"
-              aria-label="Mes anterior"
-            >
-              <FiChevronLeft size={18} />
-            </button>
-            <div className="min-w-[160px] px-3 text-center">
-              <p className="text-sm font-black capitalize text-slate-800">{formatMonthYear(mesActual)}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1, 1))}
+                className="rounded-md p-2 text-slate-600 transition hover:bg-white hover:text-blue-700"
+                aria-label="Mes anterior"
+              >
+                <FiChevronLeft size={18} />
+              </button>
+              <p className="min-w-[150px] px-2 text-center text-sm font-black capitalize text-slate-800">{formatMonthYear(mesActual)}</p>
+              <button
+                onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 1))}
+                className="rounded-md p-2 text-slate-600 transition hover:bg-white hover:text-blue-700"
+                aria-label="Mes siguiente"
+              >
+                <FiChevronRight size={18} />
+              </button>
             </div>
             <button
-              onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 1))}
-              className="ccr-calendar-action-button rounded-md p-2 transition"
-              aria-label="Mes siguiente"
+              type="button"
+              onClick={irAHoy}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
             >
-              <FiChevronRight size={18} />
+              Hoy
+            </button>
+            <button
+              type="button"
+              onClick={() => void cargar()}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-60"
+            >
+              <FiRefreshCw className={loading ? "animate-spin" : ""} size={14} />
+              Refrescar
             </button>
           </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <Kpi label="Días con citas (mes)" value={citasMes} />
-          <Kpi label="Citas para hoy" value={citasHoy} />
-          <Kpi label="Pacientes sin agendar" value={pacientesSinFecha.length} />
         </div>
       </motion.header>
 
@@ -323,121 +336,142 @@ export default function CalendarioPage() {
         </motion.div>
       )}
 
-      <div className="grid items-start gap-4 lg:grid-cols-12">
-        <motion.section variants={itemVariants} className="ccr-panel ccr-dashboard-card rounded-xl p-5 lg:col-span-8">
-          <div className="mb-3 grid grid-cols-7 gap-1 text-center">
-            {["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map((d, i) => (
-              <div key={`${d}-${i}`} className="py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">{d}</div>
-            ))}
-          </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <motion.aside variants={itemVariants} className="order-2 space-y-4 xl:order-1">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Calendario mensual</p>
+                <h2 className="mt-1 text-sm font-black capitalize text-slate-900">{formatMonthYear(mesActual)}</h2>
+              </div>
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+                Hoy: {citasHoy}
+              </span>
+            </div>
 
-          {loading ? (
-            <div className="grid grid-cols-7 gap-2">
-              {Array.from({ length: 35 }).map((_, i) => (
-                <div key={i} className="h-16 animate-pulse rounded-md bg-slate-100" />
+            <div className="mb-2 grid grid-cols-7 gap-1 text-center">
+              {["D", "L", "M", "M", "J", "V", "S"].map((d, i) => (
+                <div key={`${d}-${i}`} className="py-1 text-[10px] font-bold uppercase text-slate-400">{d}</div>
               ))}
             </div>
-          ) : (
-            <div className="grid grid-cols-7 gap-2">
-              {diasDelMes.map((dia, index) => {
-                if (!dia) return <div key={`empty-${index}`} />;
-                const dateKey = toDateKey(dia);
-                const items = porFecha.get(dateKey) ?? [];
-                const isSelected = fechaSeleccionada === dateKey;
-                const isToday = dateKey === toDateKey(new Date());
-                const hasAppointments = items.length > 0;
 
-                return (
-                  <motion.button
-                    key={dateKey}
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setFechaSeleccionada(dateKey)}
-                    className={`ccr-calendar-day relative h-16 rounded-md border text-center transition sm:h-20 ${
-                      isSelected
-                        ? "is-selected border-blue-600 bg-blue-600 text-white shadow-sm"
-                        : isToday
-                          ? "is-today border-blue-200 bg-blue-50 text-blue-800"
-                          : "border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50"
-                    }`}
-                  >
-                    <span className="text-sm font-black">{dia.getDate()}</span>
-                    {hasAppointments && (
-                      <span className={`absolute bottom-1 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${isSelected ? "bg-white" : "bg-blue-600"}`} />
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-          )}
-        </motion.section>
-
-        <motion.aside variants={itemVariants} className="space-y-4 lg:col-span-4">
-          <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Fecha seleccionada</p>
-                <h3 className="ccr-date-badge mt-1 inline-flex rounded-md px-3 py-1.5 text-base font-black capitalize">{formatDay(fechaSeleccionada)}</h3>
+            {loading ? (
+              <div className="grid grid-cols-7 gap-1.5">
+                {Array.from({ length: 35 }).map((_, i) => (
+                  <div key={i} className="h-11 animate-pulse rounded-md bg-slate-100" />
+                ))}
               </div>
-              <FiClock className="text-blue-600" size={18} />
-            </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-1.5">
+                {diasDelMes.map((dia, index) => {
+                  if (!dia) return <div key={`empty-${index}`} />;
+                  const dateKey = toDateKey(dia);
+                  const items = porFecha.get(dateKey) ?? [];
+                  const isSelected = fechaSeleccionada === dateKey;
+                  const isToday = dateKey === toDateKey(new Date());
 
-            <div className="custom-scrollbar max-h-[520px] space-y-2 overflow-y-auto pr-2">
-              {pacientesDelDia.length > 0 ? (
-                pacientesDelDia.map((p) => (
-                  <CitaCard
-                    key={p.id}
-                    paciente={p}
-                    puedeGestionar={puedeGestionarAgenda(p)}
-                    accionEnCurso={accionEnCurso}
-                    onEditar={() => setPacienteAcciones(p)}
-                  />
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-8 text-center text-sm font-semibold text-slate-500">
-                  Sin citas para este día
-                </div>
-              )}
-            </div>
-          </div>
+                  return (
+                    <button
+                      key={dateKey}
+                      type="button"
+                      onClick={() => setFechaSeleccionada(dateKey)}
+                      className={`relative flex h-11 flex-col items-center justify-center rounded-md border text-xs font-black transition ${
+                        isSelected
+                          ? "border-blue-600 bg-blue-600 text-white shadow-sm"
+                          : isToday
+                            ? "border-blue-200 bg-blue-50 text-blue-800"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                      }`}
+                    >
+                      <span>{dia.getDate()}</span>
+                      {items.length > 0 && (
+                        <span className={`absolute bottom-1 rounded-full px-1 text-[8px] leading-3 ${isSelected ? "bg-white text-blue-700" : "bg-blue-100 text-blue-700"}`}>
+                          {items.length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
 
-          <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-            <div className="mb-4 flex items-center justify-between">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Pendientes de agenda</p>
-                <h3 className="mt-1 text-base font-black text-slate-900">{pacientesSinFecha.length} pacientes</h3>
+                <h2 className="mt-1 text-sm font-black text-slate-900">{pacientesSinFecha.length} pacientes activos</h2>
               </div>
               <FiUserPlus className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[360px] space-y-2 overflow-y-auto pr-2">
+            <div className="custom-scrollbar max-h-[430px] space-y-2 overflow-y-auto pr-1">
               {pacientesSinFecha.length > 0 ? (
                 pacientesSinFecha.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-xs font-bold text-slate-800">{p.nombre}</p>
-                        <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-600">
-                          {ESTADO_LABELS[p.estado]}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
-                    </div>
-                    <button
-                      onClick={() => setPacienteAcciones(p)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
-                    >
-                      <FiEdit3 size={11} />
-                      Editar
-                    </button>
-                  </div>
+                  <PendienteAgendaItem
+                    key={p.id}
+                    paciente={p}
+                    puedeGestionar={puedeGestionarAgenda(p)}
+                    onProgramar={() => setProgramando(p)}
+                    onFicha={() => setFichaPaciente(p)}
+                  />
                 ))
               ) : (
-                <div className="py-6 text-center text-xs font-semibold text-slate-500">No hay pendientes por agendar</div>
+                <EmptyState title="Sin pendientes" description="Todos los pacientes activos tienen agenda próxima." />
               )}
             </div>
-          </div>
+          </section>
         </motion.aside>
+
+        <motion.main variants={itemVariants} className="order-1 space-y-4 xl:order-2">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ResumenDiaCard label="Citas del día" value={pacientesDelDia.length} tone="blue" />
+            <ResumenDiaCard label="Pendientes de agenda" value={pacientesSinFecha.length} tone="slate" />
+            <ResumenDiaCard label="Ingresados sin agenda" value={ingresadosSinAgenda} tone="amber" />
+            <ResumenDiaCard label="Rescate sin agenda" value={rescatesSinAgenda} tone="red" />
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda del día</p>
+                  <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatDay(fechaSeleccionada)}</h2>
+                </div>
+                <p className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                  {pacientesDelDia.length} cita{pacientesDelDia.length !== 1 ? "s" : ""} programada{pacientesDelDia.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="custom-scrollbar max-h-[640px] space-y-3 overflow-y-auto p-4">
+              {loading ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="h-32 animate-pulse rounded-lg bg-slate-100" />
+                ))
+              ) : pacientesDelDia.length > 0 ? (
+                pacientesDelDia.map((p) => (
+                  <AgendaDiaCard
+                    key={p.id}
+                    paciente={p}
+                    puedeGestionar={puedeGestionarAgenda(p)}
+                    accionEnCurso={accionEnCurso}
+                    onAsistencia={() => void handleAsistencia(p)}
+                    onInasistencia={() => setInasistenciaAgenda(p)}
+                    onReagendar={() => setProgramando(p)}
+                    onEliminar={() => setEliminandoCita(p)}
+                    onFicha={() => setFichaPaciente(p)}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  title="Sin citas para este día"
+                  description="Selecciona otro día en el calendario o programa una atención desde pendientes de agenda."
+                />
+              )}
+            </div>
+          </section>
+        </motion.main>
       </div>
 
       <AnimatePresence>
@@ -446,14 +480,14 @@ export default function CalendarioPage() {
             paciente={programando}
             fechaInicial={`${fechaSeleccionada}T09:00`}
             onClose={() => setProgramando(null)}
-            onConfirm={async (fechaHora) => {
+            onConfirm={async (fechaHora, observacion) => {
               const actualizado = programando.proxima_atencion
                 ? await api.post<Paciente>(
                     `/pacientes/${programando.id}/reagendar-atencion/`,
                     {
                       fecha_programada: programando.proxima_atencion,
                       nueva_fecha: fechaHora,
-                      observacion: "Atención reagendada desde calendario.",
+                      observacion: observacion || "Atención reagendada desde calendario.",
                     },
                   )
                 : await api.post<Paciente>(
@@ -472,35 +506,6 @@ export default function CalendarioPage() {
         )}
       </AnimatePresence>
 
-      {pacienteAcciones && (
-        <AccionesPacienteModal
-          paciente={pacienteAcciones}
-          puedeGestionar={puedeGestionarAgenda(pacienteAcciones)}
-          accionEnCurso={accionEnCurso}
-          onClose={() => setPacienteAcciones(null)}
-          onAsistencia={() => {
-            setPacienteAcciones(null);
-            void handleAsistencia(pacienteAcciones);
-          }}
-          onInasistencia={() => {
-            setPacienteAcciones(null);
-            setInasistenciaAgenda(pacienteAcciones);
-          }}
-          onProgramar={() => {
-            setPacienteAcciones(null);
-            setProgramando(pacienteAcciones);
-          }}
-          onEliminar={() => {
-            setPacienteAcciones(null);
-            setEliminandoCita(pacienteAcciones);
-          }}
-          onFicha={() => {
-            setPacienteAcciones(null);
-            setFichaPaciente(pacienteAcciones);
-          }}
-        />
-      )}
-
       {inasistenciaAgenda && (
         <InasistenciaAgendaModal
           paciente={inasistenciaAgenda}
@@ -513,7 +518,7 @@ export default function CalendarioPage() {
       <ConfirmDialog
         isOpen={Boolean(eliminandoCita)}
         title="Eliminar cita"
-        message="Esta acción elimina la próxima atención programada, pero no borra al paciente ni su historial."
+        message="Se quitará la próxima atención programada. El paciente no será eliminado y el evento quedará en el historial de acciones."
         confirmLabel="Eliminar cita"
         cancelLabel="Cancelar"
         variant="danger"
@@ -534,204 +539,178 @@ export default function CalendarioPage() {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: number }) {
+function ResumenDiaCard({ label, value, tone }: { label: string; value: number; tone: "blue" | "slate" | "amber" | "red" }) {
+  const toneClass = {
+    blue: "border-blue-100 bg-blue-50 text-blue-700",
+    slate: "border-slate-200 bg-white text-slate-700",
+    amber: "border-amber-100 bg-amber-50 text-amber-800",
+    red: "border-red-100 bg-red-50 text-red-700",
+  }[tone];
+
   return (
-    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</p>
-      <p className="mt-1 text-xl font-black text-slate-900">{value}</p>
+    <div className={`rounded-xl border px-4 py-3 shadow-sm ${toneClass}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wide">{label}</p>
+      <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
     </div>
   );
 }
 
-function CitaCard({
+function AgendaDiaCard({
   paciente,
   puedeGestionar,
   accionEnCurso,
-  onEditar,
-}: {
-  paciente: Paciente;
-  puedeGestionar: boolean;
-  accionEnCurso: string;
-  onEditar: () => void;
-}) {
-  const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
-
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-sm font-bold text-slate-800">{paciente.nombre}</p>
-          <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700">
-            {paciente.proxima_atencion
-              ? new Date(paciente.proxima_atencion).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "--:--"}
-          </span>
-        </div>
-        <p className="mt-1 truncate text-[10px] font-semibold text-slate-500">
-          {formatearRut(paciente.rut)} · {ESTADO_LABELS[paciente.estado]} · {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onEditar}
-        disabled={disabled}
-        className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
-      >
-        <FiEdit3 size={12} />
-        {puedeGestionar ? "Editar" : "Ver"}
-      </button>
-    </div>
-  );
-}
-
-function AccionesPacienteModal({
-  paciente,
-  puedeGestionar,
-  accionEnCurso,
-  onClose,
   onAsistencia,
   onInasistencia,
-  onProgramar,
+  onReagendar,
   onEliminar,
   onFicha,
 }: {
   paciente: Paciente;
   puedeGestionar: boolean;
   accionEnCurso: string;
-  onClose: () => void;
   onAsistencia: () => void;
   onInasistencia: () => void;
-  onProgramar: () => void;
+  onReagendar: () => void;
   onEliminar: () => void;
   onFicha: () => void;
 }) {
-  const tieneCita = Boolean(paciente.proxima_atencion);
   const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
+  const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="border-b border-slate-200 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Editar agenda del paciente</p>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <h3 className="break-words text-lg font-black leading-tight text-slate-900">{paciente.nombre}</h3>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
-                {formatearRut(paciente.rut)} · {ESTADO_LABELS[paciente.estado]}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-blue-700">
-                {tieneCita ? `Cita: ${formatDateTime(paciente.proxima_atencion)}` : "Sin próxima atención programada"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="ccr-control-button self-start px-3 py-2 text-xs"
-            >
-              Cerrar
-            </button>
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+              <FiClock size={13} />
+              {formatTime(paciente.proxima_atencion)}
+            </span>
+            <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
+            <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
           </div>
+
+          <h3 className="mt-3 truncate text-base font-black text-slate-950">{paciente.nombre}</h3>
+          <div className="mt-2 grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-2">
+            <p>ID {paciente.id_ccr}</p>
+            <p>RUT {formatearRut(paciente.rut)}</p>
+            <p>Responsable: {responsable}</p>
+            <p className="inline-flex items-center gap-1">
+              <FiPhone size={12} />
+              {paciente.telefono || "Sin teléfono"}
+            </p>
+          </div>
+          <p className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+            Acción sugerida: registrar asistencia, inasistencia o reagendar según resultado de la atención.
+          </p>
         </div>
 
-        <div className="grid gap-3 p-5 sm:grid-cols-2">
-          {puedeGestionar && tieneCita && (
+        <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:w-[300px]">
+          {puedeGestionar && (
             <>
-              <ActionButton
-                icon={<FiCheckCircle size={16} />}
-                title="Llegó / asistió"
-                description="Registra asistencia, limpia la cita y devuelve al paciente a pendientes de agenda."
-                className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                disabled={disabled}
+              <button
+                type="button"
                 onClick={onAsistencia}
-              />
-              <ActionButton
-                icon={<FiXCircle size={16} />}
-                title="No asistió"
-                description="Abre el flujo para motivo, justificación y alerta de posible abandono."
-                className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
                 disabled={disabled}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <FiCheckCircle size={14} />
+                Llegó
+              </button>
+              <button
+                type="button"
                 onClick={onInasistencia}
-              />
-              <ActionButton
-                icon={<FiEdit3 size={16} />}
-                title="Reagendar"
-                description="Permite mover esta cita a una nueva fecha y hora."
-                className="border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
                 disabled={disabled}
-                onClick={onProgramar}
-              />
-              <ActionButton
-                icon={<FiTrash2 size={16} />}
-                title="Eliminar cita"
-                description="Elimina solo la próxima atención, sin borrar al paciente."
-                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+              >
+                <FiXCircle size={14} />
+                No asistió
+              </button>
+              <button
+                type="button"
+                onClick={onReagendar}
                 disabled={disabled}
+                className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+              >
+                <FiEdit3 size={14} />
+                Reagendar
+              </button>
+              <button
+                type="button"
                 onClick={onEliminar}
-              />
+                disabled={disabled}
+                className="inline-flex items-center justify-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                <FiTrash2 size={14} />
+                Eliminar
+              </button>
             </>
           )}
-
-          {puedeGestionar && !tieneCita && (
-            <ActionButton
-              icon={<FiCalendar size={16} />}
-              title="Programar atención"
-              description="Agenda una nueva fecha para este paciente."
-              className="border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 sm:col-span-2"
-              disabled={disabled}
-              onClick={onProgramar}
-            />
-          )}
-
-          <ActionButton
-            icon={<FiEye size={16} />}
-            title="Ver ficha operativa"
-            description="Abre la ficha completa del paciente y su historial operativo."
-            className="border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50 sm:col-span-2"
-            disabled={disabled}
+          <button
+            type="button"
             onClick={onFicha}
-          />
-
-          {!puedeGestionar && (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 sm:col-span-2">
-              Tu perfil puede revisar la ficha, pero no modificar la agenda de este paciente.
-            </p>
-          )}
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 sm:col-span-2"
+          >
+            <FiEye size={14} />
+            Ver ficha operativa
+          </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
-function ActionButton({
-  icon,
-  title,
-  description,
-  className,
-  disabled,
-  onClick,
+function PendienteAgendaItem({
+  paciente,
+  puedeGestionar,
+  onProgramar,
+  onFicha,
 }: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  className: string;
-  disabled: boolean;
-  onClick: () => void;
+  paciente: Paciente;
+  puedeGestionar: boolean;
+  onProgramar: () => void;
+  onFicha: () => void;
 }) {
+  const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${className}`}
-    >
-      <span className="flex items-center gap-2 text-sm font-black">
-        {icon}
-        {title}
-      </span>
-      <span className="mt-1 block text-xs font-semibold leading-relaxed opacity-80">
-        {description}
-      </span>
-    </button>
+    <article className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-black text-slate-900">{paciente.nombre}</p>
+          <p className="mt-1 truncate text-[10px] font-semibold text-slate-500">
+            {paciente.id_ccr} · {responsable}
+          </p>
+        </div>
+        <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
+        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">
+          {paciente.dias_en_lista ?? 0} días
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {puedeGestionar && (
+          <button
+            type="button"
+            onClick={onProgramar}
+            className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
+          >
+            <FiCalendar size={11} />
+            Programar
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onFicha}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+        >
+          <FiEye size={11} />
+          Ver ficha
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -755,7 +734,9 @@ function InasistenciaAgendaModal({
         <div className="border-b border-slate-200 px-5 py-4">
           <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Agenda operativa</p>
           <h3 className="mt-1 text-lg font-black text-slate-900">Registrar inasistencia</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}
+          </p>
         </div>
 
         <div className="space-y-4 p-5">
@@ -768,6 +749,7 @@ function InasistenciaAgendaModal({
               className="ccr-control-input mt-2 w-full px-3 py-2 text-sm"
               placeholder="No asiste a atención programada."
             />
+            <span className="mt-1 block text-[11px] font-semibold text-slate-400">Recomendado para dejar trazabilidad operativa.</span>
           </label>
 
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
@@ -777,7 +759,7 @@ function InasistenciaAgendaModal({
               onChange={(e) => setJustificada(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-[#335FDB] focus:ring-[#335FDB]"
             />
-            Inasistencia justificada
+            Justificada
           </label>
         </div>
 
@@ -797,10 +779,39 @@ function InasistenciaAgendaModal({
             className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
           >
             {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiXCircle size={13} />}
-            {loading ? "Guardando..." : "Guardar inasistencia"}
+            {loading ? "Guardando..." : "Guardar"}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+      <p className="text-sm font-black text-slate-700">{title}</p>
+      <p className="mx-auto mt-1 max-w-md text-xs font-semibold text-slate-500">{description}</p>
+    </div>
+  );
+}
+
+function Badge({ text, className }: { text: string; className: string }) {
+  return (
+    <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${className}`}>
+      {text}
+    </span>
+  );
+}
+
+function estadoBadgeClass(estado: Paciente["estado"]) {
+  if (estado === "INGRESADO") return "border-emerald-100 bg-emerald-50 text-emerald-700";
+  if (estado === "RESCATE") return "border-amber-100 bg-amber-50 text-amber-800";
+  return "border-blue-100 bg-blue-50 text-blue-700";
+}
+
+function prioridadBadgeClass(prioridad: Paciente["prioridad"]) {
+  if (prioridad === "ALTA") return "border-red-100 bg-red-50 text-red-700";
+  if (prioridad === "MEDIANA") return "border-amber-100 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-white text-slate-600";
 }

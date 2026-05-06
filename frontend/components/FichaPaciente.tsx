@@ -546,14 +546,14 @@ export default function FichaPaciente({
         <ProximaAtencionModal
           paciente={paciente}
           onClose={() => setMostrarProgramacion(false)}
-          onConfirm={async (fechaHora) => {
+          onConfirm={async (fechaHora, observacion) => {
             const actualizado = paciente.proxima_atencion
               ? await api.post<Paciente>(
                   `/pacientes/${paciente.id}/reagendar-atencion/`,
                   {
                     fecha_programada: paciente.proxima_atencion,
                     nueva_fecha: fechaHora,
-                    observacion: "Atención reagendada desde ficha operativa.",
+                    observacion: observacion || "Atención reagendada desde ficha operativa.",
                   },
                 )
               : await api.post<Paciente>(
