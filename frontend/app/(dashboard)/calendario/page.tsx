@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
 import { ESTADO_LABELS } from "@/lib/types";
@@ -106,6 +107,7 @@ export default function CalendarioPage() {
   const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(new Date()));
   const [programando, setProgramando] = useState<Paciente | null>(null);
   const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
+  const [pacienteAcciones, setPacienteAcciones] = useState<Paciente | null>(null);
   const [inasistenciaAgenda, setInasistenciaAgenda] = useState<Paciente | null>(null);
   const [eliminandoCita, setEliminandoCita] = useState<Paciente | null>(null);
   const [accionEnCurso, setAccionEnCurso] = useState("");
@@ -140,6 +142,7 @@ export default function CalendarioPage() {
   function actualizarPaciente(actualizado: Paciente) {
     setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));
     setFichaPaciente((prev) => (prev?.id === actualizado.id ? actualizado : prev));
+    setPacienteAcciones((prev) => (prev?.id === actualizado.id ? actualizado : prev));
   }
 
   function puedeGestionarAgenda(paciente: Paciente) {
@@ -387,11 +390,7 @@ export default function CalendarioPage() {
                     paciente={p}
                     puedeGestionar={puedeGestionarAgenda(p)}
                     accionEnCurso={accionEnCurso}
-                    onAsistencia={() => void handleAsistencia(p)}
-                    onInasistencia={() => setInasistenciaAgenda(p)}
-                    onReagendar={() => setProgramando(p)}
-                    onEliminar={() => setEliminandoCita(p)}
-                    onFicha={() => setFichaPaciente(p)}
+                    onEditar={() => setPacienteAcciones(p)}
                   />
                 ))
               ) : (
@@ -425,21 +424,12 @@ export default function CalendarioPage() {
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      {puedeGestionarAgenda(p) && (
-                        <button
-                          onClick={() => setProgramando(p)}
-                          className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
-                        >
-                          <FiCalendar size={11} />
-                          Programar
-                        </button>
-                      )}
                       <button
-                        onClick={() => setFichaPaciente(p)}
-                        className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+                        onClick={() => setPacienteAcciones(p)}
+                        className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
                       >
-                        <FiEye size={11} />
-                        Ver ficha operativa
+                        <FiEdit3 size={11} />
+                        Editar
                       </button>
                     </div>
                   </div>
@@ -483,6 +473,35 @@ export default function CalendarioPage() {
           />
         )}
       </AnimatePresence>
+
+      {pacienteAcciones && (
+        <AccionesPacienteModal
+          paciente={pacienteAcciones}
+          puedeGestionar={puedeGestionarAgenda(pacienteAcciones)}
+          accionEnCurso={accionEnCurso}
+          onClose={() => setPacienteAcciones(null)}
+          onAsistencia={() => {
+            setPacienteAcciones(null);
+            void handleAsistencia(pacienteAcciones);
+          }}
+          onInasistencia={() => {
+            setPacienteAcciones(null);
+            setInasistenciaAgenda(pacienteAcciones);
+          }}
+          onProgramar={() => {
+            setPacienteAcciones(null);
+            setProgramando(pacienteAcciones);
+          }}
+          onEliminar={() => {
+            setPacienteAcciones(null);
+            setEliminandoCita(pacienteAcciones);
+          }}
+          onFicha={() => {
+            setPacienteAcciones(null);
+            setFichaPaciente(pacienteAcciones);
+          }}
+        />
+      )}
 
       {inasistenciaAgenda && (
         <InasistenciaAgendaModal
@@ -530,20 +549,12 @@ function CitaCard({
   paciente,
   puedeGestionar,
   accionEnCurso,
-  onAsistencia,
-  onInasistencia,
-  onReagendar,
-  onEliminar,
-  onFicha,
+  onEditar,
 }: {
   paciente: Paciente;
   puedeGestionar: boolean;
   accionEnCurso: string;
-  onAsistencia: () => void;
-  onInasistencia: () => void;
-  onReagendar: () => void;
-  onEliminar: () => void;
-  onFicha: () => void;
+  onEditar: () => void;
 }) {
   const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
 
@@ -568,57 +579,169 @@ function CitaCard({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {puedeGestionar && (
-          <>
-            <button
-              type="button"
-              onClick={onAsistencia}
-              disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
-            >
-              <FiCheckCircle size={12} />
-              Llegó
-            </button>
-            <button
-              type="button"
-              onClick={onInasistencia}
-              disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
-            >
-              <FiXCircle size={12} />
-              No asistió
-            </button>
-            <button
-              type="button"
-              onClick={onReagendar}
-              disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
-            >
-              <FiEdit3 size={12} />
-              Reagendar
-            </button>
-            <button
-              type="button"
-              onClick={onEliminar}
-              disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-            >
-              <FiTrash2 size={12} />
-              Eliminar cita
-            </button>
-          </>
-        )}
+      <div className="mt-3">
         <button
           type="button"
-          onClick={onFicha}
-          className="col-span-2 inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+          onClick={onEditar}
+          disabled={disabled}
+          className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
         >
-          <FiEye size={12} />
-          Ver ficha operativa
+          <FiEdit3 size={12} />
+          {puedeGestionar ? "Editar cita" : "Ver opciones"}
         </button>
       </div>
     </div>
+  );
+}
+
+function AccionesPacienteModal({
+  paciente,
+  puedeGestionar,
+  accionEnCurso,
+  onClose,
+  onAsistencia,
+  onInasistencia,
+  onProgramar,
+  onEliminar,
+  onFicha,
+}: {
+  paciente: Paciente;
+  puedeGestionar: boolean;
+  accionEnCurso: string;
+  onClose: () => void;
+  onAsistencia: () => void;
+  onInasistencia: () => void;
+  onProgramar: () => void;
+  onEliminar: () => void;
+  onFicha: () => void;
+}) {
+  const tieneCita = Boolean(paciente.proxima_atencion);
+  const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Editar agenda del paciente</p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="break-words text-lg font-black leading-tight text-slate-900">{paciente.nombre}</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {formatearRut(paciente.rut)} · {ESTADO_LABELS[paciente.estado]}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-blue-700">
+                {tieneCita ? `Cita: ${formatDateTime(paciente.proxima_atencion)}` : "Sin próxima atención programada"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="ccr-control-button self-start px-3 py-2 text-xs"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-5 sm:grid-cols-2">
+          {puedeGestionar && tieneCita && (
+            <>
+              <ActionButton
+                icon={<FiCheckCircle size={16} />}
+                title="Llegó / asistió"
+                description="Registra asistencia, limpia la cita y devuelve al paciente a pendientes de agenda."
+                className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                disabled={disabled}
+                onClick={onAsistencia}
+              />
+              <ActionButton
+                icon={<FiXCircle size={16} />}
+                title="No asistió"
+                description="Abre el flujo para motivo, justificación y alerta de posible abandono."
+                className="border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                disabled={disabled}
+                onClick={onInasistencia}
+              />
+              <ActionButton
+                icon={<FiEdit3 size={16} />}
+                title="Reagendar"
+                description="Permite mover esta cita a una nueva fecha y hora."
+                className="border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+                disabled={disabled}
+                onClick={onProgramar}
+              />
+              <ActionButton
+                icon={<FiTrash2 size={16} />}
+                title="Eliminar cita"
+                description="Elimina solo la próxima atención, sin borrar al paciente."
+                className="border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                disabled={disabled}
+                onClick={onEliminar}
+              />
+            </>
+          )}
+
+          {puedeGestionar && !tieneCita && (
+            <ActionButton
+              icon={<FiCalendar size={16} />}
+              title="Programar atención"
+              description="Agenda una nueva fecha para este paciente."
+              className="border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100 sm:col-span-2"
+              disabled={disabled}
+              onClick={onProgramar}
+            />
+          )}
+
+          <ActionButton
+            icon={<FiEye size={16} />}
+            title="Ver ficha operativa"
+            description="Abre la ficha completa del paciente y su historial operativo."
+            className="border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50 sm:col-span-2"
+            disabled={disabled}
+            onClick={onFicha}
+          />
+
+          {!puedeGestionar && (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 sm:col-span-2">
+              Tu perfil puede revisar la ficha, pero no modificar la agenda de este paciente.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActionButton({
+  icon,
+  title,
+  description,
+  className,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  className: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${className}`}
+    >
+      <span className="flex items-center gap-2 text-sm font-black">
+        {icon}
+        {title}
+      </span>
+      <span className="mt-1 block text-xs font-semibold leading-relaxed opacity-80">
+        {description}
+      </span>
+    </button>
   );
 }
 
