@@ -26,10 +26,8 @@ import { useToast } from "@/lib/toast-context";
 import type { Paciente } from "@/lib/types";
 import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
-import BadgePrioridad from "@/components/BadgePrioridad";
 import EditarPacienteModal from "@/components/EditarPacienteModal";
 import FichaPaciente from "@/components/FichaPaciente";
-import RegistrarContactoModal from "@/components/RegistrarContactoModal";
 
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
@@ -82,6 +80,13 @@ function formatearFechaHora(fecha: string | null | undefined) {
   });
 }
 
+function fechaHoraLocalDefault() {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
 function responsablePaciente(paciente: Paciente) {
   return paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable";
 }
@@ -101,9 +106,9 @@ export default function LlamadosPage() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [observacionRapida, setObservacionRapida] = useState("");
+  const [fechaAtencion, setFechaAtencion] = useState(fechaHoraLocalDefault());
   const [accionLoading, setAccionLoading] = useState("");
   const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
-  const [pacienteContacto, setPacienteContacto] = useState<Paciente | null>(null);
   const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
 
   // Filtros locales del módulo de contactabilidad.
@@ -212,6 +217,18 @@ export default function LlamadosPage() {
     setEstadoFilter("TODOS");
   }
 
+  function aplicarPacienteContactabilidad(actualizado: Paciente) {
+    const sigueEnCola = actualizado.estado === "PENDIENTE" || actualizado.estado === "RESCATE";
+    setPacientes((prev) =>
+      sigueEnCola
+        ? prev.map((item) => (item.id === actualizado.id ? actualizado : item))
+        : prev.filter((item) => item.id !== actualizado.id),
+    );
+    if (!sigueEnCola) {
+      setSelectedId((actual) => (actual === actualizado.id ? null : actual));
+    }
+  }
+
   async function registrarNoContesto(paciente: Paciente) {
     const notas = observacionRapida.trim();
     if (paciente.estado === "RESCATE" && !notas) {
@@ -227,16 +244,47 @@ export default function LlamadosPage() {
         telefono_usado: paciente.telefono || paciente.telefono_recados || "",
       });
 
-      setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));
+      aplicarPacienteContactabilidad(actualizado);
       setObservacionRapida("");
       if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
         toast.warning("Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO.");
+      } else if (actualizado.estado === "RESCATE") {
+        toast.warning("Contacto sin respuesta. Paciente pasa a RESCATE.");
       } else {
         toast.warning("Contacto sin respuesta registrado.");
       }
-      await cargar();
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo registrar el contacto."));
+    } finally {
+      setAccionLoading("");
+    }
+  }
+
+  async function registrarContesto(paciente: Paciente) {
+    const notas = observacionRapida.trim();
+    if (!fechaAtencion) {
+      toast.warning("Seleccione fecha y hora para programar la atención.");
+      return;
+    }
+
+    setAccionLoading(`contesto-${paciente.id}`);
+    try {
+      await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
+        contesto: true,
+        notas,
+        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
+      });
+
+      const actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/programar-atencion/`, {
+        fecha_hora: new Date(fechaAtencion).toISOString(),
+      });
+
+      aplicarPacienteContactabilidad(actualizado);
+      setObservacionRapida("");
+      setFechaAtencion(fechaHoraLocalDefault());
+      toast.success("Contacto confirmado y atención programada.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo confirmar el contacto."));
     } finally {
       setAccionLoading("");
     }
@@ -402,6 +450,7 @@ export default function LlamadosPage() {
                       onSelect={() => {
                         setSelectedId(paciente.id);
                         setObservacionRapida("");
+                        setFechaAtencion(fechaHoraLocalDefault());
                       }}
                     />
                   ))}
@@ -412,9 +461,12 @@ export default function LlamadosPage() {
                 <ContactabilidadDetail
                   paciente={pacienteSeleccionado}
                   observacion={observacionRapida}
-                  loading={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
+                  fechaAtencion={fechaAtencion}
+                  loadingNoContesto={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
+                  loadingContesto={accionLoading === `contesto-${pacienteSeleccionado.id}`}
                   onObservacionChange={setObservacionRapida}
-                  onContesto={() => setPacienteContacto(pacienteSeleccionado)}
+                  onFechaAtencionChange={setFechaAtencion}
+                  onContesto={() => void registrarContesto(pacienteSeleccionado)}
                   onNoContesto={() => void registrarNoContesto(pacienteSeleccionado)}
                   onEditarContacto={() => setPacienteEdicion(pacienteSeleccionado)}
                   onVerFicha={() => setPacienteFicha(pacienteSeleccionado)}
@@ -433,22 +485,6 @@ export default function LlamadosPage() {
           onRefresh={() => {
             void cargar();
             setPacienteFicha(null);
-          }}
-        />
-      )}
-
-      {pacienteContacto && (
-        <RegistrarContactoModal
-          paciente={pacienteContacto}
-          startWithScheduler
-          onClose={() => setPacienteContacto(null)}
-          onSuccess={(actualizado) => {
-            if (actualizado) {
-              setPacientes((prev) =>
-                prev.map((item) => (item.id === actualizado.id ? actualizado : item)),
-              );
-            }
-            void cargar();
           }}
         />
       )}
@@ -631,8 +667,11 @@ function ContactabilidadListItem({
 function ContactabilidadDetail({
   paciente,
   observacion,
-  loading,
+  fechaAtencion,
+  loadingNoContesto,
+  loadingContesto,
   onObservacionChange,
+  onFechaAtencionChange,
   onContesto,
   onNoContesto,
   onEditarContacto,
@@ -640,8 +679,11 @@ function ContactabilidadDetail({
 }: {
   paciente: Paciente;
   observacion: string;
-  loading: boolean;
+  fechaAtencion: string;
+  loadingNoContesto: boolean;
+  loadingContesto: boolean;
   onObservacionChange: (value: string) => void;
+  onFechaAtencionChange: (value: string) => void;
   onContesto: () => void;
   onNoContesto: () => void;
   onEditarContacto: () => void;
@@ -650,65 +692,82 @@ function ContactabilidadDetail({
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
   const requiereObservacion = paciente.estado === "RESCATE";
+  const accionBloqueada = loadingNoContesto || loadingContesto;
 
   return (
     <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Paciente seleccionado</p>
-            <h2 className="mt-1 break-words text-xl font-black leading-tight text-slate-950">
+      <div className="border-b border-slate-200 px-4 py-3">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Paciente seleccionado</p>
+        <div className="mt-1 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="break-words text-base font-black leading-snug text-slate-950">
               {paciente.nombre}
             </h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
               {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="shrink-0">
             <BadgeEstado estado={paciente.estado} />
-            <BadgePrioridad prioridad={paciente.prioridad} />
           </div>
         </div>
       </div>
 
       <div className="space-y-3 p-4">
-        <section className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-3">
-          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-700">
-            <FiAlertTriangle />
-            Acción requerida
-          </p>
-          <p className="mt-2 text-sm font-semibold leading-5 text-slate-800">
-            {accionSugerida(paciente)}
-          </p>
-        </section>
+        <p className="flex gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold leading-5 text-orange-800">
+          <FiAlertTriangle className="mt-0.5 shrink-0" />
+          {accionSugerida(paciente)}
+        </p>
 
-        <section className="grid grid-cols-1 gap-2">
-          <ContactInfo icon={<FiPhone />} label="Teléfono" value={telefonoPrincipal} emphasis />
-          <ContactInfo icon={<FiMessageSquare />} label="Recados" value={paciente.telefono_recados || "Sin teléfono de recados"} />
-          <ContactInfo icon={<FiUser />} label="Responsable CCR" value={responsablePaciente(paciente)} />
-          <ContactInfo
-            icon={<FiClock />}
-            label="Último contacto"
-            value={
-              ultimoContacto
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-slate-100 py-3 text-xs">
+          <p className="min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiPhone size={12} />
+              Teléfono
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">{telefonoPrincipal}</strong>
+          </p>
+          <p className="min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiUser size={12} />
+              Responsable
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">{responsablePaciente(paciente)}</strong>
+          </p>
+          <p className="col-span-2 min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiClock size={12} />
+              Último contacto
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">
+              {ultimoContacto
                 ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
-                : "Sin contactos registrados"
-            }
-          />
-        </section>
+                : "Sin contactos registrados"}
+            </strong>
+          </p>
+        </div>
 
-        <section className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <div className="mb-2 flex items-center justify-between">
+        <section className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-black uppercase tracking-wide text-slate-600">Registro manual</p>
-            <span className="text-[10px] font-semibold text-slate-500">No realiza llamadas desde el PC</span>
+            <span className="text-[10px] font-semibold text-slate-500">Solo registra resultado de llamada</span>
           </div>
           <textarea
             value={observacion}
             onChange={(event) => onObservacionChange(event.target.value)}
-            rows={3}
+            rows={2}
             placeholder={requiereObservacion ? "Observación obligatoria para egreso administrativo." : "Observación opcional del contacto."}
-            className="ccr-control-input w-full resize-none px-3 py-2 text-sm"
+            className="ccr-control-input w-full resize-none px-3 py-2 text-xs"
           />
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            Fecha y hora si contestó
+            <input
+              type="datetime-local"
+              value={fechaAtencion}
+              onChange={(event) => onFechaAtencionChange(event.target.value)}
+              className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
+            />
+          </label>
           {requiereObservacion && (
             <p className="mt-2 text-[11px] font-semibold text-orange-700">
               En RESCATE, un nuevo “No contestó” requiere observación.
@@ -716,73 +775,43 @@ function ContactabilidadDetail({
           )}
         </section>
 
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50">
-          <div className="flex items-center justify-between gap-2 border-b border-emerald-200 px-3 py-2">
-            <p className="truncate text-sm font-black text-emerald-800">{paciente.nombre}</p>
-            <span className="text-[11px] font-semibold text-emerald-700">{paciente.n_intentos_contacto} intento{paciente.n_intentos_contacto !== 1 ? "s" : ""}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 p-3">
-            <button
-              type="button"
-              onClick={onNoContesto}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#ED4E1D] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#C93F16] disabled:opacity-50"
-            >
-              {loading ? <FiRefreshCw className="animate-spin" size={14} /> : <FiPhoneMissed size={14} />}
-              No contestó
-            </button>
-            <button
-              type="button"
-              onClick={onContesto}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
-            >
-              <FiCheckCircle size={14} />
-              Contestó / agendar
-            </button>
-            <button
-              type="button"
-              onClick={onEditarContacto}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-            >
-              <FiEdit2 size={14} />
-              Editar contacto
-            </button>
-            <button
-              type="button"
-              onClick={onVerFicha}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
-            >
-              <FiEye size={14} />
-              Ver ficha
-            </button>
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onNoContesto}
+            disabled={accionBloqueada}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#ED4E1D] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#C93F16] disabled:opacity-50"
+          >
+            {loadingNoContesto ? <FiRefreshCw className="animate-spin" size={14} /> : <FiPhoneMissed size={14} />}
+            No contestó
+          </button>
+          <button
+            type="button"
+            onClick={onContesto}
+            disabled={accionBloqueada}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+          >
+            {loadingContesto ? <FiRefreshCw className="animate-spin" size={14} /> : <FiCheckCircle size={14} />}
+            Contestó / agendar
+          </button>
+          <button
+            type="button"
+            onClick={onEditarContacto}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+          >
+            <FiEdit2 size={14} />
+            Editar contacto
+          </button>
+          <button
+            type="button"
+            onClick={onVerFicha}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+          >
+            <FiEye size={14} />
+            Ver ficha
+          </button>
         </div>
       </div>
     </aside>
-  );
-}
-
-function ContactInfo({
-  icon,
-  label,
-  value,
-  emphasis = false,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: ReactNode;
-  emphasis?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-        {icon}
-        {label}
-      </p>
-      <p className={`mt-1 break-words text-sm ${emphasis ? "font-black text-slate-950" : "font-semibold text-slate-700"}`}>
-        {value}
-      </p>
-    </div>
   );
 }
