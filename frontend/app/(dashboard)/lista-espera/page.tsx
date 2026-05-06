@@ -28,6 +28,7 @@ import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { usePersistentTableState } from "@/lib/tables/usePersistentTableState";
 import type { Categoria, Estado, Paciente, Prioridad } from "@/lib/types";
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
@@ -239,7 +240,7 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
 
 export default function ListaEsperaPage() {
   const { user } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -322,13 +323,15 @@ export default function ListaEsperaPage() {
         `/pacientes/?${params.toString()}`,
       );
       setPacientes(data);
-    } catch {
+    } catch (error) {
       setPacientes([]);
-      setError("No se pudo cargar la lista de espera.");
+      const message = getErrorMessage(error, "No se pudo cargar la lista de espera.");
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
     }
-  }, [alertaActiva, mes, anio, importacionId]);
+  }, [alertaActiva, mes, anio, importacionId, toastError]);
 
   useEffect(() => {
     void cargar();
@@ -381,8 +384,8 @@ export default function ListaEsperaPage() {
       toastSuccess(`Paciente "${deleteTarget.nombre}" eliminado correctamente.`);
       setDeleteTarget(null);
       void cargar();
-    } catch {
-      toastError("No se pudo eliminar el paciente.");
+    } catch (error) {
+      toastError(getErrorMessage(error, "No se pudo eliminar el paciente."));
     } finally {
       setDeleting(false);
     }
@@ -391,6 +394,7 @@ export default function ListaEsperaPage() {
   async function exportarExcel() {
     setExportando(true);
     try {
+      toastInfo("Exportación de lista de espera iniciada.");
       const params = new URLSearchParams();
       const usaResponsableEspecifico =
         quickFilters.responsable !== "TODOS" &&
@@ -418,8 +422,9 @@ export default function ListaEsperaPage() {
       }
       const blob = await api.getBlob(`/pacientes/exportar/?${params.toString()}`);
       descargarBlob(blob, `lista-espera-ccr-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}.xlsx`);
-    } catch {
-      toastError("No se pudo exportar la lista de espera.");
+      toastSuccess("Lista de espera exportada correctamente.");
+    } catch (error) {
+      toastError(getErrorMessage(error, "No se pudo exportar la lista de espera."));
     } finally {
       setExportando(false);
     }
@@ -782,14 +787,16 @@ export default function ListaEsperaPage() {
     const email = asignarContacto.email.trim();
 
     if (!telefono && !telefonoRecados && !email) {
-      setAsignarError(
-        "Ingresa al menos un dato de contacto (teléfono o email).",
-      );
+      const message = "Ingresa al menos un dato de contacto (teléfono o email).";
+      setAsignarError(message);
+      toastInfo(message);
       return;
     }
 
     if (email && !/^\S+@\S+\.\S+$/.test(email)) {
-      setAsignarError("El email no tiene un formato válido.");
+      const message = "El email no tiene un formato válido.";
+      setAsignarError(message);
+      toastInfo(message);
       return;
     }
 
@@ -809,12 +816,10 @@ export default function ListaEsperaPage() {
       await cargar();
       window.dispatchEvent(new Event("ccr:refresh-sidebar"));
     } catch (e: unknown) {
-      const detail =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "Error al asignar.";
+      const detail = getErrorMessage(e, "Error al asignar.");
       setAsignarError(detail);
       setError(detail);
+      toastError(detail);
     } finally {
       setAsignando(null);
     }

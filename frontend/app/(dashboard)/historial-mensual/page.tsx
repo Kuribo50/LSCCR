@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import { FiDownload } from "react-icons/fi";
 import type {
   ImportacionDeletePeriodoResultado,
@@ -36,6 +38,7 @@ function badgeEstado(estado: ImportacionHistorialItem["estado"]) {
 
 export default function HistorialMensualPage() {
   const { user } = useAuth();
+  const { error: toastError, info: toastInfo, success: toastSuccess } = useToast();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -67,16 +70,14 @@ export default function HistorialMensualPage() {
       );
       setHistorial(data);
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo cargar el historial mensual.");
-      }
+      const message = getErrorMessage(e, "No se pudo cargar el historial mensual.");
+      setError(message);
+      toastError(message);
       setHistorial([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toastError]);
 
   useEffect(() => {
     if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
@@ -184,12 +185,11 @@ export default function HistorialMensualPage() {
       }
       setPeriodoAEliminar(null);
       await cargarHistorial();
+      toastSuccess("Datos del periodo eliminados correctamente.");
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudieron eliminar los datos del periodo.");
-      }
+      const message = getErrorMessage(e, "No se pudieron eliminar los datos del periodo.");
+      setError(message);
+      toastError(message);
     } finally {
       setEliminando(false);
     }
@@ -199,6 +199,7 @@ export default function HistorialMensualPage() {
     setExportandoKey(grupo.key);
     setError("");
     try {
+      toastInfo("Exportación del corte iniciada.");
       const blob = await api.getBlob(`/importar/historial/${grupo.mes}/${grupo.anio}/exportar/`);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -208,8 +209,11 @@ export default function HistorialMensualPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      setError("No se pudo exportar el corte mensual.");
+      toastSuccess("Corte mensual exportado correctamente.");
+    } catch (error) {
+      const message = getErrorMessage(error, "No se pudo exportar el corte mensual.");
+      setError(message);
+      toastError(message);
     } finally {
       setExportandoKey(null);
     }

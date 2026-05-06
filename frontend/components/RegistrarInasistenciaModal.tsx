@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { FiAlertTriangle, FiCalendar, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import type { InasistenciaPaciente, Paciente } from "@/lib/types";
 
 interface RegistrarInasistenciaResponse {
@@ -27,6 +29,7 @@ export default function RegistrarInasistenciaModal({
   onClose,
   onSuccess,
 }: Props) {
+  const { toast } = useToast();
   const [fecha, setFecha] = useState(fechaHoy());
   const [justificada, setJustificada] = useState(false);
   const [motivo, setMotivo] = useState("");
@@ -45,19 +48,19 @@ export default function RegistrarInasistenciaModal({
       );
       onSuccess(response.paciente);
       if (response.alerta_abandono) {
-        setAlerta(
+        const mensaje =
           response.mensaje ||
-            "Paciente tiene 2 inasistencias no justificadas. Evaluar marcar como ABANDONO.",
-        );
+          "Paciente tiene 2 inasistencias no justificadas. Evaluar marcar como ABANDONO.";
+        setAlerta(mensaje);
+        toast.warning(mensaje);
         return;
       }
+      toast.success("Inasistencia registrada correctamente.");
       onClose();
     } catch (e: unknown) {
-      const detail =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "No se pudo registrar la inasistencia.";
+      const detail = getErrorMessage(e, "No se pudo registrar la inasistencia.");
       setError(detail);
+      toast.error(detail);
     } finally {
       setLoading(false);
     }

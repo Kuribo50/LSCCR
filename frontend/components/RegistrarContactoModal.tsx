@@ -13,6 +13,8 @@ import {
 import type { Paciente } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 
 function fechaHoraLocalDefault() {
   const now = new Date();
@@ -32,6 +34,7 @@ export default function RegistrarContactoModal({
   onClose,
   onSuccess,
 }: Props) {
+  const { toast } = useToast();
   const [notas, setNotas] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,10 +46,12 @@ export default function RegistrarContactoModal({
   async function handleSubmit(contesto: boolean) {
     if (contesto && !fechaHora) {
       setError("Selecciona fecha y hora para programar la atención.");
+      toast.warning("Selecciona fecha y hora para programar la atención.");
       return;
     }
     if (!contesto && requiereNotaEgreso && !notas.trim()) {
       setError("Debe registrar una observación para egreso administrativo.");
+      toast.warning("Debe registrar una observación para egreso administrativo.");
       return;
     }
 
@@ -76,14 +81,19 @@ export default function RegistrarContactoModal({
               ? "Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO."
             : "Contacto registrado.";
       setSuccess(mensaje);
+      if (actualizado.estado === "RESCATE") {
+        toast.warning(mensaje);
+      } else if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
+        toast.warning(mensaje, { title: "Egreso administrativo" });
+      } else {
+        toast.success(mensaje);
+      }
       onSuccess(actualizado);
       window.setTimeout(onClose, 900);
     } catch (e: unknown) {
-      const msg =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "Error al registrar contacto";
+      const msg = getErrorMessage(e, "Error al registrar contacto");
       setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

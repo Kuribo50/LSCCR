@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Paciente } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import { motion } from "framer-motion";
 import { FiCalendar, FiClock, FiX, FiCheck, FiTrash2, FiRefreshCw, FiUser } from "react-icons/fi";
 
@@ -53,6 +55,7 @@ export default function ProximaAtencionModal({
   onConfirm,
   onClear,
 }: Props) {
+  const { toast } = useToast();
   const [fechaHora, setFechaHora] = useState(
     toInputDateTime(fechaInicial) ||
       toInputDateTime(paciente.proxima_atencion) ||
@@ -66,6 +69,7 @@ export default function ProximaAtencionModal({
   async function handleConfirm() {
     if (!fechaHora) {
       setError("Selecciona fecha y hora para continuar.");
+      toast.warning("Selecciona fecha y hora para continuar.");
       return;
     }
     const isoValue = new Date(fechaHora).toISOString();
@@ -73,10 +77,12 @@ export default function ProximaAtencionModal({
     setError("");
     try {
       await onConfirm(isoValue);
+      toast.success("Atención programada correctamente.");
       onClose();
     } catch (e: unknown) {
-      const errorData = e as { detail?: string };
-      setError(errorData.detail || "Error al programar.");
+      const message = getErrorMessage(e, "Error al programar.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -88,9 +94,12 @@ export default function ProximaAtencionModal({
     setError("");
     try {
       await onClear();
+      toast.success("Atención eliminada correctamente.");
       onClose();
-    } catch {
-      setError("No se pudo eliminar.");
+    } catch (error) {
+      const message = getErrorMessage(error, "No se pudo eliminar.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

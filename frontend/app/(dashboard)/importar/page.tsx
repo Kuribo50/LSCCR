@@ -17,6 +17,8 @@ import {
   FiUploadCloud,
 } from "react-icons/fi";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import type {
   ImportacionConflictoResponse,
   ImportacionDeletePeriodoResultado,
@@ -97,6 +99,7 @@ function PreviewMetric({
 
 export default function ImportarPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -295,13 +298,12 @@ export default function ImportarPage() {
         form,
       );
       setPreview(data);
+      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
     } catch (e: unknown) {
       setPreview(null);
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo previsualizar el archivo.");
-      }
+      const message = getErrorMessage(e, "No se pudo previsualizar el archivo.");
+      setError(message);
+      toast.error(message);
     } finally {
       setPreviewLoading(false);
     }
@@ -330,6 +332,11 @@ export default function ImportarPage() {
       );
       setResultado(data);
       setConflicto(null);
+      if (data.errores_count || data.errores?.length) {
+        toast.warning("Importación completada con observaciones para revisar.");
+      } else {
+        toast.success("Importación completada correctamente.");
+      }
       await refrescarGestionActual();
     } catch (e: unknown) {
       if (
@@ -339,10 +346,11 @@ export default function ImportarPage() {
         (e as ImportacionConflictoResponse).tipo === "conflicto_mes"
       ) {
         setConflicto(e as ImportacionConflictoResponse);
-      } else if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
+        toast.warning("Ya existe una importación para ese periodo.");
       } else {
-        setError("Error al importar el archivo.");
+        const message = getErrorMessage(e, "Error al importar el archivo.");
+        setError(message);
+        toast.error(message);
       }
     } finally {
       setImportLoading(false);
@@ -353,6 +361,7 @@ export default function ImportarPage() {
     setDescargandoPlantilla(true);
     setError("");
     try {
+      toast.info("Descarga de plantilla iniciada.");
       const blob = await api.getBlob("/importar/plantilla/");
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -362,12 +371,11 @@ export default function ImportarPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success("Plantilla descargada correctamente.");
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo descargar la plantilla.");
-      }
+      const message = getErrorMessage(e, "No se pudo descargar la plantilla.");
+      setError(message);
+      toast.error(message);
     } finally {
       setDescargandoPlantilla(false);
     }
@@ -390,12 +398,11 @@ export default function ImportarPage() {
       if (fileRef.current) fileRef.current.value = "";
       await refrescarGestionActual();
       window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
+      toast.success("Población reseteada correctamente.");
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo resetear la población.");
-      }
+      const message = getErrorMessage(e, "No se pudo resetear la población.");
+      setError(message);
+      toast.error(message);
     } finally {
       setResetLoading(false);
     }
@@ -416,12 +423,11 @@ export default function ImportarPage() {
       setDeletePeriodoConfirm(false);
       await refrescarGestionActual();
       window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
+      toast.success("Mes seleccionado borrado correctamente.");
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo borrar el mes seleccionado.");
-      }
+      const message = getErrorMessage(e, "No se pudo borrar el mes seleccionado.");
+      setError(message);
+      toast.error(message);
     } finally {
       setDeletePeriodoLoading(false);
     }
@@ -440,12 +446,11 @@ export default function ImportarPage() {
       setDeleteCorteConfirmId(null);
       await refrescarGestionActual();
       window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
+      toast.success("Corte seleccionado borrado correctamente.");
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setError((e as { detail: string }).detail);
-      } else {
-        setError("No se pudo borrar el corte seleccionado.");
-      }
+      const message = getErrorMessage(e, "No se pudo borrar el corte seleccionado.");
+      setError(message);
+      toast.error(message);
     } finally {
       setDeleteCorteLoadingId(null);
     }

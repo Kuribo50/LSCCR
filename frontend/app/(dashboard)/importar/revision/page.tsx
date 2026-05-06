@@ -16,6 +16,8 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import type {
   ImportacionRevisionActionResultado,
   ImportacionRevisionEstado,
@@ -101,6 +103,7 @@ function classes(...values: Array<string | false | null | undefined>) {
 
 export default function RevisionImportacionPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const [data, setData] = useState<ImportacionRevisionResultado | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,9 +132,11 @@ export default function RevisionImportacionPage() {
       if (tipo !== "TODOS") params.set("tipo", tipo);
       const response = await api.get<ImportacionRevisionResultado>(`/importar/revision/?${params.toString()}`);
       setData(response);
-    } catch {
+    } catch (error) {
       setData({ total: 0, pendientes: 0, resueltos: 0, descartados: 0, items: [] });
-      setError("No se pudo cargar la revisión de importaciones.");
+      const message = getErrorMessage(error, "No se pudo cargar la revisión de importaciones.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -177,15 +182,18 @@ export default function RevisionImportacionPage() {
         `/importar/revision/${seleccionado.importacion_id}/${seleccionado.revision_index}/`,
         payload,
       );
+      if (accion === "COMPLETAR") {
+        toast.success("Observación resuelta correctamente.");
+      } else {
+        toast.warning("Observación descartada.");
+      }
       cerrarRevision();
       await cargarRevision();
       window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "detail" in e) {
-        setModalError((e as { detail: string }).detail);
-      } else {
-        setModalError("No se pudo actualizar la revisión.");
-      }
+      const message = getErrorMessage(e, "No se pudo actualizar la revisión.");
+      setModalError(message);
+      toast.error(message);
     } finally {
       setActionLoading(false);
     }

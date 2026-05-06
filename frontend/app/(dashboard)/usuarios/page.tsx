@@ -16,7 +16,9 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { getErrorMessage } from "@/lib/errors";
 import { formatearRut, rutParaApi } from "@/lib/rut";
+import { useToast } from "@/lib/toast-context";
 import type { Rol, Usuario } from "@/lib/types";
 
 const ROL_LABELS: Record<Rol, string> = {
@@ -56,6 +58,7 @@ function etiquetaRolTabla(rol: Rol) {
 
 export default function UsuariosPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,8 +122,11 @@ export default function UsuariosPage() {
     try {
       await api.delete(`/usuarios/${id}/`);
       await cargar();
-    } catch {
-      alert("No se pudo eliminar el usuario. Es posible que tenga registros asociados.");
+      toast.success("Usuario eliminado correctamente.");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "No se pudo eliminar el usuario. Es posible que tenga registros asociados."),
+      );
     }
   }
 
@@ -134,9 +140,9 @@ export default function UsuariosPage() {
     setResetLoadingId(usuario.id);
     try {
       await api.post(`/usuarios/${usuario.id}/reset-password/`);
-      alert("Contraseña restablecida. Use los últimos 4 dígitos del RUT, sin dígito verificador.");
-    } catch {
-      alert("No se pudo resetear la contraseña.");
+      toast.success("Contraseña restablecida. Use los últimos 4 dígitos del RUT, sin dígito verificador.");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo resetear la contraseña."));
     } finally {
       setResetLoadingId(null);
     }
@@ -411,6 +417,7 @@ function UsuarioModal({
   onClose: () => void;
   onGuardado: () => void | Promise<void>;
 }) {
+  const { toast } = useToast();
   const editando = usuario !== null;
   const rolHeredado = usuario?.rol === "ADMINISTRATIVO";
   const subtituloDetalle = usuario ? `${usuario.nombre} · ${formatearRut(usuario.rut)}` : "";
@@ -478,11 +485,13 @@ function UsuarioModal({
         await api.post("/usuarios/", body);
       }
       await onGuardado();
+      toast.success(editando ? "Usuario actualizado correctamente." : "Usuario creado correctamente.");
       onClose();
     } catch (e: unknown) {
       const errores = extraerErroresUsuario(e);
       setFieldErrors(errores.fieldErrors);
       setError(errores.general);
+      toast.error(errores.general || getErrorMessage(e, "No se pudo guardar el usuario."));
     } finally {
       setLoading(false);
     }

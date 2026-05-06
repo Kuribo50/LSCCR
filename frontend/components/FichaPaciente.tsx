@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
+import { useToast } from "@/lib/toast-context";
 import {
   FiCalendar,
   FiAlertTriangle,
@@ -128,6 +129,7 @@ export default function FichaPaciente({
   onClose,
   onRefresh,
 }: Props) {
+  const { warning: toastWarning, info: toastInfo } = useToast();
   const [paciente, setPaciente] = useState<Paciente>(pacienteInicial);
   const [llamados, setLlamados] = useState<LlamadoPaciente[]>([]);
   const [inasistencias, setInasistencias] = useState<InasistenciaPaciente[]>([]);
@@ -181,9 +183,10 @@ export default function FichaPaciente({
     } catch {
       setLlamados([]);
       setInasistencias([]);
-      setError(
-        "No se pudo cargar el historial completo. Se mantienen los datos básicos del paciente.",
-      );
+      const message =
+        "No se pudo cargar el historial completo. Se mantienen los datos básicos del paciente.";
+      setError(message);
+      toastWarning(message);
     }
 
     try {
@@ -193,14 +196,14 @@ export default function FichaPaciente({
       setAcciones(data.acciones);
     } catch {
       setAcciones([]);
-      setError((prev) =>
-        prev ||
-        "No se pudo cargar el historial de acciones. Se mantienen los datos básicos del paciente.",
-      );
+      const message =
+        "No se pudo cargar el historial de acciones. Se mantienen los datos básicos del paciente.";
+      setError((prev) => prev || message);
+      toastWarning(message);
     } finally {
       setLoadingHistorial(false);
     }
-  }, []);
+  }, [toastWarning]);
 
   useEffect(() => {
     setPaciente(pacienteInicial);
@@ -267,7 +270,10 @@ export default function FichaPaciente({
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => {
+                  toastInfo("Preparando impresión de ficha operativa.");
+                  window.print();
+                }}
                 className="ccr-no-print inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50"
               >
                 <FiPrinter size={14} />

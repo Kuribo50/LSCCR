@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import type { Estado, Paciente, Rol } from "@/lib/types";
 import { ESTADO_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import BadgeEstado from "./BadgeEstado";
 
 const ESTADOS_NOTA_OBLIGATORIA = new Set<Estado>([
@@ -46,6 +48,7 @@ export default function CambiarEstadoModal({
   onClose,
   onConfirm,
 }: Props) {
+  const { toast } = useToast();
   const [estadoNuevo, setEstadoNuevo] = useState<Estado | "">("");
   const [notas, setNotas] = useState("");
   const [error, setError] = useState("");
@@ -89,23 +92,24 @@ export default function CambiarEstadoModal({
   async function handleConfirm() {
     if (!estadoNuevo) {
       setError("Selecciona un estado para continuar.");
+      toast.warning("Selecciona un estado para continuar.");
       return;
     }
     if (requiereNota && !notas.trim()) {
       setError("Las notas son obligatorias para este cambio de estado.");
+      toast.warning("Las notas son obligatorias para este cambio de estado.");
       return;
     }
     setLoading(true);
     setError("");
     try {
       await onConfirm(estadoNuevo, notas.trim());
+      toast.success("Estado actualizado correctamente.");
       onClose();
     } catch (e: unknown) {
-      const detail =
-        e && typeof e === "object" && "detail" in e
-          ? (e as { detail: string }).detail
-          : "No se pudo cambiar el estado.";
+      const detail = getErrorMessage(e, "No se pudo cambiar el estado.");
       setError(detail);
+      toast.error(detail);
     } finally {
       setLoading(false);
     }

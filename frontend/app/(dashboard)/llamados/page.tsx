@@ -18,7 +18,9 @@ import {
 } from "react-icons/fi";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { formatearRut } from "@/lib/rut";
+import { useToast } from "@/lib/toast-context";
 import type { Paciente } from "@/lib/types";
 import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
@@ -91,6 +93,7 @@ function accionSugerida(paciente: Paciente) {
 
 export default function LlamadosPage() {
   const { user } = useAuth();
+  const { error: toastError, info: toastInfo } = useToast();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -135,13 +138,15 @@ export default function LlamadosPage() {
         return diasEnLlamados(b) - diasEnLlamados(a);
       });
       setPacientes(todos);
-    } catch {
+    } catch (error) {
       setPacientes([]);
-      setError("No se pudo cargar la lista de contactabilidad.");
+      const message = getErrorMessage(error, "No se pudo cargar la lista de contactabilidad.");
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
     }
-  }, [user, ordering]);
+  }, [user, ordering, toastError]);
 
   useEffect(() => {
     void cargar();
@@ -217,7 +222,10 @@ export default function LlamadosPage() {
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => {
+                toastInfo("Preparando impresión de contactabilidad.");
+                window.print();
+              }}
               className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
             >
               <FiPrinter size={13} />

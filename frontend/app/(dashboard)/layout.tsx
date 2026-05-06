@@ -5,6 +5,8 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/errors'
+import { useToast } from '@/lib/toast-context'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
 
@@ -61,6 +63,7 @@ function CambioPasswordObligatorio({
   onLogout: () => Promise<void>
   onPasswordChanged: () => Promise<unknown>
 }) {
+  const { error: toastError, success: toastSuccess, warning: toastWarning } = useToast()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -73,16 +76,19 @@ function CambioPasswordObligatorio({
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       setError('Completa todos los campos.')
+      toastWarning('Completa todos los campos.')
       return
     }
 
     if (newPassword.length < 6) {
       setError('La nueva contraseña debe tener al menos 6 caracteres.')
+      toastWarning('La nueva contraseña debe tener al menos 6 caracteres.')
       return
     }
 
     if (newPassword !== confirmPassword) {
       setError('La confirmación no coincide.')
+      toastWarning('La confirmación no coincide.')
       return
     }
 
@@ -94,13 +100,11 @@ function CambioPasswordObligatorio({
         confirm_password: confirmPassword,
       })
       await onPasswordChanged()
+      toastSuccess('Contraseña actualizada correctamente.')
     } catch (err: unknown) {
-      const values = err && typeof err === 'object' ? Object.values(err) : []
-      const firstArray = values.find((value) => Array.isArray(value) && value.length > 0) as
-        | string[]
-        | undefined
-      const detail = err && typeof err === 'object' && 'detail' in err ? String(err.detail) : ''
-      setError(detail || firstArray?.[0] || 'No se pudo actualizar la contraseña.')
+      const message = getErrorMessage(err, 'No se pudo actualizar la contraseña.')
+      setError(message)
+      toastError(message)
     } finally {
       setLoading(false)
     }

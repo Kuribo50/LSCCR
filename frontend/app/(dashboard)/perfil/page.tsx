@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/errors'
+import { useToast } from '@/lib/toast-context'
 import type { Rol, Usuario } from '@/lib/types'
 import { formatearRut } from '@/lib/rut'
 
@@ -26,6 +28,7 @@ const ROL_COLORS: Record<Rol, { bg: string; text: string; border: string }> = {
 
 export default function PerfilPage() {
   const { user, logout } = useAuth()
+  const { error: toastError, success: toastSuccess, warning: toastWarning } = useToast()
   const [todosUsuarios, setTodosUsuarios] = useState<Usuario[]>([])
   const [loading, setLoading] = useState(false)
   const [contadores, setContadores] = useState<{total: number; mios: number; egresos: number} | null>(null)
@@ -66,16 +69,19 @@ export default function PerfilPage() {
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       setPasswordError('Completa todos los campos.')
+      toastWarning('Completa todos los campos.')
       return
     }
 
     if (newPassword.length < 6) {
       setPasswordError('La nueva contraseña debe tener al menos 6 caracteres.')
+      toastWarning('La nueva contraseña debe tener al menos 6 caracteres.')
       return
     }
 
     if (newPassword !== confirmPassword) {
       setPasswordError('La confirmación no coincide.')
+      toastWarning('La confirmación no coincide.')
       return
     }
 
@@ -87,15 +93,14 @@ export default function PerfilPage() {
         confirm_password: confirmPassword,
       })
       setPasswordSuccess('Contraseña actualizada correctamente.')
+      toastSuccess('Contraseña actualizada correctamente.')
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
     } catch (err: unknown) {
-      const errorData = err as { detail?: string }
-      const values = err && typeof err === 'object' ? Object.values(err) : []
-      const firstArray = values.find((v) => Array.isArray(v) && v.length > 0) as string[] | undefined
-      const fallback = errorData.detail || firstArray?.[0] || 'No se pudo actualizar la contraseña.'
-      setPasswordError(String(fallback))
+      const fallback = getErrorMessage(err, 'No se pudo actualizar la contraseña.')
+      setPasswordError(fallback)
+      toastError(fallback)
     } finally {
       setPasswordLoading(false)
     }

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import type { Categoria, Paciente, Prioridad } from "@/lib/types";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
@@ -68,27 +70,13 @@ function toForm(p: Paciente): FormState {
   };
 }
 
-function firstApiError(error: unknown): string {
-  if (!error || typeof error !== "object") return "No se pudo guardar.";
-  const err = error as Record<string, unknown>;
-  if (typeof err.detail === "string" && err.detail.trim()) return err.detail;
-
-  for (const value of Object.values(err)) {
-    if (Array.isArray(value) && value.length > 0) {
-      const first = value[0];
-      if (typeof first === "string" && first.trim()) return first;
-    }
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return "No se pudo guardar.";
-}
-
 export default function EditarPacienteModal({
   paciente,
   onClose,
   onGuardado,
   mode = "full",
 }: Props) {
+  const { toast } = useToast();
   const [form, setForm] = useState<FormState>(toForm(paciente));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -133,6 +121,7 @@ export default function EditarPacienteModal({
           payload,
         );
         onGuardado(actualizado);
+        toast.success("Contacto y categoría actualizados correctamente.");
         return;
       }
 
@@ -158,8 +147,11 @@ export default function EditarPacienteModal({
         payload,
       );
       onGuardado(actualizado);
+      toast.success("Paciente actualizado correctamente.");
     } catch (e: unknown) {
-      setError(firstApiError(e));
+      const message = getErrorMessage(e, "No se pudo guardar.");
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }

@@ -25,6 +25,8 @@ import {
   YAxis,
 } from "recharts";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { useToast } from "@/lib/toast-context";
 import type {
   ReportePorResponsable,
   ReporteResponsableItem,
@@ -51,6 +53,7 @@ const CARD_BORDER = "border-[#D4E4D4]";
 const CHART_COLORS = ["#335FDB", "#1B5E3B", "#ED8121", "#B91C1C", "#64748B", "#7C3AED", "#0F766E"];
 
 export default function EstadisticasPage() {
+  const { error: toastError, info: toastInfo, success: toastSuccess } = useToast();
   const hoy = useMemo(() => new Date(), []);
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());
@@ -73,12 +76,14 @@ export default function EstadisticasPage() {
       setResumen(resumenData);
       setPorResponsable(responsableData);
       setSerie(serieData);
-    } catch {
-      setError("No se pudieron cargar las estadísticas operativas.");
+    } catch (error) {
+      const message = getErrorMessage(error, "No se pudieron cargar las estadísticas operativas.");
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
     }
-  }, [mes, anio]);
+  }, [mes, anio, toastError]);
 
   useEffect(() => {
     void cargarReportes();
@@ -138,11 +143,13 @@ export default function EstadisticasPage() {
     link.download = `reporte-ccr-${resumen.anio}-${String(resumen.mes).padStart(2, "0")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [resumen, porResponsable]);
+    toastSuccess("Reporte CSV descargado correctamente.");
+  }, [resumen, porResponsable, toastSuccess]);
 
   const exportarExcelResponsables = useCallback(async () => {
     setExportandoResponsables(true);
     try {
+      toastInfo("Exportación por responsable iniciada.");
       const blob = await api.getBlob(`/reportes/por-responsable/exportar/?mes=${mes}&anio=${anio}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -150,12 +157,15 @@ export default function EstadisticasPage() {
       link.download = `reporte-responsables-ccr-${anio}-${String(mes).padStart(2, "0")}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
-    } catch {
-      setError("No se pudo exportar el reporte por responsable.");
+      toastSuccess("Reporte por responsable descargado correctamente.");
+    } catch (error) {
+      const message = getErrorMessage(error, "No se pudo exportar el reporte por responsable.");
+      setError(message);
+      toastError(message);
     } finally {
       setExportandoResponsables(false);
     }
-  }, [mes, anio]);
+  }, [mes, anio, toastError, toastInfo, toastSuccess]);
 
   return (
     <main className="ccr-dashboard-content space-y-6">
