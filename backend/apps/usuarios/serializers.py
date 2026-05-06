@@ -5,6 +5,26 @@ from rest_framework import serializers
 from .models import Usuario
 
 
+def normalizar_rut_usuario(rut: str) -> str:
+    return (rut or "").replace(".", "").replace("-", "").upper().strip()
+
+
+def validar_rut_usuario(rut: str, instance: Usuario | None = None) -> str:
+    rut_normalizado = normalizar_rut_usuario(rut)
+    if not rut_normalizado:
+        raise serializers.ValidationError("El RUT es obligatorio.")
+    if len(rut_normalizado) < 2:
+        raise serializers.ValidationError("El RUT no tiene un formato válido.")
+
+    queryset = Usuario.objects.filter(rut=rut_normalizado)
+    if instance is not None:
+        queryset = queryset.exclude(pk=instance.pk)
+    if queryset.exists():
+        raise serializers.ValidationError("Ya existe un usuario con este RUT.")
+
+    return rut_normalizado
+
+
 class LoginSerializer(serializers.Serializer):
     rut = serializers.CharField()
     password = serializers.CharField(write_only=True)
@@ -30,6 +50,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
+    rut = serializers.CharField(allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
@@ -42,13 +63,20 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
         user = Usuario.objects.create_user(password=password, **validated_data)
         return user
 
+    def validate_rut(self, value):
+        return validar_rut_usuario(value)
+
 
 class UsuarioPatchSerializer(serializers.ModelSerializer):
+    rut = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, required=False, min_length=8)
 
     class Meta:
         model = Usuario
-        fields = ("nombre", "rol", "is_active", "password")
+        fields = ("rut", "nombre", "rol", "is_active", "password")
+
+    def validate_rut(self, value):
+        return validar_rut_usuario(value, self.instance)
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)

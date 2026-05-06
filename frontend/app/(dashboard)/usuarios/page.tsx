@@ -15,7 +15,7 @@ import {
 } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { formatearRut } from "@/lib/rut";
+import { formatearRut, rutParaApi } from "@/lib/rut";
 import type { Rol, Usuario } from "@/lib/types";
 
 const ROL_LABELS: Record<Rol, string> = {
@@ -29,6 +29,8 @@ const ROL_BADGE_CLASSES: Record<Rol, string> = {
   KINE: "border-emerald-100 bg-emerald-50 text-emerald-700",
   ADMINISTRATIVO: "border-slate-100 bg-slate-50 text-slate-700",
 };
+
+const ROLES_NUEVOS: Rol[] = ["KINE", "ADMIN"];
 
 function normalizarBusqueda(value: string) {
   return value
@@ -337,7 +339,7 @@ function UsuarioModal({
   const editando = usuario !== null;
   const [form, setForm] = useState({
     nombre: usuario?.nombre ?? "",
-    rut: usuario?.rut ?? "",
+    rut: formatearRut(usuario?.rut ?? ""),
     rol: (usuario?.rol ?? "KINE") as Rol,
     password: "",
     is_active: usuario?.is_active ?? true,
@@ -355,12 +357,12 @@ function UsuarioModal({
     setError("");
     try {
       const body: Record<string, unknown> = {
+        rut: rutParaApi(form.rut),
         nombre: form.nombre,
         rol: form.rol,
         is_active: form.is_active,
       };
       if (!editando) {
-        body.rut = form.rut;
         body.password = form.password;
       } else if (form.password) {
         body.password = form.password;
@@ -428,17 +430,15 @@ function UsuarioModal({
             />
           </FormField>
 
-          {!editando && (
-            <FormField label="RUT *">
-              <input
-                required
-                value={form.rut}
-                onChange={(event) => set("rut", event.target.value)}
-                placeholder="12345678K"
-                className="ccr-control-input w-full px-3 py-2.5 text-sm"
-              />
-            </FormField>
-          )}
+          <FormField label="RUT *">
+            <input
+              required
+              value={form.rut}
+              onChange={(event) => set("rut", formatearRut(event.target.value))}
+              placeholder="12.345.678-K"
+              className="ccr-control-input w-full px-3 py-2.5 font-mono text-sm"
+            />
+          </FormField>
 
           <FormField label="Rol *">
             <select
@@ -446,13 +446,23 @@ function UsuarioModal({
               onChange={(event) => set("rol", event.target.value)}
               className="ccr-control-input w-full px-3 py-2.5 text-sm"
             >
-              {(Object.entries(ROL_LABELS) as [Rol, string][]).map(([rol, label]) => (
+              {editando && usuario?.rol === "ADMINISTRATIVO" && (
+                <option value="ADMINISTRATIVO" disabled>
+                  Administrativo/a (rol heredado)
+                </option>
+              )}
+              {ROLES_NUEVOS.map((rol) => (
                 <option key={rol} value={rol}>
-                  {label}
+                  {ROL_LABELS[rol]}
                 </option>
               ))}
             </select>
           </FormField>
+          {editando && usuario?.rol === "ADMINISTRATIVO" && (
+            <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              Rol heredado: existe por compatibilidad. Para nuevos usuarios use KINE o ADMIN.
+            </p>
+          )}
 
           <FormField label={editando ? "Nueva contraseña (opcional)" : "Contraseña *"}>
             <input
