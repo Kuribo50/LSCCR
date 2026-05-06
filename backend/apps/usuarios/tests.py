@@ -101,3 +101,34 @@ class UsuarioAdminTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         item = next(usuario for usuario in response.data if usuario["id"] == administrativo.id)
         self.assertEqual(item["rol"], Usuario.Rol.ADMINISTRATIVO)
+
+    def test_admin_puede_cambiar_administrativo_existente_a_kine(self):
+        administrativo = Usuario.objects.create_user(
+            rut="77.777.777-7",
+            password="testpass123",
+            nombre="Administrativo Cambio",
+            rol=Usuario.Rol.ADMINISTRATIVO,
+        )
+
+        response = self.client.patch(
+            f"/api/usuarios/{administrativo.id}/",
+            {"rol": Usuario.Rol.KINE},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        administrativo.refresh_from_db()
+        self.assertEqual(administrativo.rol, Usuario.Rol.KINE)
+
+    def test_usuario_no_admin_no_puede_gestionar_usuarios(self):
+        kine = Usuario.objects.create_user(
+            rut="88.888.888-8",
+            password="testpass123",
+            nombre="Kine Sin Permiso",
+            rol=Usuario.Rol.KINE,
+        )
+        self.client.force_authenticate(kine)
+
+        response = self.client.get("/api/usuarios/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

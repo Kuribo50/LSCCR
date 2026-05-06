@@ -27,10 +27,14 @@ const ROL_LABELS: Record<Rol, string> = {
 const ROL_BADGE_CLASSES: Record<Rol, string> = {
   ADMIN: "border-blue-100 bg-blue-50 text-blue-700",
   KINE: "border-emerald-100 bg-emerald-50 text-emerald-700",
-  ADMINISTRATIVO: "border-slate-100 bg-slate-50 text-slate-700",
+  ADMINISTRATIVO: "border-amber-100 bg-amber-50 text-amber-800",
 };
 
 const ROLES_NUEVOS: Rol[] = ["KINE", "ADMIN"];
+const ROLES_SELECCIONABLES = ROLES_NUEVOS.map((rol) => ({
+  value: rol,
+  label: ROL_LABELS[rol],
+}));
 
 function normalizarBusqueda(value: string) {
   return value
@@ -42,6 +46,11 @@ function normalizarBusqueda(value: string) {
 
 function normalizarRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
+}
+
+function etiquetaRolTabla(rol: Rol) {
+  if (rol === "ADMINISTRATIVO") return "Administrativo/a · Rol heredado";
+  return ROL_LABELS[rol];
 }
 
 export default function UsuariosPage() {
@@ -175,9 +184,9 @@ export default function UsuariosPage() {
             className="ccr-control-input px-3 py-2.5 text-xs"
           >
             <option value="TODOS">Todos los roles</option>
-            {(Object.entries(ROL_LABELS) as [Rol, string][]).map(([rol, label]) => (
-              <option key={rol} value={rol}>
-                {label}
+            {ROLES_SELECCIONABLES.map((rol) => (
+              <option key={rol.value} value={rol.value}>
+                {rol.label}
               </option>
             ))}
           </select>
@@ -243,7 +252,7 @@ export default function UsuariosPage() {
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${ROL_BADGE_CLASSES[usuario.rol]}`}
                       >
-                        {ROL_LABELS[usuario.rol]}
+                        {etiquetaRolTabla(usuario.rol)}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -262,7 +271,7 @@ export default function UsuariosPage() {
                         <button
                           type="button"
                           onClick={() => setModal(usuario)}
-                          className="inline-flex items-center gap-1 rounded-md border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                          className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#284FC0]"
                         >
                           <FiEdit2 size={13} />
                           Editar
@@ -327,6 +336,43 @@ function UsuarioStat({
   );
 }
 
+type UsuarioFormField = "rut" | "nombre" | "rol" | "password" | "confirmPassword";
+type UsuarioFieldErrors = Partial<Record<UsuarioFormField, string>>;
+
+function mensajeRutFrontend(mensaje: string) {
+  if (mensaje.includes("Ya existe")) return "Ya existe un usuario con este RUT.";
+  if (mensaje.includes("obligatorio") || mensaje.includes("blank")) return "Debe ingresar un RUT.";
+  if (mensaje.includes("formato")) return "El RUT ingresado no es válido.";
+  return mensaje;
+}
+
+function leerPrimerMensaje(value: unknown) {
+  if (Array.isArray(value)) return String(value[0] ?? "");
+  if (typeof value === "string") return value;
+  return "";
+}
+
+function extraerErroresUsuario(error: unknown) {
+  const fieldErrors: UsuarioFieldErrors = {};
+  let general = "No se pudo guardar el usuario.";
+
+  if (!error || typeof error !== "object") return { fieldErrors, general };
+
+  Object.entries(error as Record<string, unknown>).forEach(([key, value]) => {
+    const mensaje = leerPrimerMensaje(value);
+    if (!mensaje) return;
+
+    if (key === "rut") fieldErrors.rut = mensajeRutFrontend(mensaje);
+    else if (key === "nombre") fieldErrors.nombre = mensaje;
+    else if (key === "rol") fieldErrors.rol = mensaje;
+    else if (key === "password") fieldErrors.password = mensaje;
+    else general = mensaje;
+  });
+
+  if (Object.keys(fieldErrors).length > 0) general = "";
+  return { fieldErrors, general };
+}
+
 function UsuarioModal({
   usuario,
   onClose,
@@ -337,36 +383,65 @@ function UsuarioModal({
   onGuardado: () => void | Promise<void>;
 }) {
   const editando = usuario !== null;
+  const rolHeredado = usuario?.rol === "ADMINISTRATIVO";
+  const subtituloDetalle = usuario ? `${usuario.nombre} · ${formatearRut(usuario.rut)}` : "";
   const [form, setForm] = useState({
     nombre: usuario?.nombre ?? "",
     rut: formatearRut(usuario?.rut ?? ""),
     rol: (usuario?.rol ?? "KINE") as Rol,
     password: "",
+    confirmPassword: "",
     is_active: usuario?.is_active ?? true,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<UsuarioFieldErrors>({});
 
-  function set(field: string, value: unknown) {
+  function set<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field !== "is_active") {
+      setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  }
+
+  function validarFormulario() {
+    const nextErrors: UsuarioFieldErrors = {};
+    const rutNormalizado = rutParaApi(form.rut);
+
+    if (!rutNormalizado) {
+      nextErrors.rut = "Debe ingresar un RUT.";
+    } else if (rutNormalizado.length < 2) {
+      nextErrors.rut = "El RUT ingresado no es válido.";
+    }
+
+    if (!form.nombre.trim()) nextErrors.nombre = "Debe ingresar un nombre.";
+    if (!form.rol) nextErrors.rol = "Debe seleccionar un rol.";
+    if (!editando && !form.password) nextErrors.password = "Debe ingresar una contraseña.";
+    if (form.password && form.password.length < 8) {
+      nextErrors.password = "La contraseña debe tener al menos 8 caracteres.";
+    }
+    if (form.password !== form.confirmPassword) {
+      nextErrors.confirmPassword = "Las contraseñas no coinciden.";
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    setLoading(true);
     setError("");
+    if (!validarFormulario()) return;
+
+    setLoading(true);
     try {
       const body: Record<string, unknown> = {
         rut: rutParaApi(form.rut),
-        nombre: form.nombre,
+        nombre: form.nombre.trim(),
         rol: form.rol,
         is_active: form.is_active,
       };
-      if (!editando) {
-        body.password = form.password;
-      } else if (form.password) {
-        body.password = form.password;
-      }
+      if (form.password) body.password = form.password;
 
       if (editando) {
         await api.patch(`/usuarios/${usuario!.id}/`, body);
@@ -376,130 +451,197 @@ function UsuarioModal({
       await onGuardado();
       onClose();
     } catch (e: unknown) {
-      if (e && typeof e === "object") {
-        const msgs = Object.entries(e as Record<string, string[] | string>)
-          .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
-          .join(" | ");
-        setError(msgs || "No se pudo guardar el usuario.");
-      } else {
-        setError("No se pudo guardar el usuario.");
-      }
+      const errores = extraerErroresUsuario(e);
+      setFieldErrors(errores.fieldErrors);
+      setError(errores.general);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-6"
+      onClick={onClose}
+    >
       <div
-        className="w-full max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
               Usuarios
             </p>
-            <h2 className="text-base font-black text-slate-950">
-              {editando ? "Editar usuario" : "Nuevo usuario"}
+            <h2 className="mt-1 text-xl font-black text-slate-950">
+              {editando ? "Editar usuario" : "Crear usuario"}
             </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Gestiona acceso interno a ListaEsperaCCR.
+            </p>
+            {subtituloDetalle && (
+              <p className="mt-1 text-xs font-semibold text-slate-400">{subtituloDetalle}</p>
+            )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-white text-slate-500 transition hover:bg-blue-50"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
             aria-label="Cerrar"
           >
             <FiX size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-3 px-5 py-4">
-          {error && (
-            <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-              {error}
-            </p>
-          )}
+        <form onSubmit={handleSubmit} className="flex max-h-[calc(92vh-102px)] flex-col">
+          <div className="overflow-y-auto px-6 py-5">
+            {error && (
+              <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                {error}
+              </p>
+            )}
 
-          <FormField label="Nombre *">
-            <input
-              required
-              value={form.nombre}
-              onChange={(event) => set("nombre", event.target.value)}
-              className="ccr-control-input w-full px-3 py-2.5 text-sm"
-            />
-          </FormField>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <section className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Datos de acceso</h3>
+                  <p className="mt-1 text-xs font-medium text-slate-500">
+                    Identificación y credenciales del usuario.
+                  </p>
+                </div>
 
-          <FormField label="RUT *">
-            <input
-              required
-              value={form.rut}
-              onChange={(event) => set("rut", formatearRut(event.target.value))}
-              placeholder="12.345.678-K"
-              className="ccr-control-input w-full px-3 py-2.5 font-mono text-sm"
-            />
-          </FormField>
+                <FormField label="RUT *" error={fieldErrors.rut}>
+                  <input
+                    required
+                    value={form.rut}
+                    onBlur={() => set("rut", formatearRut(form.rut))}
+                    onChange={(event) => set("rut", event.target.value)}
+                    placeholder="12.345.678-K"
+                    className="ccr-control-input w-full px-3 py-2.5 font-mono text-sm"
+                  />
+                </FormField>
 
-          <FormField label="Rol *">
-            <select
-              value={form.rol}
-              onChange={(event) => set("rol", event.target.value)}
-              className="ccr-control-input w-full px-3 py-2.5 text-sm"
-            >
-              {editando && usuario?.rol === "ADMINISTRATIVO" && (
-                <option value="ADMINISTRATIVO" disabled>
-                  Administrativo/a (rol heredado)
-                </option>
-              )}
-              {ROLES_NUEVOS.map((rol) => (
-                <option key={rol} value={rol}>
-                  {ROL_LABELS[rol]}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          {editando && usuario?.rol === "ADMINISTRATIVO" && (
-            <p className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-              Rol heredado: existe por compatibilidad. Para nuevos usuarios use KINE o ADMIN.
-            </p>
-          )}
+                <FormField label="Nombre *" error={fieldErrors.nombre}>
+                  <input
+                    required
+                    value={form.nombre}
+                    onChange={(event) => set("nombre", event.target.value)}
+                    className="ccr-control-input w-full px-3 py-2.5 text-sm"
+                  />
+                </FormField>
 
-          <FormField label={editando ? "Nueva contraseña (opcional)" : "Contraseña *"}>
-            <input
-              type="password"
-              required={!editando}
-              minLength={8}
-              value={form.password}
-              onChange={(event) => set("password", event.target.value)}
-              placeholder="••••••••"
-              className="ccr-control-input w-full px-3 py-2.5 text-sm"
-            />
-          </FormField>
+                <FormField
+                  label={editando ? "Nueva contraseña (opcional)" : "Contraseña *"}
+                  error={fieldErrors.password}
+                >
+                  <input
+                    type="password"
+                    required={!editando}
+                    minLength={8}
+                    value={form.password}
+                    onChange={(event) => set("password", event.target.value)}
+                    className="ccr-control-input w-full px-3 py-2.5 text-sm"
+                  />
+                </FormField>
 
-          {editando && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-600">
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(event) => set("is_active", event.target.checked)}
-                className="h-4 w-4 accent-[#335FDB]"
-              />
-              Usuario activo
-            </label>
-          )}
+                <FormField label="Confirmar contraseña" error={fieldErrors.confirmPassword}>
+                  <input
+                    type="password"
+                    required={!editando || Boolean(form.password)}
+                    minLength={form.password ? 8 : undefined}
+                    value={form.confirmPassword}
+                    onChange={(event) => set("confirmPassword", event.target.value)}
+                    className="ccr-control-input w-full px-3 py-2.5 text-sm"
+                  />
+                </FormField>
+              </section>
 
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+              <section className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Perfil y estado</h3>
+                  <p className="mt-1 text-xs font-medium text-slate-500">
+                    Rol operativo y disponibilidad de la cuenta.
+                  </p>
+                </div>
+
+                {rolHeredado && (
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3">
+                    <p className="text-xs font-black text-amber-900">
+                      Administrativo/a (rol heredado)
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-amber-800">
+                      Este rol existe por compatibilidad. Para nuevos usuarios use Kinesiólogo/a o
+                      Administrador/a.
+                    </p>
+                  </div>
+                )}
+
+                <FormField label="Rol *" error={fieldErrors.rol}>
+                  <select
+                    value={form.rol}
+                    onChange={(event) => set("rol", event.target.value as Rol)}
+                    className="ccr-control-input w-full px-3 py-2.5 text-sm"
+                  >
+                    {rolHeredado && form.rol === "ADMINISTRATIVO" && (
+                      <option value="ADMINISTRATIVO" disabled>
+                        Administrativo/a (rol heredado)
+                      </option>
+                    )}
+                    {ROLES_SELECCIONABLES.map((rol) => (
+                      <option key={rol.value} value={rol.value}>
+                        {rol.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                {editando && (
+                  <div className="rounded-lg border border-slate-200 px-3 py-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black text-slate-900">Estado activo</p>
+                        <p className="mt-1 text-xs font-medium text-slate-500">
+                          Controla si la cuenta puede iniciar sesión.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={form.is_active}
+                        aria-label="Cambiar estado activo"
+                        onClick={() => set("is_active", !form.is_active)}
+                        className={`relative h-6 w-11 rounded-full transition ${
+                          form.is_active ? "bg-[#335FDB]" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition ${
+                            form.is_active ? "left-6" : "left-1"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <p className="mt-3 inline-flex rounded-full border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-600">
+                      {form.is_active ? "Activo" : "Inactivo"}
+                    </p>
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="ccr-control-button rounded-lg px-4 py-2.5 text-sm"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 rounded-lg bg-[#335FDB] py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-60"
+              className="rounded-lg bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Guardando..." : editando ? "Guardar cambios" : "Crear usuario"}
             </button>
@@ -510,11 +652,20 @@ function UsuarioModal({
   );
 }
 
-function FormField({ label, children }: { label: string; children: ReactNode }) {
+function FormField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-bold text-slate-600">{label}</span>
       {children}
+      {error && <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span>}
     </label>
   );
 }

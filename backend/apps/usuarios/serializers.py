@@ -51,6 +51,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 class UsuarioCreateSerializer(serializers.ModelSerializer):
     rut = serializers.CharField(allow_blank=True)
+    nombre = serializers.CharField(required=True, allow_blank=False)
+    rol = serializers.ChoiceField(choices=Usuario.Rol.choices, required=True)
     password = serializers.CharField(write_only=True, min_length=8)
 
     class Meta:
