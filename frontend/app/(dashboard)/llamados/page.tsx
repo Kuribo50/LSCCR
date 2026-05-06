@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import {
+  FiAlertTriangle,
   FiCheckCircle,
+  FiChevronRight,
   FiClock,
   FiEdit2,
   FiEye,
@@ -93,10 +95,13 @@ function accionSugerida(paciente: Paciente) {
 
 export default function LlamadosPage() {
   const { user } = useAuth();
-  const { error: toastError, info: toastInfo } = useToast();
+  const { toast, error: toastError, info: toastInfo } = useToast();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [observacionRapida, setObservacionRapida] = useState("");
+  const [accionLoading, setAccionLoading] = useState("");
   const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
   const [pacienteContacto, setPacienteContacto] = useState<Paciente | null>(null);
   const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
@@ -178,6 +183,19 @@ export default function LlamadosPage() {
     });
   }, [pacientes, searchQuery, prioridadFilter, estadoFilter]);
 
+  useEffect(() => {
+    if (pacientesFiltrados.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !pacientesFiltrados.some((paciente) => paciente.id === selectedId)) {
+      setSelectedId(pacientesFiltrados[0].id);
+    }
+  }, [pacientesFiltrados, selectedId]);
+
+  const pacienteSeleccionado =
+    pacientesFiltrados.find((paciente) => paciente.id === selectedId) ?? pacientesFiltrados[0] ?? null;
+
   const resumenContactabilidad = useMemo(
     () => ({
       total: pacientes.length,
@@ -192,6 +210,36 @@ export default function LlamadosPage() {
     setSearchQuery("");
     setPrioridadFilter("TODAS");
     setEstadoFilter("TODOS");
+  }
+
+  async function registrarNoContesto(paciente: Paciente) {
+    const notas = observacionRapida.trim();
+    if (paciente.estado === "RESCATE" && !notas) {
+      toast.warning("Debe registrar una observación para egreso administrativo.");
+      return;
+    }
+
+    setAccionLoading(`no-contesto-${paciente.id}`);
+    try {
+      const actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
+        contesto: false,
+        notas,
+        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
+      });
+
+      setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));
+      setObservacionRapida("");
+      if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
+        toast.warning("Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO.");
+      } else {
+        toast.warning("Contacto sin respuesta registrado.");
+      }
+      await cargar();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "No se pudo registrar el contacto."));
+    } finally {
+      setAccionLoading("");
+    }
   }
 
   if (!user) return null;
@@ -352,21 +400,53 @@ export default function LlamadosPage() {
           Cargando…
         </div>
       ) : (
-        <section className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <section className="grid min-h-[620px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_430px]">
           {pacientesFiltrados.length === 0 ? (
             <div className="ccr-panel rounded-2xl p-10 text-center text-sm font-semibold text-slate-500 xl:col-span-2">
               Sin pacientes para los filtros seleccionados.
             </div>
           ) : (
-            pacientesFiltrados.map((paciente) => (
-              <ContactabilidadCard
-                key={paciente.id}
-                paciente={paciente}
-                onVerFicha={() => setPacienteFicha(paciente)}
-                onRegistrarContacto={() => setPacienteContacto(paciente)}
-                onEditarContacto={() => setPacienteEdicion(paciente)}
-              />
-            ))
+            <>
+              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                  <div>
+                    <h2 className="text-lg font-black text-slate-950">Cola de contactabilidad</h2>
+                    <p className="text-xs font-semibold text-slate-500">
+                      {pacientesFiltrados.length} paciente{pacientesFiltrados.length !== 1 ? "s" : ""} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                    Registro manual
+                  </span>
+                </div>
+                <div className="custom-scrollbar max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                  {pacientesFiltrados.map((paciente) => (
+                    <ContactabilidadListItem
+                      key={paciente.id}
+                      paciente={paciente}
+                      selected={pacienteSeleccionado?.id === paciente.id}
+                      onSelect={() => {
+                        setSelectedId(paciente.id);
+                        setObservacionRapida("");
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {pacienteSeleccionado && (
+                <ContactabilidadDetail
+                  paciente={pacienteSeleccionado}
+                  observacion={observacionRapida}
+                  loading={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
+                  onObservacionChange={setObservacionRapida}
+                  onContesto={() => setPacienteContacto(pacienteSeleccionado)}
+                  onNoContesto={() => void registrarNoContesto(pacienteSeleccionado)}
+                  onEditarContacto={() => setPacienteEdicion(pacienteSeleccionado)}
+                  onVerFicha={() => setPacienteFicha(pacienteSeleccionado)}
+                />
+              )}
+            </>
           )}
         </section>
       )}
@@ -386,6 +466,7 @@ export default function LlamadosPage() {
       {pacienteContacto && (
         <RegistrarContactoModal
           paciente={pacienteContacto}
+          startWithScheduler
           onClose={() => setPacienteContacto(null)}
           onSuccess={(actualizado) => {
             if (actualizado) {
@@ -522,89 +603,189 @@ function ContactStat({
   );
 }
 
-function ContactabilidadCard({
+function ContactabilidadListItem({
   paciente,
-  onVerFicha,
-  onRegistrarContacto,
-  onEditarContacto,
+  selected,
+  onSelect,
 }: {
   paciente: Paciente;
-  onVerFicha: () => void;
-  onRegistrarContacto: () => void;
-  onEditarContacto: () => void;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-xl border bg-white p-3 text-left transition ${
+        selected
+          ? "border-[#335FDB] shadow-[0_0_0_2px_rgba(51,95,219,0.18)]"
+          : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/30"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
-            {paciente.id_ccr}
-          </p>
-          <h2 className="mt-1 truncate text-lg font-black text-slate-950">
+          <h2 className="truncate text-sm font-black text-slate-950">
             {paciente.nombre}
           </h2>
-          <p className="mt-0.5 text-xs font-medium text-slate-500">
-            {formatearRut(paciente.rut)}
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+            {paciente.id_ccr} · {telefonoPrincipal}
+          </p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+            {ultimoContacto ? ultimoContacto.resultado_label : "Sin contactos registrados"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <BadgePrioridad prioridad={paciente.prioridad} />
-          <BadgeEstado estado={paciente.estado} />
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+              paciente.estado === "RESCATE"
+                ? "bg-orange-50 text-orange-700"
+                : "bg-blue-50 text-blue-700"
+            }`}
+          >
+            {ESTADO_LABELS[paciente.estado]}
+          </span>
+          <FiChevronRight className={selected ? "text-[#335FDB]" : "text-slate-300"} size={16} />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ContactabilidadDetail({
+  paciente,
+  observacion,
+  loading,
+  onObservacionChange,
+  onContesto,
+  onNoContesto,
+  onEditarContacto,
+  onVerFicha,
+}: {
+  paciente: Paciente;
+  observacion: string;
+  loading: boolean;
+  onObservacionChange: (value: string) => void;
+  onContesto: () => void;
+  onNoContesto: () => void;
+  onEditarContacto: () => void;
+  onVerFicha: () => void;
+}) {
+  const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
+  const ultimoContacto = paciente.ultimo_llamado;
+  const requiereObservacion = paciente.estado === "RESCATE";
+
+  return (
+    <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Paciente seleccionado</p>
+            <h2 className="mt-1 break-words text-xl font-black leading-tight text-slate-950">
+              {paciente.nombre}
+            </h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <BadgeEstado estado={paciente.estado} />
+            <BadgePrioridad prioridad={paciente.prioridad} />
+          </div>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <ContactInfo icon={<FiPhone />} label="Teléfono" value={telefonoPrincipal} emphasis />
-        <ContactInfo icon={<FiPhoneMissed />} label="Intentos" value={paciente.n_intentos_contacto} />
-        <ContactInfo icon={<FiUser />} label="Responsable CCR" value={responsablePaciente(paciente)} />
-        <ContactInfo
-          icon={<FiClock />}
-          label="Último contacto"
-          value={
-            ultimoContacto
-              ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
-              : "Sin contactos registrados"
-          }
-        />
-      </div>
+      <div className="space-y-3 p-4">
+        <section className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-3">
+          <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-700">
+            <FiAlertTriangle />
+            Acción requerida
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-5 text-slate-800">
+            {accionSugerida(paciente)}
+          </p>
+        </section>
 
-      <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
-        <p className="flex items-start gap-2 text-xs font-semibold leading-5 text-blue-800">
-          <FiMessageSquare className="mt-0.5 shrink-0" />
-          {accionSugerida(paciente)}
-        </p>
-      </div>
+        <section className="grid grid-cols-1 gap-2">
+          <ContactInfo icon={<FiPhone />} label="Teléfono" value={telefonoPrincipal} emphasis />
+          <ContactInfo icon={<FiMessageSquare />} label="Recados" value={paciente.telefono_recados || "Sin teléfono de recados"} />
+          <ContactInfo icon={<FiUser />} label="Responsable CCR" value={responsablePaciente(paciente)} />
+          <ContactInfo
+            icon={<FiClock />}
+            label="Último contacto"
+            value={
+              ultimoContacto
+                ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
+                : "Sin contactos registrados"
+            }
+          />
+        </section>
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <button
-          type="button"
-          onClick={onEditarContacto}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-        >
-          <FiEdit2 size={14} />
-          Editar contacto
-        </button>
-        <button
-          type="button"
-          onClick={onRegistrarContacto}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0]"
-        >
-          <FiPhoneCall size={14} />
-          Registrar contacto
-        </button>
-        <button
-          type="button"
-          onClick={onVerFicha}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1B5E3B] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#256B47]"
-        >
-          <FiEye size={14} />
-          Ver ficha operativa
-        </button>
+        <section className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-600">Registro manual</p>
+            <span className="text-[10px] font-semibold text-slate-500">No realiza llamadas desde el PC</span>
+          </div>
+          <textarea
+            value={observacion}
+            onChange={(event) => onObservacionChange(event.target.value)}
+            rows={3}
+            placeholder={requiereObservacion ? "Observación obligatoria para egreso administrativo." : "Observación opcional del contacto."}
+            className="ccr-control-input w-full resize-none px-3 py-2 text-sm"
+          />
+          {requiereObservacion && (
+            <p className="mt-2 text-[11px] font-semibold text-orange-700">
+              En RESCATE, un nuevo “No contestó” requiere observación.
+            </p>
+          )}
+        </section>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50">
+          <div className="flex items-center justify-between gap-2 border-b border-emerald-200 px-3 py-2">
+            <p className="truncate text-sm font-black text-emerald-800">{paciente.nombre}</p>
+            <span className="text-[11px] font-semibold text-emerald-700">{paciente.n_intentos_contacto} intento{paciente.n_intentos_contacto !== 1 ? "s" : ""}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 p-3">
+            <button
+              type="button"
+              onClick={onNoContesto}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#ED4E1D] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#C93F16] disabled:opacity-50"
+            >
+              {loading ? <FiRefreshCw className="animate-spin" size={14} /> : <FiPhoneMissed size={14} />}
+              No contestó
+            </button>
+            <button
+              type="button"
+              onClick={onContesto}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            >
+              <FiCheckCircle size={14} />
+              Contestó / agendar
+            </button>
+            <button
+              type="button"
+              onClick={onEditarContacto}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+            >
+              <FiEdit2 size={14} />
+              Editar contacto
+            </button>
+            <button
+              type="button"
+              onClick={onVerFicha}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+            >
+              <FiEye size={14} />
+              Ver ficha
+            </button>
+          </div>
+        </div>
       </div>
-    </article>
+    </aside>
   );
 }
 

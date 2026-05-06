@@ -27,12 +27,14 @@ interface Props {
   paciente: Paciente;
   onClose: () => void;
   onSuccess: (paciente?: Paciente) => void;
+  startWithScheduler?: boolean;
 }
 
 export default function RegistrarContactoModal({
   paciente,
   onClose,
   onSuccess,
+  startWithScheduler = false,
 }: Props) {
   const { toast } = useToast();
   const [notas, setNotas] = useState("");
@@ -40,7 +42,7 @@ export default function RegistrarContactoModal({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   
-  const [showScheduler, setShowScheduler] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(startWithScheduler);
   const [fechaHora, setFechaHora] = useState(fechaHoraLocalDefault());
 
   async function handleSubmit(contesto: boolean) {
