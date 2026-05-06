@@ -77,10 +77,10 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
   const displayValue = value === null || value === undefined || value === "" ? "-" : value;
   return (
     <div className="min-w-0">
-      <p className="text-xs font-bold uppercase tracking-[0.05em] text-slate-500">
+      <p className="text-[11px] font-bold uppercase tracking-[0.05em] text-slate-500">
         {label}
       </p>
-      <div className="mt-1 break-words text-base font-semibold text-slate-800">
+      <div className="mt-1 break-words text-[13px] font-semibold text-slate-800">
         {displayValue}
       </div>
     </div>
@@ -114,7 +114,7 @@ function Section({
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-4 flex items-center gap-2 text-blue-700">
         {icon}
-        <h3 className="text-base font-black uppercase tracking-[0.06em]">
+        <h3 className="text-sm font-black uppercase tracking-[0.06em]">
           {title}
         </h3>
       </div>
@@ -451,7 +451,7 @@ export default function FichaPaciente({
             <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-blue-700">
                 <FiClock />
-                <h3 className="text-base font-black uppercase tracking-[0.06em]">
+                <h3 className="text-sm font-black uppercase tracking-[0.06em]">
                   Historial de acciones
                 </h3>
               </div>
@@ -596,7 +596,7 @@ export default function FichaPaciente({
       {mostrarEdicion && (
         <EditarPacienteModal
           paciente={paciente}
-          mode="contact-only"
+          mode="full"
           onClose={() => setMostrarEdicion(false)}
           onGuardado={(actualizado) => {
             setPaciente(actualizado);
@@ -684,36 +684,36 @@ function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
 
 function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
   if (items.length === 0) {
-    return <p className="text-base font-semibold text-slate-500">Sin acciones registradas.</p>;
+    return <p className="text-sm font-semibold text-slate-500">Sin acciones registradas.</p>;
   }
   return (
     <div className="custom-scrollbar overflow-x-auto rounded-xl border border-slate-200">
-      <table className="min-w-[920px] w-full border-collapse bg-white text-sm">
-        <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-500">
+      <table className="min-w-[920px] w-full border-collapse bg-white text-[12px]">
+        <thead className="bg-slate-50 text-left text-[11px] font-black uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="w-[150px] px-4 py-3">Fecha</th>
-            <th className="w-[120px] px-4 py-3">Tipo</th>
-            <th className="px-4 py-3">Acción</th>
-            <th className="w-[150px] px-4 py-3">Usuario</th>
-            <th className="w-[230px] px-4 py-3">Observación</th>
+            <th className="w-[150px] border border-slate-200 px-4 py-3">Fecha</th>
+            <th className="w-[120px] border border-slate-200 px-4 py-3">Tipo</th>
+            <th className="border border-slate-200 px-4 py-3">Acción</th>
+            <th className="w-[150px] border border-slate-200 px-4 py-3">Usuario</th>
+            <th className="w-[230px] border border-slate-200 px-4 py-3">Observación</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 text-base">
+        <tbody className="divide-y divide-slate-100 text-[12px]">
           {items.map((accion, index) => (
             <tr key={`${accion.tipo}-${accion.fecha}-${index}`} className="align-top hover:bg-blue-50/40">
-              <td className="px-4 py-3 font-semibold text-slate-700">
+              <td className="border border-slate-200 px-4 py-3 font-semibold text-slate-700">
                 {formatearFechaHora(accion.fecha)}
               </td>
-              <td className="px-4 py-3">
-                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-black ${badgeAccion(accion.tipo)}`}>
+              <td className="border border-slate-200 px-4 py-3">
+                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-black ${badgeAccion(accion.tipo)}`}>
                   {labelAccion(accion.tipo)}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="border border-slate-200 px-4 py-3">
                 <p className="font-black text-slate-950">{accion.titulo}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-600">{accion.descripcion}</p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-600">{accion.descripcion}</p>
                 {(accion.fecha_programada || accion.nueva_fecha) && (
-                  <div className="mt-2 space-y-1 text-sm font-semibold text-slate-500">
+                  <div className="mt-2 space-y-1 text-[11px] font-semibold text-slate-500">
                     {accion.fecha_programada && (
                       <p>Programada: {formatearFechaHora(accion.fecha_programada)}</p>
                     )}
@@ -723,10 +723,10 @@ function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
                   </div>
                 )}
               </td>
-              <td className="px-4 py-3 font-semibold text-slate-700">
+              <td className="border border-slate-200 px-4 py-3 font-semibold text-slate-700">
                 {accion.usuario_nombre ?? "Sistema"}
               </td>
-              <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+              <td className="border border-slate-200 px-4 py-3 text-[11px] font-semibold text-slate-700">
                 {accion.observacion || "-"}
               </td>
             </tr>

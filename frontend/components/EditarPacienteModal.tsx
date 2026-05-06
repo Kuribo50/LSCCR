@@ -54,6 +54,13 @@ function calcularEdadExacta(fechaNacimiento: string): number | null {
   return edad >= 0 ? edad : 0;
 }
 
+function formatearFecha(fecha: string | null | undefined) {
+  if (!fecha) return "-";
+  const parsed = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("es-CL");
+}
+
 function toForm(p: Paciente): FormState {
   return {
     fecha_nacimiento: p.fecha_nacimiento ?? "",
@@ -69,6 +76,15 @@ function toForm(p: Paciente): FormState {
     fecha_egreso: p.fecha_egreso ?? "",
     observaciones: p.observaciones ?? "",
   };
+}
+
+function DatoNoEditable({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 break-words text-xs font-semibold text-slate-800">{value || "-"}</p>
+    </div>
+  );
 }
 
 export default function EditarPacienteModal({
@@ -199,6 +215,23 @@ export default function EditarPacienteModal({
           onSubmit={handleSubmit}
           className="ccr-edit-patient-modal-body custom-scrollbar max-h-[68vh] overflow-y-auto px-6 py-5"
         >
+          {!isContactOnly && (
+            <div className="mb-5">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                Datos no editables
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <DatoNoEditable label="Nombre" value={paciente.nombre} />
+                <DatoNoEditable label="RUT" value={formatearRut(paciente.rut)} />
+                <DatoNoEditable
+                  label="Responsable CCR"
+                  value={paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin asignar"}
+                />
+                <DatoNoEditable label="Fecha derivación" value={formatearFecha(paciente.fecha_derivacion)} />
+              </div>
+            </div>
+          )}
+
           {isContactOnly ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
@@ -369,7 +402,7 @@ export default function EditarPacienteModal({
                   type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -381,7 +414,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_ingreso}
                   onChange={(e) => set("fecha_ingreso", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -393,7 +426,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_siguiente_cita}
                   onChange={(e) => set("fecha_siguiente_cita", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
@@ -405,7 +438,7 @@ export default function EditarPacienteModal({
                   type="date"
                   value={form.fecha_egreso}
                   onChange={(e) => set("fecha_egreso", e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-[#2694d9] focus:outline-none"
+                  className="w-full rounded-md border border-gray-200 px-3 py-2.5 text-sm focus:border-[#335FDB] focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
