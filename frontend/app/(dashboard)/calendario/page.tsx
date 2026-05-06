@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
-import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import { formatearRut } from "@/lib/rut";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
 import ProximaAtencionModal from "@/components/ProximaAtencionModal";
@@ -20,7 +18,6 @@ import {
   FiClock,
   FiEdit3,
   FiEye,
-  FiPhone,
   FiRefreshCw,
   FiTrash2,
   FiUserPlus,
@@ -604,48 +601,37 @@ function AgendaDiaCard({
   const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-3 transition hover:border-blue-100 hover:shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
-              <FiClock size={13} />
-              {formatTime(paciente.proxima_atencion)}
-            </span>
-            <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
-            <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
-          </div>
-
-          <h3 className="mt-2 truncate text-sm font-black text-slate-950">{paciente.nombre}</h3>
-          <div className="mt-2 grid gap-x-3 gap-y-1 text-xs font-semibold text-slate-600 md:grid-cols-2">
-            <p>ID {paciente.id_ccr}</p>
-            <p>RUT {formatearRut(paciente.rut)}</p>
-            <p>Responsable: {responsable}</p>
-            <p className="inline-flex items-center gap-1">
-              <FiPhone size={12} />
-              {paciente.telefono || "Sin teléfono"}
-            </p>
+    <article className="rounded-lg border border-slate-200 bg-white p-2.5 transition hover:border-blue-100 hover:shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex flex-1 gap-2">
+          <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-50 px-2 text-[11px] font-black text-blue-700">
+            <FiClock size={12} />
+            {formatTime(paciente.proxima_atencion)}
+          </span>
+          <div className="min-w-0">
+            <h3 className="break-words text-sm font-black leading-snug text-slate-950">{paciente.nombre}</h3>
+            <p className="mt-1 text-[11px] font-semibold leading-tight text-slate-500">Kine: {responsable}</p>
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-2 lg:w-[190px] lg:flex-col">
+        <div className="flex w-[88px] shrink-0 flex-col gap-1.5">
           {puedeGestionar && (
             <button
               type="button"
               onClick={onEditar}
               disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
             >
-              <FiEdit3 size={14} />
+              <FiEdit3 size={12} />
               Editar
             </button>
           )}
           <button
             type="button"
             onClick={onFicha}
-            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1.5 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-50"
           >
-            <FiEye size={14} />
+            <FiEye size={12} />
             Ver ficha
           </button>
         </div>
@@ -690,16 +676,11 @@ function GestionarCitaModal({
 
         <div className="space-y-4 p-5">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
-              <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
-            </div>
-            <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 sm:grid-cols-2">
-              <p>ID {paciente.id_ccr}</p>
-              <p>RUT {formatearRut(paciente.rut)}</p>
-              <p>Responsable: {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}</p>
-              <p>Teléfono: {paciente.telefono || "Sin teléfono"}</p>
-            </div>
+            <p className="break-words text-sm font-black text-slate-950">{paciente.nombre}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Kine: {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}
+            </p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Hora: {formatTime(paciente.proxima_atencion)}</p>
           </div>
 
           {puedeGestionar ? (
@@ -786,28 +767,19 @@ function PendienteAgendaItem({
   const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
+    <article className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 transition hover:bg-white">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-xs font-black text-slate-900">{paciente.nombre}</p>
-          <p className="mt-1 truncate text-[10px] font-semibold text-slate-500">
-            {paciente.id_ccr} · {responsable}
-          </p>
+          <p className="break-words text-xs font-black leading-snug text-slate-900">{paciente.nombre}</p>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">Kine: {responsable}</p>
         </div>
-        <Badge text={ESTADO_LABELS[paciente.estado]} className={estadoBadgeClass(paciente.estado)} />
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Badge text={PRIORIDAD_LABELS[paciente.prioridad]} className={prioridadBadgeClass(paciente.prioridad)} />
-        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">
-          {paciente.dias_en_lista ?? 0} días
-        </span>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {puedeGestionar && (
           <button
             type="button"
             onClick={onProgramar}
-            className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
+            className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2 py-1 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
           >
             <FiCalendar size={11} />
             Programar
@@ -816,7 +788,7 @@ function PendienteAgendaItem({
         <button
           type="button"
           onClick={onFicha}
-          className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2.5 py-1.5 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
         >
           <FiEye size={11} />
           Ver ficha
@@ -906,24 +878,4 @@ function EmptyState({ title, description }: { title: string; description: string
       <p className="mx-auto mt-1 max-w-md text-xs font-semibold text-slate-500">{description}</p>
     </div>
   );
-}
-
-function Badge({ text, className }: { text: string; className: string }) {
-  return (
-    <span className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${className}`}>
-      {text}
-    </span>
-  );
-}
-
-function estadoBadgeClass(estado: Paciente["estado"]) {
-  if (estado === "INGRESADO") return "border-emerald-100 bg-emerald-50 text-emerald-700";
-  if (estado === "RESCATE") return "border-amber-100 bg-amber-50 text-amber-800";
-  return "border-blue-100 bg-blue-50 text-blue-700";
-}
-
-function prioridadBadgeClass(prioridad: Paciente["prioridad"]) {
-  if (prioridad === "ALTA") return "border-red-100 bg-red-50 text-red-700";
-  if (prioridad === "MEDIANA") return "border-amber-100 bg-amber-50 text-amber-800";
-  return "border-slate-200 bg-white text-slate-600";
 }
