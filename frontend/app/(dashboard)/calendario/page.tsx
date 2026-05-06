@@ -382,7 +382,7 @@ export default function CalendarioPage() {
               <FiClock className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[520px] space-y-3 overflow-y-auto pr-2">
+            <div className="custom-scrollbar max-h-[520px] space-y-2 overflow-y-auto pr-2">
               {pacientesDelDia.length > 0 ? (
                 pacientesDelDia.map((p) => (
                   <CitaCard
@@ -410,28 +410,26 @@ export default function CalendarioPage() {
               <FiUserPlus className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[320px] space-y-2 overflow-y-auto pr-2">
+            <div className="custom-scrollbar max-h-[360px] space-y-2 overflow-y-auto pr-2">
               {pacientesSinFecha.length > 0 ? (
-                pacientesSinFecha.slice(0, 10).map((p) => (
-                  <div key={p.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                pacientesSinFecha.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
                         <p className="truncate text-xs font-bold text-slate-800">{p.nombre}</p>
-                        <p className="truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[9px] font-bold text-slate-600">
+                          {ESTADO_LABELS[p.estado]}
+                        </span>
                       </div>
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600">
-                        {ESTADO_LABELS[p.estado]}
-                      </span>
+                      <p className="mt-1 truncate text-[10px] text-slate-500">{p.responsable_nombre || p.kine_asignado_nombre || "Sin responsable"}</p>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setPacienteAcciones(p)}
-                        className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
-                      >
-                        <FiEdit3 size={11} />
-                        Editar
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setPacienteAcciones(p)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
+                    >
+                      <FiEdit3 size={11} />
+                      Editar
+                    </button>
                   </div>
                 ))
               ) : (
@@ -559,37 +557,29 @@ function CitaCard({
   const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition hover:bg-white">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
           <p className="truncate text-sm font-bold text-slate-800">{paciente.nombre}</p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-500">
+          <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700">
             {paciente.proxima_atencion
               ? new Date(paciente.proxima_atencion).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
               : "--:--"}
-            {" · "}
-            {ESTADO_LABELS[paciente.estado]}
-          </p>
-          <p className="mt-1 text-[10px] font-semibold text-slate-400">
-            {formatearRut(paciente.rut)} · {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}
-          </p>
+          </span>
         </div>
-        <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-          {formatDateTime(paciente.proxima_atencion)}
-        </span>
+        <p className="mt-1 truncate text-[10px] font-semibold text-slate-500">
+          {formatearRut(paciente.rut)} · {ESTADO_LABELS[paciente.estado]} · {paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable"}
+        </p>
       </div>
-
-      <div className="mt-3">
-        <button
-          type="button"
-          onClick={onEditar}
-          disabled={disabled}
-          className="inline-flex w-full items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
-        >
-          <FiEdit3 size={12} />
-          {puedeGestionar ? "Editar cita" : "Ver opciones"}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onEditar}
+        disabled={disabled}
+        className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+      >
+        <FiEdit3 size={12} />
+        {puedeGestionar ? "Editar" : "Ver"}
+      </button>
     </div>
   );
 }
