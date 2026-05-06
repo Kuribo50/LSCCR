@@ -132,3 +132,88 @@ class UsuarioAdminTests(APITestCase):
         response = self.client.get("/api/usuarios/")
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_puede_resetear_password_con_ultimos_4_digitos_del_rut(self):
+        usuario = Usuario.objects.create_user(
+            rut="12.345.678-K",
+            password="testpass123",
+            nombre="Usuario Reset",
+            rol=Usuario.Rol.KINE,
+        )
+
+        response = self.client.post(f"/api/usuarios/{usuario.id}/reset-password/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.check_password("5678"))
+        self.assertTrue(usuario.requiere_cambio_password)
+
+    def test_usuario_no_admin_no_puede_resetear_password(self):
+        objetivo = Usuario.objects.create_user(
+            rut="12.345.679-8",
+            password="testpass123",
+            nombre="Usuario Objetivo",
+            rol=Usuario.Rol.KINE,
+        )
+        kine = Usuario.objects.create_user(
+            rut="99.999.999-9",
+            password="testpass123",
+            nombre="Kine Sin Reset",
+            rol=Usuario.Rol.KINE,
+        )
+        self.client.force_authenticate(kine)
+
+        response = self.client.post(f"/api/usuarios/{objetivo.id}/reset-password/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        objetivo.refresh_from_db()
+        self.assertTrue(objetivo.check_password("testpass123"))
+
+    def test_cambiar_password_acepta_minimo_6_caracteres_y_limpia_flag(self):
+        usuario = Usuario.objects.create_user(
+            rut="10.000.000-0",
+            password="1234",
+            nombre="Usuario Cambio Obligatorio",
+            rol=Usuario.Rol.KINE,
+            requiere_cambio_password=True,
+        )
+        self.client.force_authenticate(usuario)
+
+        response = self.client.post(
+            "/api/auth/change-password/",
+            {
+                "current_password": "1234",
+                "new_password": "abc123",
+                "confirm_password": "abc123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.check_password("abc123"))
+        self.assertFalse(usuario.requiere_cambio_password)
+
+    def test_cambiar_password_rechaza_menos_de_6_caracteres(self):
+        usuario = Usuario.objects.create_user(
+            rut="10.000.001-9",
+            password="1234",
+            nombre="Usuario Cambio Corto",
+            rol=Usuario.Rol.KINE,
+            requiere_cambio_password=True,
+        )
+        self.client.force_authenticate(usuario)
+
+        response = self.client.post(
+            "/api/auth/change-password/",
+            {
+                "current_password": "1234",
+                "new_password": "abc12",
+                "confirm_password": "abc12",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        usuario.refresh_from_db()
+        self.assertTrue(usuario.requiere_cambio_password)

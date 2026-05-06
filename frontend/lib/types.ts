@@ -28,6 +28,7 @@ export interface Usuario {
   rol: Rol;
   is_active: boolean;
   date_joined: string;
+  requiere_cambio_password: boolean;
 }
 
 export interface Paciente {

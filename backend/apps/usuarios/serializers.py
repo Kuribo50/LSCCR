@@ -1,5 +1,4 @@
 from django.contrib.auth import authenticate
-from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from .models import Usuario
@@ -45,7 +44,15 @@ class LoginSerializer(serializers.Serializer):
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
-        fields = ("id", "rut", "nombre", "rol", "is_active", "date_joined")
+        fields = (
+            "id",
+            "rut",
+            "nombre",
+            "rol",
+            "is_active",
+            "date_joined",
+            "requiere_cambio_password",
+        )
         read_only_fields = ("id", "date_joined")
 
 
@@ -92,8 +99,8 @@ class UsuarioPatchSerializer(serializers.ModelSerializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     current_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True, min_length=8)
-    confirm_password = serializers.CharField(write_only=True, min_length=8)
+    new_password = serializers.CharField(write_only=True, min_length=6)
+    confirm_password = serializers.CharField(write_only=True, min_length=6)
 
     def validate(self, attrs):
         user: Usuario = self.context["request"].user
@@ -111,10 +118,4 @@ class ChangePasswordSerializer(serializers.Serializer):
                 {"confirm_password": ["La confirmación no coincide."]}
             )
 
-        if new_password == current_password:
-            raise serializers.ValidationError(
-                {"new_password": ["La nueva contraseña debe ser distinta a la actual."]}
-            )
-
-        validate_password(new_password, user=user)
         return attrs

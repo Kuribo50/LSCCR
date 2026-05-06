@@ -5,6 +5,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   FiEdit2,
+  FiKey,
   FiPlus,
   FiSearch,
   FiShield,
@@ -62,6 +63,7 @@ export default function UsuariosPage() {
   const [busqueda, setBusqueda] = useState("");
   const [rolFiltro, setRolFiltro] = useState<Rol | "TODOS">("TODOS");
   const [estadoFiltro, setEstadoFiltro] = useState<"TODOS" | "ACTIVOS" | "INACTIVOS">("TODOS");
+  const [resetLoadingId, setResetLoadingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (user && user.rol !== "ADMIN") {
@@ -119,6 +121,24 @@ export default function UsuariosPage() {
       await cargar();
     } catch {
       alert("No se pudo eliminar el usuario. Es posible que tenga registros asociados.");
+    }
+  }
+
+  async function handleResetPassword(usuario: Usuario) {
+    const rutFormateado = formatearRut(usuario.rut);
+    const confirmado = window.confirm(
+      `¿Resetear la contraseña de ${usuario.nombre}? Quedará como los últimos 4 dígitos del RUT ${rutFormateado}, sin dígito verificador.`,
+    );
+    if (!confirmado) return;
+
+    setResetLoadingId(usuario.id);
+    try {
+      await api.post(`/usuarios/${usuario.id}/reset-password/`);
+      alert("Contraseña restablecida. Use los últimos 4 dígitos del RUT, sin dígito verificador.");
+    } catch {
+      alert("No se pudo resetear la contraseña.");
+    } finally {
+      setResetLoadingId(null);
     }
   }
 
@@ -275,6 +295,15 @@ export default function UsuariosPage() {
                         >
                           <FiEdit2 size={13} />
                           Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleResetPassword(usuario)}
+                          disabled={resetLoadingId === usuario.id}
+                          className="inline-flex items-center gap-1 rounded-md border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <FiKey size={13} />
+                          {resetLoadingId === usuario.id ? "Reseteando" : "Reset clave"}
                         </button>
                         <button
                           type="button"

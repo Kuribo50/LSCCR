@@ -10,6 +10,7 @@ interface AuthCtx {
   loading: boolean
   login: (rut: string, password: string) => Promise<Usuario>
   logout: () => Promise<void>
+  refreshUser: () => Promise<Usuario | null>
 }
 
 const AuthContext = createContext<AuthCtx | null>(null)
@@ -43,12 +44,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  async function refreshUser() {
+    const u = await api.get<Usuario>('/auth/me/')
+    setUser(u)
+    return u
+  }
+
   async function login(rut: string, password: string) {
     const tokens = await api.post<{access: string, refresh: string}>('/auth/login/', { rut, password })
     await setAuthCookies(tokens.access, tokens.refresh)
     setMemoryToken(tokens.access)
-    const u = await api.get<Usuario>('/auth/me/')
-    setUser(u)
+    const u = await refreshUser()
     return u
   }
 
@@ -59,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

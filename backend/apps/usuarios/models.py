@@ -48,6 +48,7 @@ class Usuario(AbstractUser):
     rut = models.CharField(max_length=12, unique=True, db_index=True)
     nombre = models.CharField(max_length=150)
     rol = models.CharField(max_length=20, choices=Rol.choices, default=Rol.KINE)
+    requiere_cambio_password = models.BooleanField(default=False)
 
     USERNAME_FIELD = "rut"
     REQUIRED_FIELDS = ["nombre"]

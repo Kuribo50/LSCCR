@@ -69,8 +69,8 @@ export default function PerfilPage() {
       return
     }
 
-    if (newPassword.length < 8) {
-      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres.')
+    if (newPassword.length < 6) {
+      setPasswordError('La nueva contraseña debe tener al menos 6 caracteres.')
       return
     }
 
