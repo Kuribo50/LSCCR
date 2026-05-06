@@ -246,100 +246,85 @@ export default function LlamadosPage() {
 
   return (
     <div className="space-y-3 text-[13px]">
-      <header className="ccr-panel rounded-2xl p-4 sm:p-5">
+      <header className="ccr-panel rounded-2xl p-4">
         <div className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
                   <FiPhoneCall size={18} />
                 </span>
-                <h1 className="text-lg font-bold text-gray-900">Contactabilidad</h1>
+                <div className="min-w-0">
+                  <h1 className="text-lg font-black text-slate-950">Contactabilidad</h1>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                    Bandeja para registrar si el paciente contestó o no contestó.
+                  </p>
+                </div>
               </div>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
-                Gestión operativa de contactos para pacientes pendientes o en rescate.
-              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <ContactStat icon={<FiPhoneCall size={13} />} label="Cola" value={resumenContactabilidad.total} tone="blue" />
+                <ContactStat icon={<FiMessageSquare size={13} />} label="Pendientes" value={resumenContactabilidad.pendientes} tone="slate" />
+                <ContactStat icon={<FiPhoneMissed size={13} />} label="Rescate" value={resumenContactabilidad.rescate} tone="orange" />
+                <ContactStat icon={<FiPhoneMissed size={13} />} label="Sin teléfono" value={resumenContactabilidad.sinTelefono} tone="red" />
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void cargar()}
-              className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
-            >
-              <FiRefreshCw size={13} />
-              Recargar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                toastInfo("Preparando impresión de contactabilidad.");
-                window.print();
-              }}
-              className="ccr-control-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
-            >
-              <FiPrinter size={13} />
-              Imprimir lista de contactabilidad
-            </button>
-          </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <ContactStat
-              icon={<FiPhoneCall size={16} />}
-              label="En cola"
-              value={resumenContactabilidad.total}
-              tone="blue"
-            />
-            <ContactStat
-              icon={<FiMessageSquare size={16} />}
-              label="Pendientes"
-              value={resumenContactabilidad.pendientes}
-              tone="slate"
-            />
-            <ContactStat
-              icon={<FiPhoneMissed size={16} />}
-              label="Rescate"
-              value={resumenContactabilidad.rescate}
-              tone="orange"
-            />
-            <ContactStat
-              icon={<FiPhoneMissed size={16} />}
-              label="Sin teléfono"
-              value={resumenContactabilidad.sinTelefono}
-              tone="red"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-            <div className="relative">
-              <FiSearch
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
-                size={15}
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.preventDefault();
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              <button
+                type="button"
+                onClick={() => void cargar()}
+                className="ccr-button-refresh inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[11px] font-bold"
+              >
+                <FiRefreshCw size={13} />
+                Recargar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  toastInfo("Preparando impresión de contactabilidad.");
+                  window.print();
                 }}
-                placeholder="Buscar por nombre o RUT"
-                className="ccr-control-input w-full px-9 py-2.5 text-xs"
-                aria-label="Buscar pacientes"
-              />
+                className="ccr-control-button inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[11px] font-bold"
+              >
+                <FiPrinter size={13} />
+                Imprimir
+              </button>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(260px,1fr)_170px_170px_auto_auto]">
+              <div className="relative">
+                <FiSearch
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
+                  size={14}
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.preventDefault();
+                  }}
+                  placeholder="Buscar por nombre o RUT"
+                  className="ccr-control-input h-9 w-full px-9 text-xs"
+                  aria-label="Buscar pacientes"
+                />
+              </div>
+
               <select
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="ccr-control-input h-9 px-3 text-xs"
                 value={estadoFilter}
                 onChange={(event) => setEstadoFilter(event.target.value)}
               >
                 <option value="TODOS">Todos los estados</option>
-                <option value="PENDIENTE">Solo pendientes</option>
-                <option value="RESCATE">Solo rescates</option>
+                <option value="PENDIENTE">Pendientes</option>
+                <option value="RESCATE">Rescates</option>
               </select>
 
               <select
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="ccr-control-input h-9 px-3 text-xs"
                 value={prioridadFilter}
                 onChange={(event) => setPrioridadFilter(event.target.value)}
               >
@@ -349,40 +334,29 @@ export default function LlamadosPage() {
                 <option value="MODERADA">Moderada</option>
                 <option value="LICENCIA_MEDICA">Lic. médica</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => setOrdering((prev) => (prev === "dias" ? "-dias" : "dias"))}
+                className="ccr-control-button inline-flex h-9 items-center justify-center whitespace-nowrap px-3 text-[11px]"
+              >
+                {ordering === "dias" ? "Más nuevos" : "Más antiguos"}
+              </button>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="ccr-control-button inline-flex h-9 items-center justify-center whitespace-nowrap px-3 text-[11px]"
+              >
+                Limpiar
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setOrdering((prev) => (prev === "dias" ? "-dias" : "dias"))}
-              className="ccr-control-button inline-flex h-[34px] w-full items-center justify-center px-3 text-[11px] sm:w-auto"
-            >
-              {ordering === "dias" ? "Menor antigüedad primero" : "Mayor antigüedad primero"}
-            </button>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="ccr-control-button inline-flex h-[34px] w-full items-center justify-center px-3 text-[11px] sm:w-auto"
-            >
-              Limpiar filtros
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-[11px] font-semibold text-blue-800 md:grid-cols-3">
-            <span className="inline-flex items-center gap-2">
-              <FiPhoneMissed size={14} />
-              PENDIENTE sin respuesta pasa a RESCATE
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <FiMessageSquare size={14} />
-              RESCATE sin respuesta requiere observación
-            </span>
-            <span className="inline-flex items-center gap-2">
-              <FiCheckCircle size={14} />
-              Contacto confirmado pasa a INGRESADO
-            </span>
-          </div>
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-800">
+            <span className="inline-flex items-center gap-1.5"><FiPhoneMissed size={13} /> Pendiente sin respuesta pasa a Rescate</span>
+            <span className="inline-flex items-center gap-1.5"><FiMessageSquare size={13} /> Rescate requiere observación</span>
+            <span className="inline-flex items-center gap-1.5"><FiCheckCircle size={13} /> Contestó pasa a agenda</span>
+          </p>
         </div>
       </header>
 
@@ -593,12 +567,12 @@ function ContactStat({
   };
 
   return (
-    <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${tones[tone]}`}>
-      <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em]">
+    <div className={`inline-flex h-7 items-center gap-2 rounded-full border px-2.5 ${tones[tone]}`}>
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em]">
         {icon}
         {label}
       </span>
-      <strong className="text-base">{value}</strong>
+      <strong className="text-xs">{value}</strong>
     </div>
   );
 }
