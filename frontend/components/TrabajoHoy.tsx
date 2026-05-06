@@ -51,7 +51,7 @@ const CARDS: CardConfig[] = [
     key: "rescates_activos",
     secondaryKey: "pendientes_con_1_intento",
     titulo: "Contactabilidad pendiente",
-    descripcion: "Rescates activos y pacientes que requieren nuevo contacto.",
+    descripcion: "Pacientes que requieren contacto operativo.",
     icon: FiPhoneOff,
     tone: {
       border: "border-amber-200",

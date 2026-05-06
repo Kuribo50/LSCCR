@@ -11,25 +11,14 @@ import {
   FiBarChart2,
   FiPhone,
   FiRefreshCw,
+  FiUploadCloud,
   FiUsers,
 } from "react-icons/fi";
 import { motion, type Variants } from "framer-motion";
-import {
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatearRut } from "@/lib/rut";
 import type { AlertasOperativas, Paciente } from "@/lib/types";
-import { ESTADO_LABELS } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import FichaPaciente from "@/components/FichaPaciente";
@@ -50,6 +39,12 @@ const ACTION_LINKS = [
     href: "/llamados",
     description: "Registrar contactos y rescates operativos.",
     icon: FiPhone,
+  },
+  {
+    title: "Importar derivaciones",
+    href: "/importar",
+    description: "Cargar y revisar cortes mensuales.",
+    icon: FiUploadCloud,
   },
   {
     title: "Estadísticas",
@@ -73,37 +68,25 @@ const RUTAS_ALERTA: Record<GrupoAlerta, string> = {
 const ACCIONES_ALERTA: { key: GrupoAlerta; accion: string }[] = [
   {
     key: "alta_sin_responsable",
-    accion: "Asignar responsable CCR",
+    accion: "Asignar responsable",
   },
   {
     key: "rescates_activos",
-    accion: "Registrar nuevo contacto",
+    accion: "Registrar contacto",
   },
   {
     key: "pendientes_con_1_intento",
-    accion: "Completar contactabilidad",
+    accion: "Registrar contacto",
   },
   {
     key: "ingresados_sin_proxima_atencion",
-    accion: "Programar próxima atención",
+    accion: "Programar atención",
   },
   {
     key: "posible_abandono",
-    accion: "Evaluar cierre operativo",
+    accion: "Evaluar abandono",
   },
 ];
-const CHART_COLORS = ["#335FDB", "#1B5E3B", "#ED8121", "#B91C1C", "#64748B", "#7C3AED"];
-
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function sameMonth(value: string | null | undefined, key: string) {
-  if (!value) return false;
-  const parsed = new Date(value.includes("T") ? value : `${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return false;
-  return monthKey(parsed) === key;
-}
 
 export default function InicioPage() {
   const { user } = useAuth();
@@ -153,9 +136,6 @@ export default function InicioPage() {
   }, [cargarDashboard]);
 
   const resumen = useMemo(() => {
-    const hoy = new Date();
-    const mesActual = hoy.getMonth();
-    const anioActual = hoy.getFullYear();
     return {
       listaActiva: pacientes.filter((p) =>
         ["PENDIENTE", "RESCATE", "INGRESADO"].includes(p.estado),
@@ -163,11 +143,6 @@ export default function InicioPage() {
       pendientes: pacientes.filter((p) => p.estado === "PENDIENTE").length,
       rescate: pacientes.filter((p) => p.estado === "RESCATE").length,
       ingresados: pacientes.filter((p) => p.estado === "INGRESADO").length,
-      egresosMes: pacientes.filter((p) => {
-        if (!p.fecha_egreso) return false;
-        const fecha = new Date(`${p.fecha_egreso}T00:00:00`);
-        return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
-      }).length,
     };
   }, [pacientes]);
 
@@ -182,34 +157,12 @@ export default function InicioPage() {
     return Array.from(items.values()).slice(0, 8);
   }, [alertas]);
 
-  const estadoChartData = useMemo(() => {
-    const estados = new Map<string, number>();
-    pacientes.forEach((paciente) => {
-      estados.set(paciente.estado, (estados.get(paciente.estado) ?? 0) + 1);
-    });
-    return Array.from(estados.entries()).map(([estado, total], index) => ({
-      name: ESTADO_LABELS[estado as keyof typeof ESTADO_LABELS] ?? estado,
-      value: total,
-      color: CHART_COLORS[index % CHART_COLORS.length],
-    }));
-  }, [pacientes]);
-
-  const tendenciaOperativa = useMemo(() => {
-    const base = new Date();
-    base.setDate(1);
-    return Array.from({ length: 6 }, (_, index) => {
-      const fecha = new Date(base.getFullYear(), base.getMonth() - (5 - index), 1);
-      const key = monthKey(fecha);
-      return {
-        mes: fecha.toLocaleDateString("es-CL", { month: "short" }).replace(".", ""),
-        ingresos: pacientes.filter((paciente) => sameMonth(paciente.fecha_ingreso, key)).length,
-        egresos: pacientes.filter((paciente) => sameMonth(paciente.fecha_egreso, key)).length,
-      };
-    });
-  }, [pacientes]);
-
   const handleVerGrupo = useCallback(
     (grupo: GrupoAlerta) => {
+      if (grupo === "rescates_activos") {
+        router.push("/llamados");
+        return;
+      }
       router.push(RUTAS_ALERTA[grupo]);
     },
     [router],
@@ -280,17 +233,17 @@ export default function InicioPage() {
       )}
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className="rounded-xl border border-[#D4E4D4] bg-white p-5 shadow-sm xl:col-span-7">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm xl:col-span-8">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-950">
                 Acciones prioritarias
               </h2>
               <p className="text-xs text-slate-500">
-                Máximo 8 pacientes combinando las alertas más relevantes.
+                Pacientes que requieren una acción operativa hoy.
               </p>
             </div>
-            <FiAlertTriangle className="text-[#1B5E3B]" size={22} />
+            <FiAlertTriangle className="text-blue-700" size={22} />
           </div>
 
           {accionesPrioritarias.length === 0 ? (
@@ -300,11 +253,9 @@ export default function InicioPage() {
           ) : (
             <div className="space-y-2">
               {accionesPrioritarias.map(({ paciente, accion }) => (
-                <button
+                <div
                   key={paciente.id}
-                  type="button"
-                  onClick={() => setPacienteSeleccionado(paciente)}
-                  className="flex w-full flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 text-left transition hover:border-[#D4E4D4] hover:bg-white sm:flex-row sm:items-center sm:justify-between"
+                  className="flex w-full flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold text-slate-900">
@@ -314,86 +265,42 @@ export default function InicioPage() {
                       {paciente.id_ccr} · {formatearRut(paciente.rut)}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <BadgePrioridad prioridad={paciente.prioridad} />
                     <BadgeEstado estado={paciente.estado} />
                     <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
                       {accion}
                     </span>
-                    <span className="rounded-full bg-[#1B5E3B] px-2 py-1 text-[11px] font-bold text-white">
+                    <button
+                      type="button"
+                      onClick={() => setPacienteSeleccionado(paciente)}
+                      className="rounded-full bg-[#1B5E3B] px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#256B47]"
+                    >
                       Ver ficha operativa
-                    </span>
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
         </div>
 
-        <aside className="space-y-5 xl:col-span-5">
-          <div className="rounded-xl border border-[#D4E4D4] bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black text-slate-950">Visual operativo</h2>
-                <p className="text-xs font-semibold text-slate-500">Estado actual y actividad reciente.</p>
-              </div>
-              <FiBarChart2 className="text-blue-700" size={20} />
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <div className="grid grid-cols-[150px_minmax(0,1fr)] gap-3">
-                <div className="h-[150px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={estadoChartData}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={38}
-                        outerRadius={62}
-                        paddingAngle={2}
-                      >
-                        {estadoChartData.map((item) => (
-                          <Cell key={item.name} fill={item.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-2 self-center">
-                  {estadoChartData.slice(0, 5).map((item) => (
-                    <div key={item.name} className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="truncate">{item.name}</span>
-                      </span>
-                      <span className="font-black text-slate-950">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="h-[160px] rounded-lg border border-slate-100 bg-slate-50 p-2">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={tendenciaOperativa} margin={{ top: 8, right: 12, left: -20, bottom: 0 }}>
-                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#335FDB" strokeWidth={2.5} dot={false} />
-                    <Line type="monotone" dataKey="egresos" name="Egresos" stroke="#B91C1C" strokeWidth={2.5} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Stat label="Lista activa" value={resumen.listaActiva} />
-                <Stat label="Egresos del mes" value={resumen.egresosMes} />
-              </div>
+        <aside className="space-y-5 xl:col-span-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-black text-slate-950">Resumen rápido</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Estado operativo actual de la cartera visible.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Stat label="Lista activa" value={resumen.listaActiva} />
+              <Stat label="Pendientes" value={resumen.pendientes} />
+              <Stat label="Ingresados" value={resumen.ingresados} />
+              <Stat label="Rescate" value={resumen.rescate} />
             </div>
           </div>
 
-          <div className="rounded-xl border border-[#D4E4D4] bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-black text-slate-950">Ir a módulos</h2>
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-black text-slate-950">Accesos principales</h2>
             <div className="mt-4 space-y-3">
               {ACTION_LINKS.map((card) => (
                 <Link
@@ -430,7 +337,7 @@ export default function InicioPage() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-[#D4E4D4] bg-[#F8FAF8] px-3 py-3">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
         {label}
       </p>
