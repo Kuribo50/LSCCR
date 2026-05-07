@@ -22,7 +22,12 @@ import {
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { api } from "@/lib/api";
-import type { ImportacionRevisionResultado, Paciente, Rol } from "@/lib/types";
+import type {
+  DashboardResumenOperativo,
+  ImportacionRevisionResultado,
+  Paciente,
+  Rol,
+} from "@/lib/types";
 import { formatearRut, limpiarRut } from "@/lib/rut";
 
 type CountKey = "total" | "mios" | "rescates" | "cola" | "revision";
@@ -132,6 +137,7 @@ function SidebarNav({
                       href={item.href}
                       onClick={onNavigate}
                       title={compact ? item.label : undefined}
+                      aria-label={compact ? item.label : undefined}
                       className={classes(
                         "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition",
                         compact && "justify-center px-2",
@@ -261,11 +267,8 @@ export default function Sidebar({
     async function loadCounts() {
       try {
         const puedeVerRevision = rol === "ADMIN" || rol === "ADMINISTRATIVO";
-        const [total, mios, rescates, pendientes, revision] = await Promise.all([
-          api.get<Paciente[]>("/pacientes/?sin_asignar=1"),
-          api.get<Paciente[]>(rol === "ADMIN" ? "/pacientes/?asignados=1" : `/pacientes/?kine=${userId}`),
-          api.get<Paciente[]>("/pacientes/?estado=RESCATE"),
-          api.get<Paciente[]>("/pacientes/?estado=PENDIENTE"),
+        const [resumen, revision] = await Promise.all([
+          api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/"),
           puedeVerRevision
             ? api.get<ImportacionRevisionResultado>("/importar/revision/?estado=PENDIENTE").catch(() => null)
             : Promise.resolve(null),
@@ -273,15 +276,11 @@ export default function Sidebar({
 
         if (!mounted) return;
 
-        const cola = [...pendientes, ...rescates].filter((p) =>
-          rol === "KINE" ? p.kine_asignado === userId : p.kine_asignado !== null,
-        ).length;
-
         setCounts({
-          total: total.length,
-          mios: mios.filter((p) => !["ALTA_MEDICA", "EGRESO_VOLUNTARIO", "EGRESO_ADMINISTRATIVO", "ABANDONO", "DERIVADO"].includes(p.estado)).length,
-          rescates: rescates.length,
-          cola,
+          total: resumen.sin_asignar,
+          mios: rol === "ADMIN" ? resumen.asignados_activos : resumen.mios_activos,
+          rescates: resumen.rescates_globales,
+          cola: resumen.cola_llamados,
           revision: revision?.pendientes ?? 0,
         });
       } catch {
@@ -340,6 +339,7 @@ export default function Sidebar({
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-[#335fdb]" size={14} />
               <input
                 type="text"
+                aria-label="Buscar paciente por RUT"
                 placeholder="Buscar RUT..."
                 value={query}
                 onChange={handleSearchChange}
@@ -407,6 +407,7 @@ export default function Sidebar({
                     <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
                     <input
                       type="text"
+                      aria-label="Buscar paciente por RUT"
                       placeholder="Buscar RUT..."
                       value={query}
                       onChange={handleSearchChange}

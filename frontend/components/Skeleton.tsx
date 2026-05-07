@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 const shimmer =
   "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.8s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/50 before:to-transparent";
 
+const TABLE_SKELETON_WIDTHS = ["68%", "82%", "74%", "92%", "64%", "78%", "88%"];
+
 function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -119,7 +121,11 @@ export function TableSkeleton({ rows = 8 }: { rows?: number }) {
             className="grid grid-cols-7 gap-3 px-4 py-3"
           >
             {[1, 2, 3, 4, 5, 6, 7].map((j) => (
-              <SkeletonBlock key={j} className="h-4 rounded-md" style={{ width: `${60 + Math.random() * 40}%` }} />
+              <SkeletonBlock
+                key={j}
+                className="h-4 rounded-md"
+                style={{ width: TABLE_SKELETON_WIDTHS[(i + j) % TABLE_SKELETON_WIDTHS.length] }}
+              />
             ))}
           </motion.div>
         ))}

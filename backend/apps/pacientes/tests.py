@@ -549,6 +549,55 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(response.data["rescates_activos"]["total"], 10)
         self.assertLessEqual(len(response.data["rescates_activos"]["pacientes"]), 8)
 
+    def test_dashboard_resumen_admin_devuelve_contadores_agregados(self):
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE, kine_asignado=None)
+        self.crear_paciente(estado=Paciente.Estado.ALTA_MEDICA)
+        self.crear_paciente(estado=Paciente.Estado.ALTA_MEDICA, kine_asignado=None)
+
+        response = self.client.get("/api/pacientes/dashboard-resumen/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["lista_activa"], 4)
+        self.assertEqual(response.data["pendientes"], 2)
+        self.assertEqual(response.data["rescate"], 1)
+        self.assertEqual(response.data["ingresados"], 1)
+        self.assertEqual(response.data["sin_asignar"], 2)
+        self.assertEqual(response.data["asignados_activos"], 3)
+        self.assertEqual(response.data["mios_activos"], 0)
+        self.assertEqual(response.data["rescates_globales"], 1)
+        self.assertEqual(response.data["cola_llamados"], 2)
+
+    def test_dashboard_resumen_kine_acota_resumen_y_cola_a_su_cartera(self):
+        otro_kine = Usuario.objects.create_user(
+            rut="33333333-3",
+            password="testpass",
+            nombre="Otro Kine",
+            rol=Usuario.Rol.KINE,
+        )
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE, kine_asignado=otro_kine)
+        self.crear_paciente(estado=Paciente.Estado.PENDIENTE, kine_asignado=None)
+        self.crear_paciente(estado=Paciente.Estado.DERIVADO)
+        self.client.force_authenticate(self.kine)
+
+        response = self.client.get("/api/pacientes/dashboard-resumen/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["lista_activa"], 3)
+        self.assertEqual(response.data["pendientes"], 1)
+        self.assertEqual(response.data["rescate"], 1)
+        self.assertEqual(response.data["ingresados"], 1)
+        self.assertEqual(response.data["sin_asignar"], 1)
+        self.assertEqual(response.data["asignados_activos"], 4)
+        self.assertEqual(response.data["mios_activos"], 3)
+        self.assertEqual(response.data["rescates_globales"], 1)
+        self.assertEqual(response.data["cola_llamados"], 2)
+
     def assertInPaciente(self, grupo, paciente):
         ids = {item["id"] for item in grupo["pacientes"]}
         self.assertIn(paciente.id, ids)

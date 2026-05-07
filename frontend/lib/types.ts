@@ -187,6 +187,18 @@ export interface AlertasOperativas {
   telefonos_incompletos: AlertaOperativaGrupo;
 }
 
+export interface DashboardResumenOperativo {
+  lista_activa: number;
+  pendientes: number;
+  rescate: number;
+  ingresados: number;
+  sin_asignar: number;
+  asignados_activos: number;
+  mios_activos: number;
+  rescates_globales: number;
+  cola_llamados: number;
+}
+
 export interface ResumenReporte {
   mes: number;
   anio: number;

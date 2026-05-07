@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -159,6 +159,48 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 telefono_recados="",
             )
         return queryset
+
+    @action(detail=False, methods=["get"], url_path="dashboard-resumen")
+    def dashboard_resumen(self, request):
+        estados_activos = [
+            Paciente.Estado.PENDIENTE,
+            Paciente.Estado.RESCATE,
+            Paciente.Estado.INGRESADO,
+        ]
+        base = Paciente.objects.all()
+        visible = (
+            base.filter(kine_asignado=request.user)
+            if request.user.rol == Usuario.Rol.KINE
+            else base
+        )
+        activos_asignados = Q(kine_asignado__isnull=False) & ~Q(
+            estado__in=ESTADOS_FINALES
+        )
+        activos_mios = Q(kine_asignado=request.user) & ~Q(estado__in=ESTADOS_FINALES)
+        cola_base = Q(
+            estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE]
+        )
+        cola_filtro = (
+            cola_base & Q(kine_asignado=request.user)
+            if request.user.rol == Usuario.Rol.KINE
+            else cola_base & Q(kine_asignado__isnull=False)
+        )
+
+        resumen_visible = visible.aggregate(
+            lista_activa=Count("id", filter=Q(estado__in=estados_activos)),
+            pendientes=Count("id", filter=Q(estado=Paciente.Estado.PENDIENTE)),
+            rescate=Count("id", filter=Q(estado=Paciente.Estado.RESCATE)),
+            ingresados=Count("id", filter=Q(estado=Paciente.Estado.INGRESADO)),
+        )
+        resumen_global = base.aggregate(
+            sin_asignar=Count("id", filter=Q(kine_asignado__isnull=True)),
+            asignados_activos=Count("id", filter=activos_asignados),
+            mios_activos=Count("id", filter=activos_mios),
+            rescates_globales=Count("id", filter=Q(estado=Paciente.Estado.RESCATE)),
+            cola_llamados=Count("id", filter=cola_filtro),
+        )
+
+        return Response({**resumen_visible, **resumen_global})
 
     def destroy(self, request, *args, **kwargs):
         if request.user.rol != Usuario.Rol.ADMIN:

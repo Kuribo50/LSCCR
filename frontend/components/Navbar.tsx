@@ -97,7 +97,9 @@ export default function Navbar({
         <div className="mx-1 hidden h-8 w-px bg-gray-200 dark:!bg-[#262626] sm:block" />
 
         <button
+          type="button"
           onClick={handleLogout}
+          aria-label="Cerrar sesión"
           className="ccr-logout-button group flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all hover:shadow-sm"
         >
           <span className="hidden sm:inline">Cerrar sesión</span>

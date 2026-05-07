@@ -18,7 +18,7 @@ import { motion, type Variants } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { formatearRut } from "@/lib/rut";
-import type { AlertasOperativas, Paciente } from "@/lib/types";
+import type { AlertasOperativas, DashboardResumenOperativo, Paciente } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import FichaPaciente from "@/components/FichaPaciente";
@@ -88,10 +88,22 @@ const ACCIONES_ALERTA: { key: GrupoAlerta; accion: string }[] = [
   },
 ];
 
+const RESUMEN_VACIO: DashboardResumenOperativo = {
+  lista_activa: 0,
+  pendientes: 0,
+  rescate: 0,
+  ingresados: 0,
+  sin_asignar: 0,
+  asignados_activos: 0,
+  mios_activos: 0,
+  rescates_globales: 0,
+  cola_llamados: 0,
+};
+
 export default function InicioPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [resumen, setResumen] = useState<DashboardResumenOperativo>(RESUMEN_VACIO);
   const [alertas, setAlertas] = useState<AlertasOperativas | null>(null);
   const [loading, setLoading] = useState(true);
   const [alertasLoading, setAlertasLoading] = useState(false);
@@ -100,8 +112,6 @@ export default function InicioPage() {
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const isKine = user?.rol === "KINE";
-
   const cargarDashboard = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -109,12 +119,11 @@ export default function InicioPage() {
     setError("");
     setAlertasError("");
     try {
-      const data = isKine
-        ? await api.get<Paciente[]>(`/pacientes/?kine=${user.id}`)
-        : await api.get<Paciente[]>("/pacientes/");
-      setPacientes(data);
+      const data = await api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/");
+      setResumen(data);
       setLastUpdated(new Date());
     } catch {
+      setResumen(RESUMEN_VACIO);
       setError("No fue posible cargar el dashboard. Intenta nuevamente.");
     } finally {
       setLoading(false);
@@ -129,22 +138,11 @@ export default function InicioPage() {
     } finally {
       setAlertasLoading(false);
     }
-  }, [user, isKine]);
+  }, [user]);
 
   useEffect(() => {
     void cargarDashboard();
   }, [cargarDashboard]);
-
-  const resumen = useMemo(() => {
-    return {
-      listaActiva: pacientes.filter((p) =>
-        ["PENDIENTE", "RESCATE", "INGRESADO"].includes(p.estado),
-      ).length,
-      pendientes: pacientes.filter((p) => p.estado === "PENDIENTE").length,
-      rescate: pacientes.filter((p) => p.estado === "RESCATE").length,
-      ingresados: pacientes.filter((p) => p.estado === "INGRESADO").length,
-    };
-  }, [pacientes]);
 
   const accionesPrioritarias = useMemo(() => {
     if (!alertas) return [];
@@ -292,7 +290,7 @@ export default function InicioPage() {
               Estado operativo actual de la cartera visible.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <Stat label="Lista activa" value={resumen.listaActiva} />
+              <Stat label="Lista activa" value={resumen.lista_activa} />
               <Stat label="Pendientes" value={resumen.pendientes} />
               <Stat label="Ingresados" value={resumen.ingresados} />
               <Stat label="Rescate" value={resumen.rescate} />
