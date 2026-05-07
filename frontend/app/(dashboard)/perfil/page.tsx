@@ -219,7 +219,7 @@ export default function PerfilPage() {
             {[
               { label: 'Importar derivaciones', href: '/importar', icon: '📁' },
               { label: 'Historial mensual', href: '/historial-mensual', icon: '📅' },
-              { label: 'Contactabilidad', href: '/llamados', icon: '📞' },
+              { label: 'Cola de llamados', href: '/llamados', icon: '📞' },
               { label: 'Estadísticas', href: '/analisis/estadisticas', icon: '📊' },
             ].map(link => (
               <a key={link.href} href={link.href}

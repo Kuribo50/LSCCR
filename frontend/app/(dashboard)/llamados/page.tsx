@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import {
   FiAlertTriangle,
@@ -100,10 +100,38 @@ function accionSugerida(paciente: Paciente) {
 }
 
 type AccionContacto = "CONTESTO" | "NO_CONTESTO";
+const SEGUNDOS_CANCELAR_REGISTRO = 20;
+
+const PRIORIDAD_ORDER: Record<string, number> = {
+  ALTA: 1,
+  MEDIANA: 2,
+  MODERADA: 3,
+  LICENCIA_MEDICA: 4,
+};
 
 interface ConfirmacionContacto {
   paciente: Paciente;
   accion: AccionContacto;
+}
+
+interface RegistroPendienteContacto {
+  id: string;
+  pacienteOriginal: Paciente;
+  accion: AccionContacto;
+  observacion: string;
+  fechaAtencion: string;
+}
+
+function ordenarPacientesContactabilidad(pacientes: Paciente[], ordering: string) {
+  return [...pacientes].sort((a, b) => {
+    const pA = PRIORIDAD_ORDER[a.prioridad] ?? 99;
+    const pB = PRIORIDAD_ORDER[b.prioridad] ?? 99;
+    if (pA !== pB) return pA - pB;
+    if (ordering === "dias") {
+      return diasEnLlamados(a) - diasEnLlamados(b);
+    }
+    return diasEnLlamados(b) - diasEnLlamados(a);
+  });
 }
 
 export default function LlamadosPage() {
@@ -116,11 +144,15 @@ export default function LlamadosPage() {
   const [observacionContacto, setObservacionContacto] = useState("");
   const [fechaAtencion, setFechaAtencion] = useState(fechaHoraLocalDefault());
   const [confirmacionContacto, setConfirmacionContacto] = useState<ConfirmacionContacto | null>(null);
+  const [registroPendiente, setRegistroPendiente] = useState<RegistroPendienteContacto | null>(null);
+  const [segundosCancelar, setSegundosCancelar] = useState(SEGUNDOS_CANCELAR_REGISTRO);
   const [accionLoading, setAccionLoading] = useState("");
   const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
   const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
+  const timeoutRegistroRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRegistroRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Filtros locales del módulo de contactabilidad.
+  // Filtros locales del módulo de cola de llamados.
   const [searchQuery, setSearchQuery] = useState("");
   const [prioridadFilter, setPrioridadFilter] = useState("TODAS");
   const [estadoFilter, setEstadoFilter] = useState("TODOS");
@@ -140,26 +172,10 @@ export default function LlamadosPage() {
         return true;
       });
       
-      const prioridadOrder: Record<string, number> = {
-        ALTA: 1,
-        MEDIANA: 2,
-        MODERADA: 3,
-        LICENCIA_MEDICA: 4,
-      };
-      
-      todos.sort((a, b) => {
-        const pA = prioridadOrder[a.prioridad] ?? 99;
-        const pB = prioridadOrder[b.prioridad] ?? 99;
-        if (pA !== pB) return pA - pB;
-        if (ordering === "dias") {
-          return diasEnLlamados(a) - diasEnLlamados(b);
-        }
-        return diasEnLlamados(b) - diasEnLlamados(a);
-      });
-      setPacientes(todos);
+      setPacientes(ordenarPacientesContactabilidad(todos, ordering));
     } catch (error) {
       setPacientes([]);
-      const message = getErrorMessage(error, "No se pudo cargar la lista de contactabilidad.");
+      const message = getErrorMessage(error, "No se pudo cargar la cola de llamados.");
       setError(message);
       toastError(message);
     } finally {
@@ -238,7 +254,55 @@ export default function LlamadosPage() {
     }
   }
 
+  const limpiarTemporizadoresRegistro = useCallback(() => {
+    if (timeoutRegistroRef.current) {
+      clearTimeout(timeoutRegistroRef.current);
+      timeoutRegistroRef.current = null;
+    }
+    if (intervalRegistroRef.current) {
+      clearInterval(intervalRegistroRef.current);
+      intervalRegistroRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => limpiarTemporizadoresRegistro();
+  }, [limpiarTemporizadoresRegistro]);
+
+  function restaurarPacienteEnCola(paciente: Paciente) {
+    setPacientes((prev) => {
+      const sinDuplicado = prev.filter((item) => item.id !== paciente.id);
+      return ordenarPacientesContactabilidad([paciente, ...sinDuplicado], ordering);
+    });
+    setSelectedId(paciente.id);
+  }
+
+  function aplicarRegistroVisualPendiente(registro: RegistroPendienteContacto) {
+    const paciente = registro.pacienteOriginal;
+
+    if (registro.accion === "NO_CONTESTO" && paciente.estado === "PENDIENTE") {
+      const pacienteVisual: Paciente = {
+        ...paciente,
+        estado: "RESCATE",
+        n_intentos_contacto: paciente.n_intentos_contacto + 1,
+        fecha_cambio_estado: new Date().toISOString(),
+      };
+      setPacientes((prev) =>
+        prev.map((item) => (item.id === paciente.id ? pacienteVisual : item)),
+      );
+      setSelectedId(paciente.id);
+      return;
+    }
+
+    setPacientes((prev) => prev.filter((item) => item.id !== paciente.id));
+    setSelectedId((actual) => (actual === paciente.id ? null : actual));
+  }
+
   function abrirConfirmacionContacto(paciente: Paciente, accion: AccionContacto) {
+    if (registroPendiente) {
+      toast.warning("Hay un registro pendiente. Cancélelo o espere que termine la cuenta regresiva.");
+      return;
+    }
     setConfirmacionContacto({ paciente, accion });
     setObservacionContacto("");
     setFechaAtencion(fechaHoraLocalDefault());
@@ -313,18 +377,78 @@ export default function LlamadosPage() {
     }
   }
 
-  async function confirmarContacto() {
+  async function ejecutarRegistroPendiente(registro: RegistroPendienteContacto) {
+    limpiarTemporizadoresRegistro();
+    setSegundosCancelar(0);
+    const guardado =
+      registro.accion === "NO_CONTESTO"
+        ? await registrarNoContesto(registro.pacienteOriginal, registro.observacion)
+        : await registrarContesto(registro.pacienteOriginal, registro.observacion, registro.fechaAtencion);
+
+    if (!guardado) {
+      restaurarPacienteEnCola(registro.pacienteOriginal);
+    }
+    setRegistroPendiente((actual) => (actual?.id === registro.id ? null : actual));
+    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
+  }
+
+  function programarRegistroPendiente(registro: RegistroPendienteContacto) {
+    limpiarTemporizadoresRegistro();
+    setRegistroPendiente(registro);
+    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
+    aplicarRegistroVisualPendiente(registro);
+    setConfirmacionContacto(null);
+    setObservacionContacto("");
+    setFechaAtencion(fechaHoraLocalDefault());
+    toast.info("Registro pendiente. Puede cancelarlo durante 20 segundos.");
+
+    const creadoEn = Date.now();
+    intervalRegistroRef.current = setInterval(() => {
+      const restantes = Math.max(
+        0,
+        SEGUNDOS_CANCELAR_REGISTRO - Math.floor((Date.now() - creadoEn) / 1000),
+      );
+      setSegundosCancelar(restantes);
+    }, 250);
+
+    timeoutRegistroRef.current = setTimeout(() => {
+      void ejecutarRegistroPendiente(registro);
+    }, SEGUNDOS_CANCELAR_REGISTRO * 1000);
+  }
+
+  function cancelarRegistroPendiente() {
+    if (!registroPendiente || accionLoading) return;
+    limpiarTemporizadoresRegistro();
+    restaurarPacienteEnCola(registroPendiente.pacienteOriginal);
+    setRegistroPendiente(null);
+    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
+    toast.info("Registro cancelado. Paciente vuelve a la cola de llamados.");
+  }
+
+  function confirmarContacto() {
     if (!confirmacionContacto) return;
+    if (registroPendiente) {
+      toast.warning("Hay un registro pendiente. Cancélelo o espere que termine la cuenta regresiva.");
+      return;
+    }
 
     const { paciente, accion } = confirmacionContacto;
-    const guardado =
-      accion === "NO_CONTESTO"
-        ? await registrarNoContesto(paciente, observacionContacto)
-        : await registrarContesto(paciente, observacionContacto, fechaAtencion);
-
-    if (guardado) {
-      cerrarConfirmacionContacto();
+    if (accion === "NO_CONTESTO" && paciente.estado === "RESCATE" && !observacionContacto.trim()) {
+      toast.warning("Debe registrar una observación para egreso administrativo.");
+      return;
     }
+    if (accion === "CONTESTO" && !fechaAtencion) {
+      toast.warning("Seleccione fecha y hora para programar la atención.");
+      return;
+    }
+
+    programarRegistroPendiente({
+      id: `${accion}-${paciente.id}-${Date.now()}`,
+      pacienteOriginal: paciente,
+      accion,
+      observacion: observacionContacto,
+      fechaAtencion,
+    });
   }
 
   if (!user) return null;
@@ -340,7 +464,7 @@ export default function LlamadosPage() {
                   <FiPhoneCall size={18} />
                 </span>
                 <div className="min-w-0">
-                  <h1 className="text-lg font-black text-slate-950">Contactabilidad</h1>
+                  <h1 className="text-lg font-black text-slate-950">Cola de llamados</h1>
                   <p className="mt-0.5 text-xs font-semibold text-slate-500">
                     Bandeja para registrar si el paciente contestó o no contestó.
                   </p>
@@ -367,7 +491,7 @@ export default function LlamadosPage() {
               <button
                 type="button"
                 onClick={() => {
-                  toastInfo("Preparando impresión de contactabilidad.");
+                  toastInfo("Preparando impresión de cola de llamados.");
                   window.print();
                 }}
                 className="ccr-control-button inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[11px] font-bold"
@@ -451,6 +575,15 @@ export default function LlamadosPage() {
         </div>
       )}
 
+      {registroPendiente && (
+        <RegistroPendienteBanner
+          registro={registroPendiente}
+          segundos={segundosCancelar}
+          loading={Boolean(accionLoading)}
+          onCancel={cancelarRegistroPendiente}
+        />
+      )}
+
       {loading ? (
         <div
           className="ccr-panel rounded-2xl p-12 text-center text-sm text-gray-400 animate-pulse"
@@ -469,7 +602,7 @@ export default function LlamadosPage() {
               <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
-                    <h2 className="text-lg font-black text-slate-950">Cola de contactabilidad</h2>
+                    <h2 className="text-lg font-black text-slate-950">Cola de llamados</h2>
                     <p className="text-xs font-semibold text-slate-500">
                       {pacientesFiltrados.length} paciente{pacientesFiltrados.length !== 1 ? "s" : ""} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
                     </p>
@@ -499,6 +632,7 @@ export default function LlamadosPage() {
                   paciente={pacienteSeleccionado}
                   loadingNoContesto={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
                   loadingContesto={accionLoading === `contesto-${pacienteSeleccionado.id}`}
+                  registroPendienteActivo={Boolean(registroPendiente)}
                   onContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "CONTESTO")}
                   onNoContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "NO_CONTESTO")}
                   onEditarContacto={() => setPacienteEdicion(pacienteSeleccionado)}
@@ -553,7 +687,7 @@ export default function LlamadosPage() {
         />
       )}
       <section className="ccr-llamados-print hidden">
-        <h1>Lista de contactabilidad CCR</h1>
+        <h1>Cola de llamados CCR</h1>
         <p>Fecha de impresión: {formatearFechaImpresion()}</p>
         <table>
           <thead>
@@ -718,6 +852,7 @@ function ContactabilidadDetail({
   paciente,
   loadingNoContesto,
   loadingContesto,
+  registroPendienteActivo,
   onContesto,
   onNoContesto,
   onEditarContacto,
@@ -726,6 +861,7 @@ function ContactabilidadDetail({
   paciente: Paciente;
   loadingNoContesto: boolean;
   loadingContesto: boolean;
+  registroPendienteActivo: boolean;
   onContesto: () => void;
   onNoContesto: () => void;
   onEditarContacto: () => void;
@@ -733,7 +869,7 @@ function ContactabilidadDetail({
 }) {
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
-  const accionBloqueada = loadingNoContesto || loadingContesto;
+  const accionBloqueada = loadingNoContesto || loadingContesto || registroPendienteActivo;
 
   return (
     <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -789,7 +925,7 @@ function ContactabilidadDetail({
         </div>
 
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
-          El resultado se confirma en el siguiente paso. Ahí se ingresa la observación.
+          El resultado se confirma en el siguiente paso. Luego tendrá 20 segundos para cancelar el registro.
         </p>
 
         <div className="grid grid-cols-2 gap-2">
@@ -830,6 +966,51 @@ function ContactabilidadDetail({
         </div>
       </div>
     </aside>
+  );
+}
+
+function RegistroPendienteBanner({
+  registro,
+  segundos,
+  loading,
+  onCancel,
+}: {
+  registro: RegistroPendienteContacto;
+  segundos: number;
+  loading: boolean;
+  onCancel: () => void;
+}) {
+  const esNoContesto = registro.accion === "NO_CONTESTO";
+  const accionLabel = esNoContesto ? "No contestó" : "Contestó / agendar";
+
+  return (
+    <div
+      role="status"
+      className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm"
+    >
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">
+            Registro pendiente
+          </p>
+          <p className="mt-1 break-words text-sm font-bold text-slate-900">
+            {accionLabel}: {registro.pacienteOriginal.nombre}
+          </p>
+          <p className="mt-0.5 text-xs font-semibold text-slate-600">
+            Se guardará automáticamente en {segundos}s. Si cancela, el paciente vuelve a la cola de llamados.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={loading}
+          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+        >
+          <FiX size={14} />
+          Cancelar registro ({segundos}s)
+        </button>
+      </div>
+    </div>
   );
 }
 

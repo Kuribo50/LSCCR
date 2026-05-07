@@ -35,7 +35,7 @@ const ACTION_LINKS = [
     icon: FiUsers,
   },
   {
-    title: "Contactabilidad",
+    title: "Cola de llamados",
     href: "/llamados",
     description: "Registrar contactos y rescates operativos.",
     icon: FiPhone,
