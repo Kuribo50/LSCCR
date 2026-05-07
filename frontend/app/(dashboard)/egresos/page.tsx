@@ -1,8 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
-import type { ComponentType } from 'react'
-import { FiCalendar, FiFileText, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiRefreshCw, FiSearch } from 'react-icons/fi'
 import { formatearRut } from '@/lib/rut'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
@@ -10,6 +9,9 @@ import type { Estado, Paciente } from '@/lib/types'
 import { CATEGORIA_LABELS, ESTADO_LABELS } from '@/lib/types'
 import FichaPaciente from '@/components/FichaPaciente'
 import BadgePrioridad from '@/components/BadgePrioridad'
+import BadgeEstado from '@/components/BadgeEstado'
+import EmptyState from '@/components/EmptyState'
+import { TableSkeleton } from '@/components/Skeleton'
 
 type EgresoState = Extract<Estado, 'ALTA_MEDICA' | 'EGRESO_VOLUNTARIO' | 'EGRESO_ADMINISTRATIVO' | 'ABANDONO' | 'DERIVADO'>
 
@@ -37,14 +39,6 @@ const MESES = [
   { value: '12', label: 'Diciembre' },
 ]
 
-const EGRESO_COLORS: Record<EgresoState, { bg: string; text: string; border: string }> = {
-  ALTA_MEDICA: { bg: '#ffe6e6', text: '#970502', border: '#fd9c9b' },
-  EGRESO_VOLUNTARIO: { bg: '#ecf5f8', text: '#335fdb', border: '#BFDBFE' },
-  EGRESO_ADMINISTRATIVO: { bg: '#E2E8F0', text: '#334155', border: '#CBD5E1' },
-  ABANDONO: { bg: '#FFF7ED', text: '#9A3412', border: '#fdcb68' },
-  DERIVADO: { bg: '#F5F3FF', text: '#5B21B6', border: '#C4B5FD' },
-}
-
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, '')
 }
@@ -69,16 +63,6 @@ function toCapitalizedWords(value: string) {
   })
 }
 
-const RefreshIcon: ComponentType<{ size?: number; className?: string }> =
-  FiRefreshCw ?? (() => null)
-const SearchIcon: ComponentType<{ size?: number; className?: string }> =
-  FiSearch ?? (() => null)
-const PriorityBadge = (BadgePrioridad ??
-  (({ prioridad }: { prioridad: Paciente['prioridad'] }) => (
-    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
-      {toCapitalizedWords(prioridad)}
-    </span>
-  ))) as ComponentType<{ prioridad: Paciente['prioridad'] }>
 function calcularDiasDesde(fecha: string | null | undefined) {
   if (!fecha) return null
   const inicio = new Date(`${fecha}T00:00:00`)
@@ -164,13 +148,12 @@ export default function EgresosPage() {
     [pacientes],
   )
 
-  const pacientesFiltrados = useMemo(() => {
+  const pacientesBaseFiltrados = useMemo(() => {
     const queryText = normalizeSearchText(search)
     const queryRut = normalizeRut(search)
 
     return pacientes
       .filter((p) => {
-        if (filtroEstado && p.estado !== filtroEstado) return false
         if (filtroKine && (p.kine_asignado_nombre ?? '') !== filtroKine) return false
         if (filtroMes || filtroAnio) {
           if (!p.fecha_egreso) return false
@@ -191,16 +174,23 @@ export default function EgresosPage() {
 
         return matchesText || matchesRut
       })
-      .sort((a, b) => calcularDiasAtendido(b) - calcularDiasAtendido(a))
-  }, [pacientes, filtroAnio, filtroEstado, filtroKine, filtroMes, search])
+  }, [pacientes, filtroAnio, filtroKine, filtroMes, search])
+
+  const pacientesFiltrados = useMemo(
+    () =>
+      pacientesBaseFiltrados
+        .filter((p) => (filtroEstado ? p.estado === filtroEstado : true))
+        .sort((a, b) => calcularDiasAtendido(b) - calcularDiasAtendido(a)),
+    [pacientesBaseFiltrados, filtroEstado],
+  )
 
   const resumenEgresos = useMemo(
     () =>
       EGRESO_STATES.map((estado) => ({
         estado,
-        total: pacientesFiltrados.filter((paciente) => paciente.estado === estado).length,
+        total: pacientesBaseFiltrados.filter((paciente) => paciente.estado === estado).length,
       })),
-    [pacientesFiltrados],
+    [pacientesBaseFiltrados],
   )
 
   function clearFilters() {
@@ -214,30 +204,30 @@ export default function EgresosPage() {
   if (!user) return null
 
   return (
-    <div className="ccr-dashboard-content space-y-3 text-[13px]">
-      <header className="ccr-panel ccr-dashboard-card rounded-xl p-4 sm:p-5">
+    <div className="space-y-3 text-[13px]">
+      <header className="ccr-panel rounded-2xl p-4 sm:p-5">
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-lg font-black text-slate-900 dark:!text-white">Historial de egresos</h1>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500 dark:!text-[#b5d8e3]">
+              <h1 className="text-lg font-bold text-gray-900 dark:!text-white">Historial de egresos</h1>
+              <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-[#b5d8e3]">
                 Derivaciones concluidas por tipo de egreso.
               </p>
             </div>
             <button
               type="button"
               onClick={() => void cargar()}
-              className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold sm:w-auto"
+              className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto"
             >
-              <RefreshIcon size={13} />
+              <FiRefreshCw size={13} />
               Recargar
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_auto]">
+          <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(280px,1.2fr)_minmax(0,0.9fr)_minmax(0,0.75fr)_auto]">
             <div className="relative">
-              <SearchIcon
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 dark:text-[#8fc4d6]"
+              <FiSearch
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                 size={15}
               />
               <input
@@ -248,7 +238,7 @@ export default function EgresosPage() {
                   if (event.key === 'Enter') event.preventDefault()
                 }}
                 placeholder="Buscar por nombre, RUT, diagnóstico o responsable"
-                className="ccr-control-input w-full px-9 py-2.5 text-xs"
+                className="w-full rounded-xl border border-gray-200 bg-white px-9 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 aria-label="Buscar egresos"
               />
             </div>
@@ -257,7 +247,7 @@ export default function EgresosPage() {
               <select
                 value={filtroEstado}
                 onChange={(event) => setFiltroEstado(event.target.value as EgresoState | '')}
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">Todos los tipos de egreso</option>
                 {EGRESO_STATES.map((estado) => (
@@ -270,7 +260,7 @@ export default function EgresosPage() {
               <select
                 value={filtroKine}
                 onChange={(event) => setFiltroKine(event.target.value)}
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">Todos los responsables</option>
                 {kineOptions.map((kine) => (
@@ -285,7 +275,7 @@ export default function EgresosPage() {
               <select
                 value={filtroMes}
                 onChange={(event) => setFiltroMes(event.target.value)}
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               >
                 {MESES.map((mes) => (
                   <option key={mes.value || 'todos'} value={mes.value}>
@@ -298,7 +288,7 @@ export default function EgresosPage() {
                 type="number"
                 value={filtroAnio}
                 onChange={(event) => setFiltroAnio(event.target.value)}
-                className="ccr-control-input px-3 py-2.5 text-xs"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 placeholder="Año"
                 aria-label="Año de egreso"
               />
@@ -307,115 +297,116 @@ export default function EgresosPage() {
             <button
               type="button"
               onClick={clearFilters}
-              className="ccr-control-button inline-flex h-[40px] w-full items-center justify-center px-3 text-xs lg:w-auto"
+              className="inline-flex h-[42px] w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 outline-none transition hover:bg-gray-50 lg:w-auto"
             >
               Limpiar filtros
             </button>
           </div>
-
         </div>
       </header>
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {resumenEgresos.map(({ estado, total }) => (
-          <EgresoStat key={estado} estado={estado} total={total} />
-        ))}
+      <section className="ccr-panel rounded-2xl p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <EgresoFilterChip
+            active={!filtroEstado}
+            label="Todos"
+            total={pacientesBaseFiltrados.length}
+            onClick={() => setFiltroEstado('')}
+          />
+          {resumenEgresos.map(({ estado, total }) => (
+            <EgresoFilterChip
+              key={estado}
+              active={filtroEstado === estado}
+              label={ESTADO_LABELS[estado]}
+              total={total}
+              onClick={() => setFiltroEstado(estado)}
+            />
+          ))}
+        </div>
       </section>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
-          {error}
-        </div>
+        <EmptyState variant="error" compact message={error} />
       )}
 
       {loading ? (
-        <div className="ccr-panel ccr-dashboard-card animate-pulse rounded-xl p-16 text-center text-sm text-slate-400">
-          Cargando registros...
+        <div className="ccr-panel ccr-data-table rounded-lg bg-white p-4">
+          <TableSkeleton rows={6} />
         </div>
       ) : pacientesFiltrados.length === 0 ? (
-        <div className="ccr-panel ccr-dashboard-card rounded-xl p-16 text-center text-sm font-semibold text-slate-500 dark:!text-[#b5d8e3]">
-          No hay egresos que coincidan con los filtros.
-        </div>
+        <EmptyState variant="search" compact message="No hay egresos que coincidan con los filtros." />
       ) : (
-        <section className="ccr-panel ccr-data-table relative overflow-hidden rounded-xl bg-white dark:!bg-[#0f0f10]">
-          <div className="max-h-[clamp(320px,calc(100dvh-330px),860px)] overflow-auto border-b border-blue-200 dark:!border-[#262626]">
-            <table className="w-full min-w-max text-xs">
+        <section className="ccr-panel ccr-data-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+          <div className="ccr-table-scroll max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
+            <table className="w-full min-w-[1180px] border-collapse text-xs">
               <thead className="sticky top-0 z-10">
-                <tr className="ccr-table-head border-b border-blue-200 bg-blue-50 dark:!border-[#262626] dark:!bg-[#202020]">
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                <tr className="ccr-table-head border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]">
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Paciente
                   </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Responsable CCR
                   </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                    Tipo egreso
+                  </th>
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Fecha egreso
                   </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-left font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Observación operativa
                   </th>
-                  <th className="border-r border-blue-200 px-4 py-2.5 text-center font-bold text-blue-950 dark:!border-[#262626] dark:!text-white">
+                  <th className="border-r border-gray-200 px-4 py-2.5 text-center font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                     Días
                   </th>
-                  <th className="px-4 py-2.5 text-right font-bold text-blue-950 dark:!text-white">
+                  <th className="px-4 py-2.5 text-right font-semibold text-gray-700 dark:text-[#daebf1]">
                     Ficha
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {pacientesFiltrados.map((paciente) => {
-                  const estado = (paciente.estado as EgresoState) || 'DERIVADO'
-                  const colors = EGRESO_COLORS[estado] ?? EGRESO_COLORS.DERIVADO
                   const diasAtendido = calcularDiasAtendido(paciente)
 
                   return (
                     <tr
                       key={paciente.id}
-                      className="ccr-table-row cursor-pointer border-b border-blue-100 bg-white transition hover:bg-blue-50 dark:!border-[#262626] dark:!bg-[#151515] dark:hover:!bg-[#202020]"
+                      className="ccr-table-row cursor-pointer border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       onClick={() => setSeleccionado(paciente)}
                     >
-                      <td className="max-w-[260px] border-r border-blue-100 px-4 py-2.5 dark:!border-[#262626]">
-                        <div className="truncate font-bold text-slate-900 dark:!text-white">
+                      <td className="max-w-[280px] border-r border-gray-100 px-4 py-2.5 dark:border-[#262626]">
+                        <div className="truncate font-bold text-gray-900 dark:text-white">
                           {toCapitalizedWords(paciente.nombre)}
                         </div>
-                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                        <div className="mt-0.5 text-[11px] font-semibold text-gray-500">
                           {paciente.id_ccr} · {formatearRut(paciente.rut)}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <PriorityBadge prioridad={paciente.prioridad} />
+                          <BadgePrioridad prioridad={paciente.prioridad} />
                           <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                             {toCapitalizedWords(CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria)}
                           </span>
                         </div>
                       </td>
-                      <td className="max-w-[170px] border-r border-blue-100 px-4 py-2.5 text-slate-700 dark:!border-[#262626] dark:!text-[#daebf1]">
+                      <td className="max-w-[190px] border-r border-gray-100 px-4 py-2.5 text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
                         <div className="truncate">
                           {toCapitalizedWords(paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? 'Sin asignar')}
                         </div>
                       </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 dark:!border-[#262626]">
-                        <span
-                          className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                          style={{
-                            backgroundColor: colors.bg,
-                            color: colors.text,
-                            border: `1px solid ${colors.border}`,
-                          }}
-                        >
-                          {toCapitalizedWords(ESTADO_LABELS[paciente.estado] ?? paciente.estado)}
-                        </span>
+                      <td className="border-r border-gray-100 px-4 py-2.5 dark:border-[#262626]">
+                        <BadgeEstado estado={paciente.estado} />
                       </td>
-                      <td className="whitespace-nowrap border-r border-blue-100 px-4 py-2.5 font-semibold text-slate-700 dark:!border-[#262626] dark:!text-white">
+                      <td className="whitespace-nowrap border-r border-gray-100 px-4 py-2.5 font-semibold text-gray-700 dark:border-[#262626] dark:text-white">
                         {paciente.fecha_egreso
                           ? new Date(`${paciente.fecha_egreso}T00:00:00`).toLocaleDateString('es-CL')
                           : 'Sin fecha'}
                       </td>
-                      <td className="max-w-[260px] border-r border-blue-100 px-4 py-2.5 text-slate-600 dark:!border-[#262626] dark:!text-[#b5d8e3]">
+                      <td className="max-w-[280px] border-r border-gray-100 px-4 py-2.5 text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
                         <div className="line-clamp-2">
                           {paciente.observaciones || paciente.diagnostico || 'Sin observación registrada'}
                         </div>
                       </td>
-                      <td className="border-r border-blue-100 px-4 py-2.5 text-center font-semibold text-slate-700 dark:!border-[#262626] dark:!text-white">
+                      <td className="border-r border-gray-100 px-4 py-2.5 text-center font-semibold text-gray-700 dark:border-[#262626] dark:text-white">
                         {diasAtendido}d
                       </td>
                       <td
@@ -427,7 +418,7 @@ export default function EgresosPage() {
                           onClick={() => setSeleccionado(paciente)}
                           className="ccr-table-action ccr-action-view px-2.5 py-1.5 text-[11px]"
                         >
-                          Ver ficha operativa
+                          Ver ficha
                         </button>
                       </td>
                     </tr>
@@ -437,12 +428,12 @@ export default function EgresosPage() {
             </table>
           </div>
 
-          <div className="flex flex-col gap-1 border-t-2 border-blue-200 bg-gradient-to-r from-blue-50 to-white px-5 py-3 text-[11px] font-medium text-blue-900 dark:!border-[#262626] dark:!from-[#202020] dark:!to-[#111111] dark:!text-[#daebf1] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
             <p>
               {pacientesFiltrados.length} egreso
               {pacientesFiltrados.length !== 1 ? 's' : ''} en la tabla
             </p>
-            <p className="text-blue-700 dark:!text-[#8fc4d6]">
+            <p className="text-gray-400">
               Mostrando {pacientesFiltrados.length} de {pacientes.length}
             </p>
           </div>
@@ -464,28 +455,31 @@ export default function EgresosPage() {
   )
 }
 
-function EgresoStat({ estado, total }: { estado: EgresoState; total: number }) {
-  const colors = EGRESO_COLORS[estado]
+function EgresoFilterChip({
+  active,
+  label,
+  total,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  total: number
+  onClick: () => void
+}) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">
-            {ESTADO_LABELS[estado]}
-          </p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{total}</p>
-        </div>
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-lg border"
-          style={{
-            backgroundColor: colors.bg,
-            borderColor: colors.border,
-            color: colors.text,
-          }}
-        >
-          {estado === 'EGRESO_ADMINISTRATIVO' ? <FiFileText /> : <FiCalendar />}
-        </div>
-      </div>
-    </article>
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? 'inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700'
+          : 'inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50'
+      }
+    >
+      <span>{label}</span>
+      <span className={active ? 'rounded-full bg-red-100 px-2 py-0.5 text-[10px]' : 'rounded-full bg-gray-100 px-2 py-0.5 text-[10px]'}>
+        {total}
+      </span>
+    </button>
   )
 }
