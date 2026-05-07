@@ -17,6 +17,7 @@ import {
   FiRefreshCw,
   FiSearch,
   FiUser,
+  FiX,
 } from "react-icons/fi";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
@@ -98,6 +99,13 @@ function accionSugerida(paciente: Paciente) {
   return "Registrar contacto; si no contesta pasa a RESCATE.";
 }
 
+type AccionContacto = "CONTESTO" | "NO_CONTESTO";
+
+interface ConfirmacionContacto {
+  paciente: Paciente;
+  accion: AccionContacto;
+}
+
 export default function LlamadosPage() {
   const { user } = useAuth();
   const { toast, error: toastError, info: toastInfo } = useToast();
@@ -105,8 +113,9 @@ export default function LlamadosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [observacionRapida, setObservacionRapida] = useState("");
+  const [observacionContacto, setObservacionContacto] = useState("");
   const [fechaAtencion, setFechaAtencion] = useState(fechaHoraLocalDefault());
+  const [confirmacionContacto, setConfirmacionContacto] = useState<ConfirmacionContacto | null>(null);
   const [accionLoading, setAccionLoading] = useState("");
   const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
   const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
@@ -229,11 +238,24 @@ export default function LlamadosPage() {
     }
   }
 
-  async function registrarNoContesto(paciente: Paciente) {
-    const notas = observacionRapida.trim();
+  function abrirConfirmacionContacto(paciente: Paciente, accion: AccionContacto) {
+    setConfirmacionContacto({ paciente, accion });
+    setObservacionContacto("");
+    setFechaAtencion(fechaHoraLocalDefault());
+  }
+
+  function cerrarConfirmacionContacto() {
+    if (accionLoading) return;
+    setConfirmacionContacto(null);
+    setObservacionContacto("");
+    setFechaAtencion(fechaHoraLocalDefault());
+  }
+
+  async function registrarNoContesto(paciente: Paciente, observacion: string) {
+    const notas = observacion.trim();
     if (paciente.estado === "RESCATE" && !notas) {
       toast.warning("Debe registrar una observación para egreso administrativo.");
-      return;
+      return false;
     }
 
     setAccionLoading(`no-contesto-${paciente.id}`);
@@ -245,7 +267,6 @@ export default function LlamadosPage() {
       });
 
       aplicarPacienteContactabilidad(actualizado);
-      setObservacionRapida("");
       if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
         toast.warning("Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO.");
       } else if (actualizado.estado === "RESCATE") {
@@ -253,18 +274,20 @@ export default function LlamadosPage() {
       } else {
         toast.warning("Contacto sin respuesta registrado.");
       }
+      return true;
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo registrar el contacto."));
+      return false;
     } finally {
       setAccionLoading("");
     }
   }
 
-  async function registrarContesto(paciente: Paciente) {
-    const notas = observacionRapida.trim();
-    if (!fechaAtencion) {
+  async function registrarContesto(paciente: Paciente, observacion: string, fechaHora: string) {
+    const notas = observacion.trim();
+    if (!fechaHora) {
       toast.warning("Seleccione fecha y hora para programar la atención.");
-      return;
+      return false;
     }
 
     setAccionLoading(`contesto-${paciente.id}`);
@@ -276,17 +299,31 @@ export default function LlamadosPage() {
       });
 
       const actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/programar-atencion/`, {
-        fecha_hora: new Date(fechaAtencion).toISOString(),
+        fecha_hora: new Date(fechaHora).toISOString(),
       });
 
       aplicarPacienteContactabilidad(actualizado);
-      setObservacionRapida("");
-      setFechaAtencion(fechaHoraLocalDefault());
       toast.success("Contacto confirmado y atención programada.");
+      return true;
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo confirmar el contacto."));
+      return false;
     } finally {
       setAccionLoading("");
+    }
+  }
+
+  async function confirmarContacto() {
+    if (!confirmacionContacto) return;
+
+    const { paciente, accion } = confirmacionContacto;
+    const guardado =
+      accion === "NO_CONTESTO"
+        ? await registrarNoContesto(paciente, observacionContacto)
+        : await registrarContesto(paciente, observacionContacto, fechaAtencion);
+
+    if (guardado) {
+      cerrarConfirmacionContacto();
     }
   }
 
@@ -449,7 +486,7 @@ export default function LlamadosPage() {
                       selected={pacienteSeleccionado?.id === paciente.id}
                       onSelect={() => {
                         setSelectedId(paciente.id);
-                        setObservacionRapida("");
+                        setObservacionContacto("");
                         setFechaAtencion(fechaHoraLocalDefault());
                       }}
                     />
@@ -460,14 +497,10 @@ export default function LlamadosPage() {
               {pacienteSeleccionado && (
                 <ContactabilidadDetail
                   paciente={pacienteSeleccionado}
-                  observacion={observacionRapida}
-                  fechaAtencion={fechaAtencion}
                   loadingNoContesto={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
                   loadingContesto={accionLoading === `contesto-${pacienteSeleccionado.id}`}
-                  onObservacionChange={setObservacionRapida}
-                  onFechaAtencionChange={setFechaAtencion}
-                  onContesto={() => void registrarContesto(pacienteSeleccionado)}
-                  onNoContesto={() => void registrarNoContesto(pacienteSeleccionado)}
+                  onContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "CONTESTO")}
+                  onNoContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "NO_CONTESTO")}
                   onEditarContacto={() => setPacienteEdicion(pacienteSeleccionado)}
                   onVerFicha={() => setPacienteFicha(pacienteSeleccionado)}
                 />
@@ -486,6 +519,23 @@ export default function LlamadosPage() {
             void cargar();
             setPacienteFicha(null);
           }}
+        />
+      )}
+
+      {confirmacionContacto && (
+        <ConfirmarContactoModal
+          paciente={confirmacionContacto.paciente}
+          accion={confirmacionContacto.accion}
+          observacion={observacionContacto}
+          fechaAtencion={fechaAtencion}
+          loading={
+            accionLoading ===
+            `${confirmacionContacto.accion === "NO_CONTESTO" ? "no-contesto" : "contesto"}-${confirmacionContacto.paciente.id}`
+          }
+          onObservacionChange={setObservacionContacto}
+          onFechaAtencionChange={setFechaAtencion}
+          onCancel={cerrarConfirmacionContacto}
+          onConfirm={() => void confirmarContacto()}
         />
       )}
 
@@ -666,24 +716,16 @@ function ContactabilidadListItem({
 
 function ContactabilidadDetail({
   paciente,
-  observacion,
-  fechaAtencion,
   loadingNoContesto,
   loadingContesto,
-  onObservacionChange,
-  onFechaAtencionChange,
   onContesto,
   onNoContesto,
   onEditarContacto,
   onVerFicha,
 }: {
   paciente: Paciente;
-  observacion: string;
-  fechaAtencion: string;
   loadingNoContesto: boolean;
   loadingContesto: boolean;
-  onObservacionChange: (value: string) => void;
-  onFechaAtencionChange: (value: string) => void;
   onContesto: () => void;
   onNoContesto: () => void;
   onEditarContacto: () => void;
@@ -691,7 +733,6 @@ function ContactabilidadDetail({
 }) {
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
-  const requiereObservacion = paciente.estado === "RESCATE";
   const accionBloqueada = loadingNoContesto || loadingContesto;
 
   return (
@@ -747,33 +788,9 @@ function ContactabilidadDetail({
           </p>
         </div>
 
-        <section className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-600">Registro manual</p>
-            <span className="text-[10px] font-semibold text-slate-500">Solo registra resultado de llamada</span>
-          </div>
-          <textarea
-            value={observacion}
-            onChange={(event) => onObservacionChange(event.target.value)}
-            rows={2}
-            placeholder={requiereObservacion ? "Observación obligatoria para egreso administrativo." : "Observación opcional del contacto."}
-            className="ccr-control-input w-full resize-none px-3 py-2 text-xs"
-          />
-          <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            Fecha y hora si contestó
-            <input
-              type="datetime-local"
-              value={fechaAtencion}
-              onChange={(event) => onFechaAtencionChange(event.target.value)}
-              className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
-            />
-          </label>
-          {requiereObservacion && (
-            <p className="mt-2 text-[11px] font-semibold text-orange-700">
-              En RESCATE, un nuevo “No contestó” requiere observación.
-            </p>
-          )}
-        </section>
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
+          El resultado se confirma en el siguiente paso. Ahí se ingresa la observación.
+        </p>
 
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -813,5 +830,131 @@ function ContactabilidadDetail({
         </div>
       </div>
     </aside>
+  );
+}
+
+function ConfirmarContactoModal({
+  paciente,
+  accion,
+  observacion,
+  fechaAtencion,
+  loading,
+  onObservacionChange,
+  onFechaAtencionChange,
+  onCancel,
+  onConfirm,
+}: {
+  paciente: Paciente;
+  accion: AccionContacto;
+  observacion: string;
+  fechaAtencion: string;
+  loading: boolean;
+  onObservacionChange: (value: string) => void;
+  onFechaAtencionChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const esNoContesto = accion === "NO_CONTESTO";
+  const requiereObservacion = esNoContesto && paciente.estado === "RESCATE";
+  const confirmDisabled = loading || (requiereObservacion && !observacion.trim()) || (!esNoContesto && !fechaAtencion);
+  const titulo = esNoContesto ? "Confirmar no contestó" : "Confirmar contacto";
+  const descripcion = esNoContesto
+    ? paciente.estado === "RESCATE"
+      ? "Se registrará un segundo contacto sin respuesta y el paciente pasará a EGRESO ADMINISTRATIVO."
+      : "Se registrará contacto sin respuesta y el paciente pasará a RESCATE."
+    : "Se confirmará que el paciente contestó y se programará su atención.";
+
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Cerrar confirmación"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={loading ? undefined : onCancel}
+      />
+      <div className="relative w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Confirmación</p>
+            <h2 className="mt-1 text-base font-black text-slate-950">{titulo}</h2>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{descripcion}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+            aria-label="Cancelar"
+          >
+            <FiX size={16} />
+          </button>
+        </header>
+
+        <div className="space-y-3 px-5 py-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="break-words text-sm font-black text-slate-950">{paciente.nombre}</p>
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+              {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
+            </p>
+          </div>
+
+          <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+            Observación {requiereObservacion ? "obligatoria" : "opcional"}
+            <textarea
+              autoFocus
+              value={observacion}
+              onChange={(event) => onObservacionChange(event.target.value)}
+              rows={3}
+              placeholder={
+                requiereObservacion
+                  ? "Ingrese la observación antes de confirmar."
+                  : "Ingrese una observación si corresponde."
+              }
+              className="ccr-control-input mt-1 w-full resize-none px-3 py-2 text-xs normal-case tracking-normal"
+            />
+          </label>
+
+          {!esNoContesto && (
+            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+              Fecha y hora de atención
+              <input
+                type="datetime-local"
+                value={fechaAtencion}
+                onChange={(event) => onFechaAtencionChange(event.target.value)}
+                className="ccr-control-input mt-1 h-9 w-full px-3 text-xs normal-case tracking-normal"
+              />
+            </label>
+          )}
+
+          {requiereObservacion && (
+            <p className="rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-800">
+              Para RESCATE la observación es obligatoria antes de confirmar.
+            </p>
+          )}
+        </div>
+
+        <footer className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black text-white transition disabled:opacity-50 ${
+              esNoContesto ? "bg-[#ED4E1D] hover:bg-[#C93F16]" : "bg-[#335FDB] hover:bg-[#284FC0]"
+            }`}
+          >
+            {loading && <FiRefreshCw className="animate-spin" size={14} />}
+            {esNoContesto ? "Confirmar no contestó" : "Confirmar y agendar"}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
