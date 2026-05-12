@@ -123,6 +123,15 @@ export default function EstadisticasPage() {
       ["Egresos del mes", resumen.actividad_mes.egresos_total],
       ["Sobre 90 dias", resumen.corte.sobre_90_dias],
       [],
+      ["Sector CESFAM", "Total"],
+      ...(resumen.por_sector_cesfam ?? []).map((item) => [item.label, item.total]),
+      [],
+      ["Sector oficial", "Total"],
+      ...(resumen.por_sector_oficial ?? []).map((item) => [item.label, item.total]),
+      [],
+      ["Diagnóstico", "Total"],
+      ...(resumen.por_diagnostico ?? []).map((item) => [item.label, item.total]),
+      [],
       ["Responsable CCR", "Asignados corte", "Pendientes", "Rescate", "Ingresos mes", "Egresos mes"],
       ...porResponsable.responsables.map((item) => [
         item.responsable_nombre ?? "Sin nombre",
@@ -339,6 +348,12 @@ export default function EstadisticasPage() {
             <DistributionCard title="Categoría" items={resumen.por_categoria} labelKey="label" />
           </section>
 
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+            <DistributionCard title="Sector CESFAM" items={resumen.por_sector_cesfam ?? []} labelKey="label" />
+            <DistributionCard title="Sector oficial" items={resumen.por_sector_oficial ?? []} labelKey="label" />
+            <DistributionCard title="Diagnósticos frecuentes" items={resumen.por_diagnostico ?? []} labelKey="label" />
+          </section>
+
           <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
             <div className="mb-4 flex items-center justify-between">
               <div>
@@ -481,7 +496,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
     return <EmptyState text="No hay responsables para mostrar." />;
   }
   return (
-    <div className="overflow-x-auto">
+    <div className="ccr-data-table overflow-x-auto rounded-lg border border-slate-100">
       <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
         <thead>
           <tr className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">

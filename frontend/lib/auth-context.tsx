@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { api, setMemoryToken } from './api'
-import { setAuthCookies, clearAuthCookies } from '@/app/actions'
+import { setAuthCookies, clearAuthCookies, getAccessToken } from '@/app/actions'
 import type { Usuario } from './types'
 
 interface AuthCtx {
@@ -25,18 +25,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) setLoading(false)
     }, 6500)
 
-    api
-      .get<Usuario>('/auth/me/')
-      .then((u) => {
-        if (mounted) setUser(u)
-      })
-      .catch(() => {
-        if (mounted) setUser(null)
-      })
-      .finally(() => {
-        clearTimeout(hardStop)
-        if (mounted) setLoading(false)
-      })
+    async function bootstrapAuth() {
+      try {
+        const access = await getAccessToken()
+        if (access) setMemoryToken(access)
+      } catch {
+        // Si falla la hidratación, seguimos con /auth/me/
+      }
+
+      api
+        .get<Usuario>('/auth/me/')
+        .then((u) => {
+          if (mounted) setUser(u)
+        })
+        .catch(() => {
+          if (mounted) setUser(null)
+        })
+        .finally(() => {
+          clearTimeout(hardStop)
+          if (mounted) setLoading(false)
+        })
+    }
+
+    void bootstrapAuth()
 
     return () => {
       mounted = false

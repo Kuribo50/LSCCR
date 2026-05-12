@@ -12,7 +12,8 @@ type CampoEditable =
   | 'nombre'
   | 'rut'
   | 'edad'
-  | 'percapita_desde'
+  | 'sector_oficial'
+  | 'sector_cesfam'
   | 'diagnostico'
   | 'prioridad'
   | 'observaciones'
@@ -23,7 +24,8 @@ interface FilaManual {
   nombre: string
   rut: string
   edad: string
-  percapita_desde: string
+  sector_oficial: string
+  sector_cesfam: string
   diagnostico: string
   profesional: string
   prioridad: string
@@ -35,7 +37,8 @@ const COLUMNAS: { key: CampoEditable; label: string; placeholder: string }[] = [
   { key: 'nombre', label: 'NOMBRE', placeholder: 'Nombre completo' },
   { key: 'rut', label: 'RUT', placeholder: '11.111.111-K' },
   { key: 'edad', label: 'EDAD', placeholder: '65' },
-  { key: 'percapita_desde', label: 'DESDE', placeholder: 'CESFAM' },
+  { key: 'sector_oficial', label: 'SECTOR OFICIAL', placeholder: 'AZUL' },
+  { key: 'sector_cesfam', label: 'SectorCesfam', placeholder: 'AZUL' },
   { key: 'diagnostico', label: 'DIAGNOSTICO', placeholder: 'Diagnostico' },
   { key: 'prioridad', label: 'PRIORIDAD', placeholder: 'MODERADA' },
   { key: 'observaciones', label: 'OBSERVACIONES', placeholder: 'Observaciones' },
@@ -64,6 +67,22 @@ function crearFila(celdas: string[], index: number): FilaManual {
   const limpias = limpiarCeldasFinales(celdas)
   const baseId = `${Date.now()}-${index}`
 
+  if (limpias.length >= 14) {
+    return {
+      id: baseId,
+      fecha_derivacion: (limpias[0] ?? '').trim(),
+      sector_oficial: (limpias[1] ?? '').trim(),
+      sector_cesfam: (limpias[2] ?? '').trim(),
+      nombre: (limpias[3] ?? '').trim(),
+      rut: formatearRut(limpias[4] ?? ''),
+      edad: (limpias[5] ?? '').trim(),
+      diagnostico: (limpias[6] ?? '').trim(),
+      profesional: (limpias[7] ?? 'KINESIOLOGO').trim() || 'KINESIOLOGO',
+      prioridad: (limpias[8] ?? '').trim(),
+      observaciones: (limpias[9] ?? '').trim(),
+    }
+  }
+
   if (limpias.length >= 10 || pareceVarianteA(limpias)) {
     return {
       id: baseId,
@@ -71,7 +90,8 @@ function crearFila(celdas: string[], index: number): FilaManual {
       nombre: (limpias[2] ?? '').trim(),
       rut: formatearRut(limpias[3] ?? ''),
       edad: (limpias[4] ?? '').trim(),
-      percapita_desde: (limpias[5] ?? '').trim(),
+      sector_oficial: '',
+      sector_cesfam: (limpias[5] ?? '').trim(),
       diagnostico: (limpias[6] ?? '').trim(),
       profesional: (limpias[7] ?? 'KINESIOLOGO').trim() || 'KINESIOLOGO',
       prioridad: (limpias[8] ?? '').trim(),
@@ -86,7 +106,8 @@ function crearFila(celdas: string[], index: number): FilaManual {
       nombre: (limpias[1] ?? '').trim(),
       rut: formatearRut(limpias[2] ?? ''),
       edad: (limpias[3] ?? '').trim(),
-      percapita_desde: (limpias[4] ?? '').trim(),
+      sector_oficial: '',
+      sector_cesfam: (limpias[4] ?? '').trim(),
       diagnostico: (limpias[5] ?? '').trim(),
       profesional: (limpias[6] ?? 'KINESIOLOGO').trim() || 'KINESIOLOGO',
       prioridad: (limpias[7] ?? '').trim(),
@@ -100,7 +121,8 @@ function crearFila(celdas: string[], index: number): FilaManual {
     nombre: (limpias[1] ?? '').trim(),
     rut: formatearRut(limpias[2] ?? ''),
     edad: (limpias[3] ?? '').trim(),
-    percapita_desde: (limpias[4] ?? '').trim(),
+    sector_oficial: '',
+    sector_cesfam: (limpias[4] ?? '').trim(),
     diagnostico: (limpias[5] ?? '').trim(),
     profesional: 'KINESIOLOGO',
     prioridad: (limpias[6] ?? '').trim(),
@@ -222,7 +244,8 @@ export default function IngresoManual() {
         nombre: fila.nombre.trim(),
         rut: rutParaApi(fila.rut),
         edad: fila.edad.trim() === '' ? 0 : Number(fila.edad),
-        percapita_desde: fila.percapita_desde.trim(),
+        sector_oficial: fila.sector_oficial.trim().toUpperCase(),
+        sector_cesfam: fila.sector_cesfam.trim().toUpperCase(),
         diagnostico: fila.diagnostico.trim(),
         profesional: fila.profesional.trim() || 'KINESIOLOGO',
         prioridad: fila.prioridad.trim(),

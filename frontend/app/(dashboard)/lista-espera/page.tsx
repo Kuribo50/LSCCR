@@ -23,7 +23,7 @@ import {
 } from "@tanstack/react-table";
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FiDownload, FiFilter, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiDownload, FiFilter, FiMail, FiPhone, FiRefreshCw, FiSearch, FiUser } from "react-icons/fi";
 import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -35,7 +35,6 @@ import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import FichaPaciente from "@/components/FichaPaciente";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import BadgeDias from "@/components/BadgeDias";
-import EditarPacienteModal from "@/components/EditarPacienteModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TableSkeleton } from "@/components/Skeleton";
 import EmptyState from "@/components/EmptyState";
@@ -47,17 +46,25 @@ const PRIORIDAD_ORDER: Record<Prioridad, number> = {
   LICENCIA_MEDICA: 3,
 };
 
+const LISTA_ESPERA_ESTADOS: Estado[] = ["PENDIENTE", "RESCATE"];
+
 type WaitlistRow = {
   patient: Paciente;
   nombre: string;
   rut: string;
   rutRaw: string;
   edad: number;
+  sector_oficial: string;
+  sector_cesfam: string;
   diagnostico: string;
+  responsable: string;
+  fecha_ingreso: string | null;
   prioridad: Prioridad;
   prioridadLabel: string;
   categoria: Categoria;
   categoriaLabel: string;
+  estado: Estado;
+  estadoLabel: string;
   dias_en_lista: number;
   diasLabel: string;
   searchIndex: string;
@@ -77,11 +84,14 @@ type AssignContactDraft = {
   telefono: string;
   telefono_recados: string;
   email: string;
+  observaciones: string;
 };
 type QuickFilterState = {
   estado: Estado | "TODOS";
   prioridad: Prioridad | "TODAS";
   categoria: Categoria | "TODAS";
+  sector_cesfam: string;
+  sector_oficial: string;
   responsable: string;
 };
 
@@ -115,6 +125,20 @@ function getResponsableLabel(paciente: Paciente) {
     paciente.kine_asignado_nombre ??
     "Sin responsable"
   );
+}
+
+function formatDateDisplay(value: string | null | undefined) {
+  if (!value) return "Sin fecha";
+  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "Sin fecha";
+  return parsed.toLocaleDateString("es-CL");
+}
+
+function dateSortValue(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return Number.POSITIVE_INFINITY;
+  return parsed.getTime();
 }
 
 function descargarBlob(blob: Blob, filename: string) {
@@ -196,10 +220,14 @@ function matchesFilterSearch(columnId: string, option: string, query: string) {
 }
 
 const BASE_COLUMN_VISIBILITY: VisibilityState = {
+  responsable: true,
   nombre: true,
   rut: true,
   edad: true,
+  sector_cesfam: true,
+  sector_oficial: true,
   diagnostico: true,
+  fecha_ingreso: true,
   prioridadLabel: true,
   categoriaLabel: true,
   dias_en_lista: true,
@@ -220,8 +248,10 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
   if (width < 768) {
     return {
       ...BASE_COLUMN_VISIBILITY,
+      responsable: false,
       edad: false,
       diagnostico: false,
+      fecha_ingreso: false,
       prioridadLabel: false,
       categoriaLabel: false,
     };
@@ -230,12 +260,31 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
   if (width < 1200) {
     return {
       ...BASE_COLUMN_VISIBILITY,
+      responsable: false,
       diagnostico: false,
+      fecha_ingreso: false,
       categoriaLabel: false,
     };
   }
 
   return BASE_COLUMN_VISIBILITY;
+}
+
+function getCompactColumnSizing(isAdmin: boolean): Record<string, number> {
+  return {
+    acciones: isAdmin ? 132 : 96,
+    responsable: 132,
+    nombre: 200,
+    rut: 126,
+    edad: 72,
+    sector_cesfam: 170,
+    sector_oficial: 170,
+    diagnostico: 230,
+    fecha_ingreso: 112,
+    prioridadLabel: 104,
+    categoriaLabel: 104,
+    dias_en_lista: 88,
+  };
 }
 
 export default function ListaEsperaPage() {
@@ -248,13 +297,13 @@ export default function ListaEsperaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null);
-  const [editando, setEditando] = useState<Paciente | null>(null);
   const [asignando, setAsignando] = useState<number | null>(null);
   const [asignarPaciente, setAsignarPaciente] = useState<Paciente | null>(null);
   const [asignarContacto, setAsignarContacto] = useState<AssignContactDraft>({
     telefono: "",
     telefono_recados: "",
     email: "",
+    observaciones: "",
   });
   const [asignarError, setAsignarError] = useState("");
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -269,19 +318,37 @@ export default function ListaEsperaPage() {
     estado: "TODOS",
     prioridad: "TODAS",
     categoria: "TODAS",
+    sector_cesfam: "TODOS",
+    sector_oficial: "TODOS",
     responsable: "TODOS",
   });
+  const [showQuickFilters, setShowQuickFilters] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const horizontalScrollRef = useRef(0);
+  const searchUrlAplicadoRef = useRef<string | null>(null);
   const initialTableState = useMemo(
     () => ({
       globalSearch: "",
       sorting: [{ id: "dias_en_lista", desc: true as const }],
       columnFilters: [],
-      columnSizing: {},
-      columnOrder: [],
+      columnSizing: getCompactColumnSizing(user?.rol === "ADMIN"),
+      columnOrder: [
+        "acciones",
+        "responsable",
+        "nombre",
+        "rut",
+        "edad",
+        "sector_cesfam",
+        "sector_oficial",
+        "diagnostico",
+        "fecha_ingreso",
+        "prioridadLabel",
+        "categoriaLabel",
+        "dias_en_lista",
+      ],
       columnVisibility: {},
     }),
-    [],
+    [user?.rol],
   );
   const {
     state: tableState,
@@ -303,6 +370,7 @@ export default function ListaEsperaPage() {
   const anio = searchParams.get("anio");
   const importacionId = searchParams.get("importacion");
   const alertaParam = searchParams.get("alerta");
+  const searchParam = searchParams.get("search") ?? "";
   const alertaActiva = alertaParam && ALERTA_LABELS[alertaParam] ? alertaParam : null;
   const alertaActivaLabel = alertaActiva ? ALERTA_LABELS[alertaActiva] : null;
 
@@ -314,7 +382,7 @@ export default function ListaEsperaPage() {
       if (alertaActiva) {
         params.set("alerta", alertaActiva);
       } else {
-        params.set("sin_asignar", "1");
+        params.set("estado", LISTA_ESPERA_ESTADOS.join(","));
       }
       if (mes) params.set("mes", mes);
       if (anio) params.set("anio", anio);
@@ -336,6 +404,13 @@ export default function ListaEsperaPage() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    if (!hasHydrated || !searchParam) return;
+    if (searchUrlAplicadoRef.current === searchParam) return;
+    searchUrlAplicadoRef.current = searchParam;
+    startTransition(() => setGlobalSearch(searchParam));
+  }, [hasHydrated, searchParam, setGlobalSearch]);
 
   useEffect(() => {
     if (!hasHydrated || typeof window === "undefined") return;
@@ -361,15 +436,30 @@ export default function ListaEsperaPage() {
   useEffect(() => {
     if (!hasHydrated) return;
 
-    const defaultActionsWidth = 230;
+    const compactSizing = getCompactColumnSizing(user?.rol === "ADMIN");
     setColumnSizing((prev) => {
-      const current = prev.acciones;
-      if (current === defaultActionsWidth) {
-        return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const [columnId, width] of Object.entries(compactSizing)) {
+        if (next[columnId] !== width) {
+          next[columnId] = width;
+          changed = true;
+        }
       }
-      return { ...prev, acciones: defaultActionsWidth };
+      return changed ? next : prev;
     });
-  }, [hasHydrated, setColumnSizing]);
+  }, [hasHydrated, setColumnSizing, user?.rol]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    setColumnOrder((prev) => {
+      if (!prev.length) return prev;
+      if (prev[0] === "acciones") return prev;
+      const withoutActions = prev.filter((id) => id !== "acciones");
+      return ["acciones", ...withoutActions];
+    });
+  }, [hasHydrated, setColumnOrder]);
 
   async function handleEliminar(id: number, nombre: string) {
     if (user?.rol !== "ADMIN") return;
@@ -396,13 +486,13 @@ export default function ListaEsperaPage() {
     try {
       toastInfo("Exportación de lista de espera iniciada.");
       const params = new URLSearchParams();
-      const usaResponsableEspecifico =
-        quickFilters.responsable !== "TODOS" &&
-        quickFilters.responsable !== "SIN_RESPONSABLE";
       if (alertaActiva) {
         params.set("alerta", alertaActiva);
-      } else if (!usaResponsableEspecifico) {
-        params.set("sin_asignar", "1");
+      }
+      if (quickFilters.estado !== "TODOS") {
+        params.set("estado", quickFilters.estado);
+      } else if (!alertaActiva) {
+        params.set("estado", LISTA_ESPERA_ESTADOS.join(","));
       }
       if (mes) params.set("mes", mes);
       if (anio) params.set("anio", anio);
@@ -410,9 +500,10 @@ export default function ListaEsperaPage() {
       if (tableState.globalSearch.trim()) {
         params.set("search", tableState.globalSearch.trim());
       }
-      if (quickFilters.estado !== "TODOS") params.set("estado", quickFilters.estado);
       if (quickFilters.prioridad !== "TODAS") params.set("prioridad", quickFilters.prioridad);
       if (quickFilters.categoria !== "TODAS") params.set("categoria", quickFilters.categoria);
+      if (quickFilters.sector_cesfam !== "TODOS") params.set("sector_cesfam", quickFilters.sector_cesfam);
+      if (quickFilters.sector_oficial !== "TODOS") params.set("sector_oficial", quickFilters.sector_oficial);
       if (quickFilters.responsable !== "TODOS") {
         if (quickFilters.responsable === "SIN_RESPONSABLE") {
           params.set("sin_asignar", "1");
@@ -445,11 +536,37 @@ export default function ListaEsperaPage() {
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [openFilter]);
 
+  useEffect(() => {
+    if (!openFilter) return;
+
+    function closeOnScrollOrResize() {
+      setOpenFilter(null);
+      setFilterPosition(null);
+    }
+
+    const scrollElement = tableScrollRef.current;
+    window.addEventListener("resize", closeOnScrollOrResize);
+    window.addEventListener("scroll", closeOnScrollOrResize, true);
+    scrollElement?.addEventListener("scroll", closeOnScrollOrResize, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("resize", closeOnScrollOrResize);
+      window.removeEventListener("scroll", closeOnScrollOrResize, true);
+      scrollElement?.removeEventListener("scroll", closeOnScrollOrResize);
+    };
+  }, [openFilter]);
+
   const quickFilterOptions = useMemo(() => {
     const responsables = new Map<string, string>();
+    const sectoresCesfam = new Set<string>();
+    const sectoresOficiales = new Set<string>();
     let tieneSinResponsable = false;
 
     pacientes.forEach((paciente) => {
+      if (paciente.sector_cesfam) sectoresCesfam.add(paciente.sector_cesfam);
+      if (paciente.sector_oficial) sectoresOficiales.add(paciente.sector_oficial);
       if (paciente.kine_asignado) {
         responsables.set(String(paciente.kine_asignado), getResponsableLabel(paciente));
       } else {
@@ -467,6 +584,8 @@ export default function ListaEsperaPage() {
       categorias: (Object.keys(CATEGORIA_LABELS) as Categoria[]).filter(
         (categoria) => pacientes.some((paciente) => paciente.categoria === categoria),
       ),
+      sectoresCesfam: Array.from(sectoresCesfam).sort((a, b) => a.localeCompare(b, "es")),
+      sectoresOficiales: Array.from(sectoresOficiales).sort((a, b) => a.localeCompare(b, "es")),
       responsables: [
         ...(tieneSinResponsable
           ? [{ value: "SIN_RESPONSABLE", label: "Sin responsable" }]
@@ -484,6 +603,8 @@ export default function ListaEsperaPage() {
         quickFilters.estado !== "TODOS",
         quickFilters.prioridad !== "TODAS",
         quickFilters.categoria !== "TODAS",
+        quickFilters.sector_cesfam !== "TODOS",
+        quickFilters.sector_oficial !== "TODOS",
         quickFilters.responsable !== "TODOS",
       ].filter(Boolean).length,
     [quickFilters],
@@ -504,6 +625,18 @@ export default function ListaEsperaPage() {
         if (
           quickFilters.categoria !== "TODAS" &&
           paciente.categoria !== quickFilters.categoria
+        ) {
+          return false;
+        }
+        if (
+          quickFilters.sector_cesfam !== "TODOS" &&
+          paciente.sector_cesfam !== quickFilters.sector_cesfam
+        ) {
+          return false;
+        }
+        if (
+          quickFilters.sector_oficial !== "TODOS" &&
+          paciente.sector_oficial !== quickFilters.sector_oficial
         ) {
           return false;
         }
@@ -529,24 +662,46 @@ export default function ListaEsperaPage() {
         const rutRaw = normalizeRut(patient.rut);
         const nombreNormalizado = normalizeSearchText(patient.nombre);
         const diagnosticoNormalizado = normalizeSearchText(patient.diagnostico);
+        const responsable = getResponsableLabel(patient);
+        const estadoLabel = ESTADO_LABELS[patient.estado] ?? patient.estado;
+        const prioridadLabel = PRIORIDAD_LABELS[patient.prioridad] ?? patient.prioridad;
+        const categoriaLabel = CATEGORIA_LABELS[patient.categoria] ?? patient.categoria;
         return {
           patient,
           nombre: toCapitalizedWords(patient.nombre),
           rut,
           rutRaw,
           edad: patient.edad,
+          sector_oficial: patient.sector_oficial || "-",
+          sector_cesfam: patient.sector_cesfam || "-",
           diagnostico: toCapitalizedWords(patient.diagnostico),
+          responsable: toCapitalizedWords(responsable),
+          fecha_ingreso: patient.fecha_ingreso ?? patient.fecha_derivacion ?? null,
           prioridad: patient.prioridad,
-          prioridadLabel: toCapitalizedWords(
-            PRIORIDAD_LABELS[patient.prioridad] ?? patient.prioridad,
-          ),
+          prioridadLabel: toCapitalizedWords(prioridadLabel),
           categoria: patient.categoria,
-          categoriaLabel: toCapitalizedWords(
-            CATEGORIA_LABELS[patient.categoria] ?? patient.categoria,
-          ),
+          categoriaLabel: toCapitalizedWords(categoriaLabel),
+          estado: patient.estado,
+          estadoLabel: toCapitalizedWords(estadoLabel),
           dias_en_lista: patient.dias_en_lista,
           diasLabel: `${patient.dias_en_lista}d`,
-          searchIndex: `${nombreNormalizado} ${rutRaw} ${diagnosticoNormalizado}`,
+          searchIndex: [
+            patient.id_ccr,
+            nombreNormalizado,
+            rutRaw,
+            diagnosticoNormalizado,
+            responsable,
+            estadoLabel,
+            prioridadLabel,
+            patient.prioridad,
+            categoriaLabel,
+            patient.categoria,
+            patient.sector_cesfam,
+            patient.sector_oficial,
+            patient.profesional,
+            patient.percapita_desde,
+            patient.observaciones,
+          ].map((value) => normalizeSearchText(String(value ?? ""))).join(" "),
         };
       }),
     [pacientesFiltradosRapidos],
@@ -554,13 +709,34 @@ export default function ListaEsperaPage() {
 
   const columns = useMemo(
     () => [
+      ...(user?.rol === "ADMIN"
+        ? [
+            columnHelper.accessor("responsable", {
+              header: "Responsable CCR",
+              enableColumnFilter: true,
+              filterFn: multiSelectFilter,
+              enableResizing: true,
+              size: 132,
+              minSize: 108,
+              meta: { label: "Responsable CCR", filterable: true } satisfies ColumnMeta,
+              cell: (info) => (
+                <div
+                  className="truncate font-semibold text-gray-800"
+                  title={info.getValue() || "Sin responsable"}
+                >
+                  {info.getValue() || "Sin asignar"}
+                </div>
+              ),
+            }),
+          ]
+        : []),
       columnHelper.accessor("nombre", {
         header: "Nombre",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 280,
-        minSize: 220,
+        size: 200,
+        minSize: 160,
         meta: { label: "Nombre", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <div
@@ -576,8 +752,8 @@ export default function ListaEsperaPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 170,
-        minSize: 140,
+        size: 126,
+        minSize: 102,
         sortingFn: (a, b) =>
           a.original.rutRaw.localeCompare(b.original.rutRaw, "es"),
         meta: { label: "RUT", filterable: true } satisfies ColumnMeta,
@@ -590,20 +766,48 @@ export default function ListaEsperaPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 112,
-        minSize: 96,
+        size: 72,
+        minSize: 64,
         meta: {
           label: "Edad",
           filterable: true,
           kind: "number",
         } satisfies ColumnMeta,
       }),
+      columnHelper.accessor("sector_cesfam", {
+        header: "Sector CESFAM",
+        enableColumnFilter: true,
+        filterFn: multiSelectFilter,
+        enableResizing: true,
+        size: 170,
+        minSize: 140,
+        meta: { label: "Sector CESFAM", filterable: true } satisfies ColumnMeta,
+        cell: (info) => (
+          <span className="block truncate text-gray-600" title={info.getValue()}>
+            {info.getValue()}
+          </span>
+        ),
+      }),
+      columnHelper.accessor("sector_oficial", {
+        header: "Sector oficial",
+        enableColumnFilter: true,
+        filterFn: multiSelectFilter,
+        enableResizing: true,
+        size: 170,
+        minSize: 140,
+        meta: { label: "Sector oficial", filterable: true } satisfies ColumnMeta,
+        cell: (info) => (
+          <span className="block truncate text-gray-600" title={info.getValue()}>
+            {info.getValue()}
+          </span>
+        ),
+      }),
       columnHelper.accessor("diagnostico", {
         header: "Diagnóstico",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 240,
+        size: 230,
         minSize: 180,
         meta: { label: "Diagnóstico", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
@@ -612,13 +816,29 @@ export default function ListaEsperaPage() {
           </div>
         ),
       }),
+      columnHelper.accessor("fecha_ingreso", {
+        header: "Fecha ingreso",
+        enableColumnFilter: false,
+        enableResizing: true,
+        size: 112,
+        minSize: 104,
+        sortingFn: (a, b) =>
+          dateSortValue(a.original.fecha_ingreso) -
+          dateSortValue(b.original.fecha_ingreso),
+        meta: { label: "Fecha ingreso" } satisfies ColumnMeta,
+        cell: (info) => (
+          <span className="whitespace-nowrap text-gray-600">
+            {formatDateDisplay(info.getValue())}
+          </span>
+        ),
+      }),
       columnHelper.accessor("prioridadLabel", {
         header: "Prioridad",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 150,
-        minSize: 130,
+        size: 104,
+        minSize: 92,
         sortingFn: (a, b) =>
           PRIORIDAD_ORDER[a.original.prioridad] -
           PRIORIDAD_ORDER[b.original.prioridad],
@@ -632,22 +852,22 @@ export default function ListaEsperaPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 150,
-        minSize: 130,
+        size: 104,
+        minSize: 92,
         meta: { label: "Categoría", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <span className="text-gray-600">{info.getValue()}</span>
         ),
       }),
       columnHelper.accessor("dias_en_lista", {
-        header: "Días en cola",
+        header: "Días de espera",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 136,
-        minSize: 116,
+        size: 88,
+        minSize: 76,
         meta: {
-          label: "Días en cola",
+          label: "Días de espera",
           filterable: true,
           kind: "number",
         } satisfies ColumnMeta,
@@ -659,42 +879,34 @@ export default function ListaEsperaPage() {
         enableSorting: false,
         enableColumnFilter: false,
         enableResizing: true,
-        size: 230,
-        minSize: 205,
-        meta: { label: "Acciones", align: "right" } satisfies ColumnMeta,
+        size: user?.rol === "ADMIN" ? 132 : 96,
+        minSize: user?.rol === "ADMIN" ? 116 : 88,
+        meta: { label: "Acciones", align: "left" } satisfies ColumnMeta,
         cell: (info) => {
           const paciente = info.row.original.patient;
           return (
-            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
+            <div className="flex items-center justify-start gap-1">
               {user?.rol === "KINE" && (
                 <button
                   type="button"
                   disabled={asignando === paciente.id}
-                  onClick={() => abrirAsignacionConContacto(paciente)}
-                  className="ccr-table-action ccr-action-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    abrirAsignacionConContacto(paciente);
+                  }}
+                  className="ccr-table-action ccr-action-primary px-2 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {asignando === paciente.id ? "Asignando..." : "Tomar"}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => setEditando(paciente)}
-                className="ccr-table-action ccr-action-edit"
-              >
-                Editar
-              </button>
-              <button
-                type="button"
-                onClick={() => setSeleccionado(paciente)}
-                className="ccr-table-action ccr-action-view"
-              >
-                Ver ficha operativa
-              </button>
               {user?.rol === "ADMIN" && (
                 <button
                   type="button"
-                  onClick={() => void handleEliminar(paciente.id, paciente.nombre)}
-                  className="ccr-table-action ccr-action-danger"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleEliminar(paciente.id, paciente.nombre);
+                  }}
+                  className="ccr-table-action ccr-action-danger px-2 py-1 text-[10px]"
                 >
                   Eliminar
                 </button>
@@ -754,20 +966,48 @@ export default function ListaEsperaPage() {
     (tableState.globalSearch.trim() ? 1 : 0) +
     (alertaActiva ? 1 : 0);
   const columnTemplate = useMemo(
-    () =>
-      table
-        .getVisibleLeafColumns()
-        .map((column) => `${column.getSize()}px`)
-        .join(" "),
+    () => {
+      const visibleColumns = table.getVisibleLeafColumns();
+      return visibleColumns
+        .map((column) => {
+          if (
+            column.id === "nombre" ||
+            column.id === "diagnostico" ||
+            column.id === "sector_cesfam" ||
+            column.id === "sector_oficial" ||
+            column.id === "categoriaLabel"
+          ) {
+            return `minmax(${column.getSize()}px, 1fr)`;
+          }
+          return `${column.getSize()}px`;
+        })
+        .join(" ");
+    },
     [table, tableState.columnSizing],
   );
+  const tableMinWidth = table
+    .getVisibleLeafColumns()
+    .reduce((total, column) => total + column.getSize(), 0);
 
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => tableScrollRef.current,
-    estimateSize: () => 48,
+    estimateSize: () => 36,
     overscan: 10,
   });
+
+  useEffect(() => {
+    const scrollElement = tableScrollRef.current;
+    if (!scrollElement) return;
+
+    if (
+      horizontalScrollRef.current > 0 &&
+      scrollElement.scrollTop > 0 &&
+      scrollElement.scrollLeft === 0
+    ) {
+      scrollElement.scrollLeft = horizontalScrollRef.current;
+    }
+  }, [columnTemplate, tableRows.length]);
 
   function abrirAsignacionConContacto(p: Paciente) {
     setAsignarPaciente(p);
@@ -775,6 +1015,7 @@ export default function ListaEsperaPage() {
       telefono: p.telefono ?? "",
       telefono_recados: p.telefono_recados ?? "",
       email: p.email ?? "",
+      observaciones: "",
     });
     setAsignarError("");
   }
@@ -785,13 +1026,7 @@ export default function ListaEsperaPage() {
     const telefono = asignarContacto.telefono.trim();
     const telefonoRecados = asignarContacto.telefono_recados.trim();
     const email = asignarContacto.email.trim();
-
-    if (!telefono && !telefonoRecados && !email) {
-      const message = "Ingresa al menos un dato de contacto (teléfono o email).";
-      setAsignarError(message);
-      toastInfo(message);
-      return;
-    }
+    const observacionExtra = asignarContacto.observaciones.trim();
 
     if (email && !/^\S+@\S+\.\S+$/.test(email)) {
       const message = "El email no tiene un formato válido.";
@@ -805,11 +1040,24 @@ export default function ListaEsperaPage() {
     setAsignarError("");
     setError("");
     try {
-      await api.patch<Paciente>(`/pacientes/${asignarPaciente.id}/`, {
+      const payload: Partial<Paciente> & {
+        telefono: string;
+        telefono_recados: string;
+        email: string;
+      } = {
         telefono,
         telefono_recados: telefonoRecados,
         email,
-      });
+      };
+
+      if (observacionExtra) {
+        const base = (asignarPaciente.observaciones ?? "").trim();
+        payload.observaciones = base
+          ? `${base}\n${observacionExtra}`
+          : observacionExtra;
+      }
+
+      await api.patch<Paciente>(`/pacientes/${asignarPaciente.id}/`, payload);
       await api.post(`/pacientes/${asignarPaciente.id}/asignar/`);
       setAsignarPaciente(null);
       toastSuccess(`Paciente "${nombrePaciente}" asignado a tu cartera.`);
@@ -890,6 +1138,8 @@ export default function ListaEsperaPage() {
         estado: "TODOS",
         prioridad: "TODAS",
         categoria: "TODAS",
+        sector_cesfam: "TODOS",
+        sector_oficial: "TODOS",
         responsable: "TODOS",
       });
     });
@@ -899,11 +1149,11 @@ export default function ListaEsperaPage() {
 
   return (
     <div className="ccr-waitlist-page space-y-3 text-[13px]">
-      <header className="ccr-waitlist-toolbar ccr-panel rounded-lg p-4 sm:p-5">
+      <header className="ccr-waitlist-toolbar ccr-panel rounded-2xl p-4 sm:p-5">
         <div className="space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Lista de Espera</h1>
+              <h1 className="text-lg font-bold text-gray-900">Lista de espera</h1>
               <p className="mt-0.5 text-xs font-medium text-gray-500">
                 Priorización, filtros y asignación de pacientes pendientes.
               </p>
@@ -960,21 +1210,37 @@ export default function ListaEsperaPage() {
                   if (event.key === "Enter") event.preventDefault();
                 }}
                 className="ccr-control-input w-full px-9 py-2.5 text-xs"
-                placeholder="Buscar por nombre, RUT o diagnóstico"
+                placeholder="Buscar por nombre, RUT, sector o diagnóstico"
                 aria-label="Buscar pacientes"
               />
             </div>
 
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center px-3 text-xs sm:w-auto"
-            >
-              Limpiar filtros
-            </button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center px-3 text-xs sm:w-auto"
+              >
+                Limpiar filtros
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowQuickFilters((prev) => !prev)}
+                className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center gap-1.5 px-3 text-xs sm:w-auto"
+                aria-expanded={showQuickFilters}
+                aria-controls="lista-espera-quick-filters"
+              >
+                <FiFilter size={13} />
+                Filtros
+              </button>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
+          {showQuickFilters && (
+          <div
+            id="lista-espera-quick-filters"
+            className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm"
+          >
             <div className="mb-2 flex items-center justify-between gap-2">
               <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
                 Filtros de tabla
@@ -1048,6 +1314,48 @@ export default function ListaEsperaPage() {
               </label>
 
               <label className="text-[11px] font-semibold text-slate-500">
+                Sector CESFAM
+                <select
+                  value={quickFilters.sector_cesfam}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      sector_cesfam: event.target.value,
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODOS">Todos</option>
+                  {quickFilterOptions.sectoresCesfam.map((sector) => (
+                    <option key={sector} value={sector}>
+                      {sector}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-[11px] font-semibold text-slate-500">
+                Sector oficial
+                <select
+                  value={quickFilters.sector_oficial}
+                  onChange={(event) =>
+                    setQuickFilters((prev) => ({
+                      ...prev,
+                      sector_oficial: event.target.value,
+                    }))
+                  }
+                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
+                >
+                  <option value="TODOS">Todos</option>
+                  {quickFilterOptions.sectoresOficiales.map((sector) => (
+                    <option key={sector} value={sector}>
+                      {sector}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-[11px] font-semibold text-slate-500">
                 Responsable
                 <select
                   value={quickFilters.responsable}
@@ -1069,6 +1377,7 @@ export default function ListaEsperaPage() {
               </label>
             </div>
           </div>
+          )}
 
           {isPending && (
             <p className="text-[11px] text-gray-400">Actualizando tabla...</p>
@@ -1096,7 +1405,7 @@ export default function ListaEsperaPage() {
       )}
 
       {!error && (
-        <section className="ccr-waitlist-table ccr-panel ccr-data-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+        <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
           {(loading || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
               {loading && !hasHydrated ? (
@@ -1114,14 +1423,24 @@ export default function ListaEsperaPage() {
 
         <div
           ref={tableScrollRef}
-          className="ccr-table-scroll h-[calc(100dvh-240px)] min-h-[380px] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626] sm:h-[calc(100dvh-240px)] lg:h-[calc(100dvh-264px)]"
+          onScroll={(event) => {
+            horizontalScrollRef.current = event.currentTarget.scrollLeft;
+          }}
+          className="ccr-table-scroll max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
         >
-          <div className="min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]">
+          <div
+            className="w-full min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]"
+            style={{ minWidth: tableMinWidth }}
+          >
             {table.getHeaderGroups().map((headerGroup) => (
               <div
                 key={headerGroup.id}
                 className="ccr-table-head sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]"
-                style={{ gridTemplateColumns: columnTemplate }}
+                style={{
+                  gridAutoColumns: "max-content",
+                  gridAutoFlow: "column",
+                  gridTemplateColumns: columnTemplate,
+                }}
               >
                 {headerGroup.headers.map((header) => {
                   const meta = getColumnMeta(header.column);
@@ -1139,7 +1458,7 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={header.id}
-                      className="relative border-r border-gray-200 px-3 py-2.5 last:border-r-0 dark:border-[#262626]"
+                      className="relative border-r border-gray-200 px-2 py-1.5 last:border-r-0 dark:border-[#262626]"
                     >
                       {header.isPlaceholder ? null : (
                         <div className="flex items-center justify-between gap-2">
@@ -1290,11 +1609,14 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={row.id}
-                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full cursor-pointer border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       style={{
+                        gridAutoColumns: "max-content",
+                        gridAutoFlow: "column",
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
+                      onClick={() => setSeleccionado(row.original.patient)}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const meta = getColumnMeta(cell.column);
@@ -1308,7 +1630,7 @@ export default function ListaEsperaPage() {
                         return (
                           <div
                             key={cell.id}
-                            className={`border-r border-gray-100 px-2 py-1.5 text-[12px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-3 lg:px-4 ${alignment}`}
+                            className={`flex h-9 items-center overflow-hidden border-r border-gray-100 px-1.5 py-0.5 text-[11px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-2 ${alignment}`}
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -1366,22 +1688,6 @@ export default function ListaEsperaPage() {
         />
       )}
 
-      {editando && (
-        <EditarPacienteModal
-          paciente={editando}
-          mode="contact-only"
-          onClose={() => setEditando(null)}
-          onGuardado={(actualizado) => {
-            setPacientes((prev) =>
-              prev.map((item) =>
-                item.id === actualizado.id ? actualizado : item,
-              ),
-            );
-            setEditando(null);
-          }}
-        />
-      )}
-
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         variant="danger"
@@ -1434,85 +1740,119 @@ function AsignarContactoModal({
 }: AsignarContactoModalProps) {
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm dark:bg-black/75"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-[3px] dark:bg-black/75"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-[#2a2a2a] dark:bg-[#111111]"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_34px_80px_-32px_rgba(15,23,42,0.55)] dark:border-[#2a2a2a] dark:bg-[#111111]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-gray-200 bg-gray-50/80 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:px-6">
-          <div className="flex items-start justify-between gap-3">
+        <div className="border-b border-[#dbe7ff] bg-gradient-to-br from-[#f4f8ff] via-white to-[#eef3ff] px-5 py-5 dark:border-[#2a2a2a] dark:from-[#151515] dark:via-[#111111] dark:to-[#151515] sm:px-6">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#335FDB] dark:text-[#8fc4d6]">
+                Asignación
+              </p>
+              <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
                 Completar contacto para asignar
               </h3>
-              <p className="mt-1 text-xs text-gray-500 dark:text-[#a3a3a3]">
-                Registra al menos un medio de contacto para continuar.
+              <p className="mt-1 text-sm text-slate-600 dark:text-[#a3a3a3]">
+                Puedes asignar de inmediato y completar contacto u observación si corresponde.
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50 disabled:opacity-60 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
               aria-label="Cerrar"
             >
               ×
             </button>
           </div>
-          <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-medium text-gray-700 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-[#ecf5f8]">
-            <span className="truncate">{toCapitalizedWords(paciente.nombre)}</span>
-            <span className="text-gray-300 dark:text-[#525252]">•</span>
-            <span className="font-mono text-[11px]">{formatearRut(paciente.rut)}</span>
+
+          <div className="mt-4 flex max-w-full items-center gap-3 rounded-xl border border-[#dbe7ff] bg-white/95 px-3.5 py-2.5 text-[12px] text-slate-700 shadow-sm dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-[#ecf5f8]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#cddcff] bg-[#eef3ff] text-[#335FDB] dark:border-[#2a2a2a] dark:bg-[#1a1a1a] dark:text-[#8fc4d6]">
+              <FiUser size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-bold text-slate-900 dark:text-white">
+                {toCapitalizedWords(paciente.nombre)}
+              </p>
+              <p className="font-mono text-[11px] text-slate-500 dark:text-[#a3a3a3]">
+                {formatearRut(paciente.rut)}
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="space-y-4 bg-white px-5 py-5 dark:bg-[#111111] sm:px-6">
-          <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 text-[12px] text-gray-600 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-[#b5d8e3]">
-            Puedes ingresar teléfono principal, teléfono de recados y/o correo.
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-[12px] text-slate-600 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-[#b5d8e3]">
+            Campos opcionales: teléfono principal, recados, correo y observación.
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#a3a3a3]">
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
                 Teléfono principal
               </label>
-              <input
-                type="tel"
-                value={draft.telefono}
-                onChange={(event) => onChange("telefono", event.target.value)}
-                placeholder="+56 9 1234 5678"
-                className="ccr-control-input w-full px-3 py-2.5 text-sm"
-              />
+              <div className="relative">
+                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <input
+                  type="tel"
+                  value={draft.telefono}
+                  onChange={(event) => onChange("telefono", event.target.value)}
+                  placeholder="+56 9 1234 5678"
+                  className="ccr-control-input w-full px-9 py-2.5 text-sm"
+                />
+              </div>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#a3a3a3]">
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
                 Teléfono recados
               </label>
+              <div className="relative">
+                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <input
+                  type="tel"
+                  value={draft.telefono_recados}
+                  onChange={(event) =>
+                    onChange("telefono_recados", event.target.value)
+                  }
+                  placeholder="+56 9 9876 5432"
+                  className="ccr-control-input w-full px-9 py-2.5 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
+              Email
+            </label>
+            <div className="relative">
+              <FiMail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
               <input
-                type="tel"
-                value={draft.telefono_recados}
-                onChange={(event) =>
-                  onChange("telefono_recados", event.target.value)
-                }
-                placeholder="+56 9 9876 5432"
-                className="ccr-control-input w-full px-3 py-2.5 text-sm"
+                type="email"
+                value={draft.email}
+                onChange={(event) => onChange("email", event.target.value)}
+                placeholder="nombre@correo.cl"
+                className="ccr-control-input w-full px-9 py-2.5 text-sm"
               />
             </div>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#a3a3a3]">
-              Email
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-[#a3a3a3]">
+              Observación
             </label>
-            <input
-              type="email"
-              value={draft.email}
-              onChange={(event) => onChange("email", event.target.value)}
-              placeholder="nombre@correo.cl"
-              className="ccr-control-input w-full px-3 py-2.5 text-sm"
+            <textarea
+              value={draft.observaciones}
+              onChange={(event) => onChange("observaciones", event.target.value)}
+              placeholder="Ej: paciente solicita llamado en la tarde."
+              rows={3}
+              className="ccr-control-input w-full resize-none px-3 py-2.5 text-sm"
             />
           </div>
 
@@ -1523,7 +1863,7 @@ function AsignarContactoModal({
           )}
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-gray-200 bg-gray-50/80 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:flex-row sm:justify-end sm:px-6">
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:flex-row sm:justify-end sm:px-6">
           <button
             type="button"
             onClick={onClose}
@@ -1536,7 +1876,7 @@ function AsignarContactoModal({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded-xl bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="rounded-xl bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white shadow-[0_12px_24px_-14px_rgba(51,95,219,0.9)] transition hover:bg-[#284FC0] disabled:opacity-50"
           >
             {loading ? "Asignando..." : "Guardar y tomar"}
           </button>

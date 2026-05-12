@@ -36,8 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="ccr-dashboard-shell flex min-h-screen bg-slate-100 dark:!bg-[#151515]">
       <Sidebar
-        rol={user.rol}
-        userId={user.id}
+        user={user}
         mobileOpen={mobileSidebarOpen}
         onMobileOpenChange={setMobileSidebarOpen}
       />

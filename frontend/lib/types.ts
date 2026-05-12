@@ -36,6 +36,9 @@ export interface Paciente {
   id_ccr: string;
   fecha_derivacion: string;
   percapita_desde: string;
+  sector_oficial: string;
+  sector_cesfam: string;
+  asignado_historico: boolean;
   nombre: string;
   rut: string;
   edad: number;
@@ -192,11 +195,19 @@ export interface DashboardResumenOperativo {
   pendientes: number;
   rescate: number;
   ingresados: number;
+  lista_espera_global?: number;
   sin_asignar: number;
   asignados_activos: number;
   mios_activos: number;
   rescates_globales: number;
   cola_llamados: number;
+  egresados: number;
+  agenda_hoy: number;
+}
+
+export interface AgendaResumenDia {
+  fecha: string;
+  total: number;
 }
 
 export interface ResumenReporte {
@@ -251,6 +262,9 @@ export interface ReporteResumenMensual {
   por_estado: { estado: string; label: string; total: number }[];
   por_prioridad: { prioridad: string; label: string; total: number }[];
   por_categoria: { categoria: string; label: string; total: number }[];
+  por_sector_cesfam?: { sector_cesfam: string; label: string; total: number }[];
+  por_sector_oficial?: { sector_oficial: string; label: string; total: number }[];
+  por_diagnostico?: { diagnostico: string; label: string; total: number }[];
 }
 
 export interface ReporteResponsableItem {
@@ -312,6 +326,12 @@ export interface ImportacionResultado {
   errores_count?: number;
   errores: { hoja?: string; fila: number; motivo: string }[];
   meses_detectados?: Record<string, number>;
+  periodos_detectados?: Record<string, number>;
+  con_kine_asignado?: number;
+  sin_kine_asignado?: number;
+  ingresados?: number;
+  pendientes?: number;
+  asignado_historico?: number;
 }
 
 export interface ImportacionErrorDetalle {
@@ -326,7 +346,7 @@ export interface ImportacionErrorDetalle {
   categoria?: string;
 }
 
-export type ImportacionPreviewEstado = "OK" | "DUPLICADO" | "ERROR";
+export type ImportacionPreviewEstado = "OK" | "DUPLICADO" | "ERROR" | "REVISION";
 
 export interface ImportacionPreviewRegistro {
   hoja?: string;
@@ -338,10 +358,18 @@ export interface ImportacionPreviewRegistro {
   diagnostico: string;
   prioridad: string;
   percapita_desde: string;
+  sector_oficial?: string;
+  sector_cesfam?: string;
   profesional: string;
   observaciones: string;
   mayor_60: boolean;
   categoria: string;
+  kine_asignado?: string;
+  estado_sugerido?: Estado | string;
+  recepcion_original?: string;
+  asignado_historico?: boolean;
+  motivo_revision?: string;
+  advertencias?: string[];
   es_duplicado: boolean;
   estado: ImportacionPreviewEstado;
   error?: string;
@@ -358,6 +386,15 @@ export interface ImportacionPreviewResultado {
   errores: ImportacionErrorDetalle[];
   registros: ImportacionPreviewRegistro[];
   meses_detectados: Record<string, number>;
+  periodos_detectados?: Record<string, number>;
+  con_kine_asignado?: number;
+  sin_kine_asignado?: number;
+  ingresados?: number;
+  pendientes?: number;
+  asignado_historico?: number;
+  conteo_sector_cesfam?: Record<string, number>;
+  conteo_categoria?: Record<string, number>;
+  conteo_kine_asignado?: Record<string, number>;
 }
 
 export type ImportacionHistorialEstado =
@@ -435,7 +472,7 @@ export interface ImportacionDeletePeriodoResultado {
   archivos_eliminados: number;
 }
 
-export type ImportacionRevisionTipo = "ERROR" | "RECURRENTE";
+export type ImportacionRevisionTipo = "ERROR" | "RECURRENTE" | "ADVERTENCIA";
 export type ImportacionRevisionEstado = "PENDIENTE" | "RESUELTO" | "DESCARTADO";
 
 export interface ImportacionRevisionItem {
@@ -463,8 +500,15 @@ export interface ImportacionRevisionItem {
   diagnostico: string;
   prioridad: string;
   percapita_desde: string;
+  sector_oficial: string;
+  sector_cesfam: string;
   profesional: string;
+  categoria: string;
   observaciones: string;
+  kine_detectado?: string;
+  estado_sugerido?: Estado | string;
+  recepcion_original?: string;
+  asignado_historico?: boolean;
   paciente_id: number | null;
   paciente_rut: string | null;
   paciente_nombre: string | null;
@@ -564,6 +608,8 @@ export interface PerfilPaciente {
   nombre: string;
   edad: number;
   percapita_desde: string;
+  sector_oficial?: string;
+  sector_cesfam?: string;
   mayor_60: boolean;
   derivaciones: PacienteConMovimientos[];
 }

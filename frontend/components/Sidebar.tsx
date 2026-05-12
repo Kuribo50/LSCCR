@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
@@ -22,15 +22,25 @@ import {
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { api } from "@/lib/api";
+import logoHorizontal from "../public/logoHorizontal.png";
 import type {
   DashboardResumenOperativo,
   ImportacionRevisionResultado,
   Paciente,
   Rol,
+  Usuario,
 } from "@/lib/types";
-import { formatearRut, limpiarRut } from "@/lib/rut";
+import FichaPaciente from "./FichaPaciente";
+import PacienteSearchBox from "./PacienteSearchBox";
 
-type CountKey = "total" | "mios" | "rescates" | "cola" | "revision";
+type CountKey =
+  | "total"
+  | "mios"
+  | "rescates"
+  | "cola"
+  | "egresos"
+  | "agendaHoy"
+  | "revision";
 type SidebarCounts = Record<CountKey, number>;
 
 interface Item {
@@ -45,33 +55,33 @@ interface Item {
 const BASE_ITEMS: Record<Rol, Item[]> = {
   KINE: [
     { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
-    { href: "/mis-pacientes", label: "Mi cartera", icon: FiUsers, section: "principal", tone: "text-sky-700", countKey: "mios" },
+    { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
-    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMINISTRATIVO: [
     { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
     { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMIN: [
     { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700" },
+    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
-    { href: "/mis-pacientes", label: "Pacientes asignados", icon: FiUsers, section: "principal", tone: "text-sky-700", countKey: "mios" },
+    { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
     { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-    { href: "/egresos", label: "Historial de egresos", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
     { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
   ],
@@ -86,6 +96,45 @@ const SECTION_LABELS: Record<Item["section"], string> = {
 
 function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function esElementoEditable(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.matches("input, textarea, select") || target.isContentEditable)
+  );
+}
+
+function SearchLauncher({
+  onOpen,
+  size = "desktop",
+}: {
+  onOpen: () => void;
+  size?: "desktop" | "mobile";
+}) {
+  return (
+    <Button
+      type="button"
+      onPress={onOpen}
+      aria-label="Abrir buscador de pacientes"
+      aria-keyshortcuts="Control+K"
+      className={classes(
+        "group flex w-full items-center gap-2 rounded-lg border border-zinc-200 bg-white text-left text-zinc-950 outline-none transition-all hover:border-blue-200 hover:bg-blue-50/40 focus:border-[#335fdb] focus:ring-2 focus:ring-blue-100",
+        size === "mobile" ? "px-3 py-2.5 text-sm" : "px-3 py-2 text-xs",
+      )}
+    >
+      <FiSearch
+        className="shrink-0 text-zinc-500 transition-colors group-hover:text-[#335fdb]"
+        size={15}
+      />
+      <span className="min-w-0 flex-1 truncate text-zinc-500">
+        Buscar RUT, sector o diagnóstico...
+      </span>
+      <kbd className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-black text-slate-500 transition group-hover:border-blue-100 group-hover:bg-white group-hover:text-blue-700">
+        Ctrl K
+      </kbd>
+    </Button>
+  );
 }
 
 function SidebarNav({
@@ -187,79 +236,55 @@ function SidebarNav({
 }
 
 export default function Sidebar({
-  rol,
-  userId,
+  user,
   mobileOpen,
   onMobileOpenChange,
 }: {
-  rol: Rol;
-  userId: number;
+  user: Usuario;
   mobileOpen: boolean;
   onMobileOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const rol = user.rol;
+  const userId = user.id;
   const [compact, setCompact] = useState(false);
-  const [counts, setCounts] = useState<SidebarCounts>({ total: 0, mios: 0, rescates: 0, cola: 0, revision: 0 });
+  const [counts, setCounts] = useState<SidebarCounts>({
+    total: 0,
+    mios: 0,
+    rescates: 0,
+    cola: 0,
+    egresos: 0,
+    agendaHoy: 0,
+    revision: 0,
+  });
+  const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
+  const [searchOverlayOpen, setSearchOverlayOpen] = useState(false);
   const items = useMemo(() => BASE_ITEMS[rol], [rol]);
 
-  const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<Paciente[]>([]);
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const buscar = useCallback(async (raw: string) => {
-    const limpio = limpiarRut(raw);
-    if (limpio.length < 3) {
-      setSuggestions([]);
-      setSearchOpen(false);
-      return;
-    }
-    setLoadingSearch(true);
-    try {
-      const data = await api.get<Paciente[]>(`/pacientes/?search=${encodeURIComponent(limpio)}`);
-      const seen = new Set<string>();
-      const uniq = data.filter((p) => {
-        if (seen.has(p.rut)) return false;
-        seen.add(p.rut);
-        return true;
-      });
-      setSuggestions(uniq.slice(0, 8));
-      setSearchOpen(uniq.length > 0);
-    } catch {
-      setSuggestions([]);
-      setSearchOpen(false);
-    } finally {
-      setLoadingSearch(false);
-    }
-  }, []);
-
-  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const formatted = formatearRut(e.target.value);
-    setQuery(formatted);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => void buscar(formatted), 300);
+  function abrirBuscadorCentral() {
+    setSearchOverlayOpen(true);
   }
 
-  function handleSelect(paciente: Paciente) {
-    setSearchOpen(false);
-    setQuery("");
-    setSuggestions([]);
-    router.push(`/paciente/${limpiarRut(paciente.rut)}`);
+  function abrirBuscadorMovil() {
+    onMobileOpenChange(false);
+    setSearchOverlayOpen(true);
+  }
+
+  function handleSelectPaciente(paciente: Paciente) {
+    setSearchOverlayOpen(false);
+    setPacienteSeleccionado(paciente);
     onMobileOpenChange(false);
   }
 
-  useEffect(() => {
-    function onOutside(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, []);
+  function handleViewAllPacientes(term: string) {
+    const query = term.trim();
+    if (!query) return;
+    setSearchOverlayOpen(false);
+    setPacienteSeleccionado(null);
+    onMobileOpenChange(false);
+    router.push(`/pacientes?search=${encodeURIComponent(query)}`);
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -277,15 +302,25 @@ export default function Sidebar({
         if (!mounted) return;
 
         setCounts({
-          total: resumen.sin_asignar,
-          mios: rol === "ADMIN" ? resumen.asignados_activos : resumen.mios_activos,
+          total: resumen.lista_espera_global ?? resumen.sin_asignar,
+          mios: resumen.ingresados,
           rescates: resumen.rescates_globales,
           cola: resumen.cola_llamados,
+          egresos: resumen.egresados ?? 0,
+          agendaHoy: resumen.agenda_hoy ?? 0,
           revision: revision?.pendientes ?? 0,
         });
       } catch {
         if (!mounted) return;
-        setCounts({ total: 0, mios: 0, rescates: 0, cola: 0, revision: 0 });
+        setCounts({
+          total: 0,
+          mios: 0,
+          rescates: 0,
+          cola: 0,
+          egresos: 0,
+          agendaHoy: 0,
+          revision: 0,
+        });
       }
     }
 
@@ -306,6 +341,22 @@ export default function Sidebar({
     onMobileOpenChange(false);
   }, [pathname, onMobileOpenChange]);
 
+  useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      if (!event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") {
+        return;
+      }
+      if (esElementoEditable(event.target) && !searchOverlayOpen) return;
+
+      event.preventDefault();
+      onMobileOpenChange(false);
+      setSearchOverlayOpen(true);
+    }
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [onMobileOpenChange, searchOverlayOpen]);
+
   return (
     <>
       <aside
@@ -316,11 +367,17 @@ export default function Sidebar({
       >
         <div className="flex items-center justify-between px-4 py-5">
           {!compact && (
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
-                <FiActivity size={17} />
-              </div>
-              <span className="font-bold tracking-tight text-zinc-950">CCR Panel</span>
+            <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+              <img
+                src={logoHorizontal.src}
+                alt="Centro Comunitario de Rehabilitación"
+                className="h-16 w-full origin-left scale-125 object-contain object-left"
+              />
+            </div>
+          )}
+          {compact && (
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
+              <FiActivity size={17} />
             </div>
           )}
 
@@ -334,47 +391,12 @@ export default function Sidebar({
         </div>
 
         {!compact && (
-          <div ref={searchRef} className="relative mb-2 px-4 pb-3 pt-1">
-            <div className="relative group">
-              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-[#335fdb]" size={14} />
-              <input
-                type="text"
-                aria-label="Buscar paciente por RUT"
-                placeholder="Buscar RUT..."
-                value={query}
-                onChange={handleSearchChange}
-                className="w-full rounded-lg border border-zinc-200 bg-white py-2 pl-9 pr-4 text-xs text-zinc-950 outline-none transition-all placeholder:text-zinc-500 focus:border-[#335fdb] focus:bg-white focus:ring-2 focus:ring-blue-100"
-              />
-              {loadingSearch && <div className="absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />}
-            </div>
-
-            {searchOpen && suggestions.length > 0 && (
-              <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-lg bg-white shadow-lg">
-                <ul className="max-h-60 overflow-y-auto">
-                  {suggestions.map((p) => (
-                    <li key={p.id}>
-                      <button
-                        onClick={() => handleSelect(p)}
-                        className="flex w-full flex-col gap-0.5 bg-white px-3 py-2 text-left transition hover:bg-slate-100"
-                      >
-                        <span className="truncate text-[11px] font-semibold leading-tight text-slate-950">{p.nombre}</span>
-                        <span className="font-mono text-[10px] text-slate-600">{formatearRut(p.rut)}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div className="mb-2 px-4 pb-3 pt-1">
+            <SearchLauncher onOpen={abrirBuscadorCentral} />
           </div>
         )}
 
         <SidebarNav items={items} pathname={pathname} counts={counts} compact={compact} />
-
-        <div className="mt-auto p-4">
-          <div className="flex items-center justify-center rounded-md bg-[#e9edf5] py-2 text-[10px] font-semibold uppercase tracking-wide text-[#335fdb]">
-            CCR
-          </div>
-        </div>
       </aside>
 
       <ModalOverlay
@@ -387,11 +409,12 @@ export default function Sidebar({
             {({ close }) => (
               <>
                 <div className="flex items-center justify-between px-4 py-5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
-                      <FiActivity size={17} />
-                    </div>
-                    <span className="font-bold tracking-tight text-zinc-950">CCR Panel</span>
+                  <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+                    <img
+                      src={logoHorizontal.src}
+                      alt="Centro Comunitario de Rehabilitación"
+                      className="h-16 w-full origin-left scale-125 object-contain object-left"
+                    />
                   </div>
                   <Button
                     onPress={close}
@@ -402,49 +425,69 @@ export default function Sidebar({
                   </Button>
                 </div>
 
-                <div className="relative mt-1 px-4 pb-3">
-                  <div className="relative">
-                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
-                    <input
-                      type="text"
-                      aria-label="Buscar paciente por RUT"
-                      placeholder="Buscar RUT..."
-                      value={query}
-                      onChange={handleSearchChange}
-                      className="w-full rounded-lg border border-zinc-200 bg-white py-2.5 pl-9 pr-4 text-sm text-zinc-950 outline-none placeholder:text-zinc-500 focus:border-[#335fdb] focus:bg-white focus:ring-2 focus:ring-blue-100"
-                    />
-                    {loadingSearch && <div className="absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />}
-                  </div>
-
-                  {searchOpen && suggestions.length > 0 && (
-                    <div className="absolute left-4 right-4 top-full z-50 mt-2 overflow-hidden rounded-lg bg-white shadow-lg">
-                      <ul>
-                        {suggestions.map((p) => (
-                          <li key={p.id}>
-                            <button
-                              onClick={() => handleSelect(p)}
-                              className="flex w-full flex-col gap-0.5 bg-white px-4 py-3 text-left transition hover:bg-slate-100"
-                            >
-                              <span className="text-sm font-semibold text-slate-950">{p.nombre}</span>
-                              <span className="font-mono text-xs text-slate-600">{formatearRut(p.rut)}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                <div className="mt-1 px-4 pb-3">
+                  <SearchLauncher
+                    onOpen={abrirBuscadorMovil}
+                    size="mobile"
+                  />
                 </div>
 
                 <SidebarNav items={items} pathname={pathname} counts={counts} compact={false} onNavigate={close} />
-
-                <div className="mt-auto p-4 pb-8">
-                  <div className="text-center text-[10px] font-semibold uppercase tracking-wide text-[#335fdb]">CCR</div>
-                </div>
               </>
             )}
           </Dialog>
         </Modal>
       </ModalOverlay>
+
+      <ModalOverlay
+        isOpen={searchOverlayOpen}
+        onOpenChange={setSearchOverlayOpen}
+        isDismissable
+        className="fixed inset-0 z-[75] flex items-start justify-center bg-slate-900/45 px-4 pb-6 pt-[9vh] backdrop-blur-sm sm:pt-[8vh]"
+      >
+        <Modal className="w-full max-w-3xl scale-100 opacity-100 outline-none transition duration-150 data-[entering]:scale-95 data-[entering]:opacity-0 data-[exiting]:scale-95 data-[exiting]:opacity-0 motion-reduce:transition-none">
+          <Dialog
+            aria-label="Buscador de pacientes"
+            className="outline-none"
+          >
+            {({ close }) => (
+              <div>
+                <div className="mb-4 flex items-center justify-between px-1 text-white">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-100">
+                      Búsqueda rápida
+                    </p>
+                    <h2 className="text-lg font-black">Buscar paciente</h2>
+                  </div>
+                  <Button
+                    type="button"
+                    onPress={close}
+                    aria-label="Cerrar buscador"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-600 outline-none transition hover:bg-white hover:text-slate-950 focus:ring-2 focus:ring-blue-200"
+                  >
+                    <FiX size={18} />
+                  </Button>
+                </div>
+                <PacienteSearchBox
+                  autoFocus
+                  size="overlay"
+                  onSelect={handleSelectPaciente}
+                  onViewAll={handleViewAllPacientes}
+                />
+              </div>
+            )}
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
+
+      {pacienteSeleccionado && (
+        <FichaPaciente
+          paciente={pacienteSeleccionado}
+          usuario={user}
+          onClose={() => setPacienteSeleccionado(null)}
+          onRefresh={() => window.dispatchEvent(new Event("ccr:refresh-sidebar"))}
+        />
+      )}
     </>
   );
 }

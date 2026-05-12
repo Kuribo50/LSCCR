@@ -110,6 +110,16 @@ export default function PacienteRow({
         {formatearRut(paciente.rut)}
       </td>
       <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">{paciente.edad}</td>
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+        <div className="truncate" title={paciente.sector_cesfam || "-"}>
+          {paciente.sector_cesfam || "-"}
+        </div>
+      </td>
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+        <div className="truncate" title={paciente.sector_oficial || "-"}>
+          {paciente.sector_oficial || "-"}
+        </div>
+      </td>
       <td className="max-w-[220px] border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
         <div className="truncate">{toCapitalizedWords(paciente.diagnostico)}</div>
       </td>

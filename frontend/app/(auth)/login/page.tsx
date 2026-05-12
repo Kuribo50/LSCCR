@@ -1,246 +1,418 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import type { Rol } from "@/lib/types";
+import { useToast } from "@/lib/toast-context";
 import { formatearRut, rutParaApi } from "@/lib/rut";
+import logoHorizontal from "../../../public/logoHorizontal.png";
 import type { IconType } from "react-icons";
 import {
   FiActivity,
-  FiAlertCircle,
-  FiClipboard,
+  FiCheck,
+  FiCheckCircle,
   FiEye,
   FiEyeOff,
-  FiKey,
   FiLock,
+  FiMoon,
   FiShield,
+  FiSun,
   FiUser,
 } from "react-icons/fi";
 
-const ROL_LABELS: Record<string, string> = {
-  KINE: "Kinesiólogo/a",
-  ADMINISTRATIVO: "Administrativo/a",
-  ADMIN: "Administrador/a",
-};
-
 const DEMO_PASSWORD = "Ccr2025*";
+const DEFAULT_RUT = "66666666K";
+const REMEMBER_RUT_KEY = "ccr-login-rut";
+const REMEMBER_SESSION_KEY = "ccr-login-remember";
+const LOGIN_THEME_KEY = "ccr-login-theme";
 
 type QuickUser = {
   id: string;
   nombre: string;
   rut: string;
-  rol: Rol;
   icon: IconType;
-  iconColor: string;
+  tone: "blue" | "green" | "indigo";
 };
 
 const QUICK_USERS: QuickUser[] = [
   {
     id: "admin",
-    nombre: "Administrador",
+    nombre: "Administrador CCR",
     rut: "66666666K",
-    rol: "ADMIN",
     icon: FiShield,
-    iconColor: "#3D4AA3",
+    tone: "indigo",
   },
   {
     id: "kine-seba-salgado",
-    nombre: "Seba Salgado",
+    nombre: "Sebastián Salgado",
     rut: "11111111K",
-    rol: "KINE",
     icon: FiActivity,
-    iconColor: "#335fdb",
-  },
-  {
-    id: "admin-administrativa",
-    nombre: "Administrativa",
-    rut: "55555555K",
-    rol: "ADMINISTRATIVO",
-    icon: FiClipboard,
-    iconColor: "#0E7490",
+    tone: "blue",
   },
   {
     id: "kine-seba-campos",
-    nombre: "Seba Campos",
+    nombre: "Sebastián Campos",
     rut: "22222222K",
-    rol: "KINE",
     icon: FiActivity,
-    iconColor: "#7C3AED",
+    tone: "blue",
   },
   {
     id: "kine-mane",
-    nombre: "Mane",
+    nombre: "Mane Sáez",
     rut: "33333333K",
-    rol: "KINE",
     icon: FiActivity,
-    iconColor: "#059669",
+    tone: "green",
   },
   {
-    id: "kine-ma-ignacia",
-    nombre: "Ma Ignacia",
-    rut: "44444444K",
-    rol: "KINE",
+    id: "kine-pilar",
+    nombre: "Pilar Alarcón",
+    rut: "77777777K",
     icon: FiActivity,
-    iconColor: "#c90603",
+    tone: "green",
+  },
+  {
+    id: "kine-karen",
+    nombre: "Karen Torres",
+    rut: "88888888K",
+    icon: FiActivity,
+    tone: "green",
   },
 ];
 
+function quickAccessClasses(tone: QuickUser["tone"], selected: boolean) {
+  const selectedClasses = {
+    blue: "border-white bg-white text-sky-950 shadow-sky-950/20",
+    green: "border-white bg-white text-emerald-950 shadow-emerald-950/20",
+    indigo: "border-white bg-white text-indigo-950 shadow-indigo-950/20",
+  };
+
+  if (selected) {
+    return selectedClasses[tone];
+  }
+
+  return "border-white/16 bg-white/10 text-white shadow-slate-950/10 hover:border-white/35 hover:bg-white/18";
+}
+
+function normalizeLoginError(rawMessage: string) {
+  const lower = rawMessage.toLowerCase();
+  if (lower.includes("no active account") || lower.includes("credentials")) {
+    return {
+      title: "Credenciales incorrectas",
+      detail: "Revisa el RUT y la contraseña. Si el usuario existe, confirma que la cuenta esté activa.",
+    };
+  }
+  if (lower.includes("network") || lower.includes("fetch")) {
+    return {
+      title: "No se pudo conectar",
+      detail: "Verifica que el servidor esté encendido y vuelve a intentar.",
+    };
+  }
+  return {
+    title: "No se pudo iniciar sesión",
+    detail: rawMessage || "Ocurrió un problema al validar las credenciales.",
+  };
+}
+
 export default function LoginPage() {
   const { login } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
-  const [rut, setRut] = useState(formatearRut(QUICK_USERS[0].rut));
+  const [rut, setRut] = useState(formatearRut(DEFAULT_RUT));
   const [password, setPassword] = useState(DEMO_PASSWORD);
-  const [selectedQuickRut, setSelectedQuickRut] = useState(QUICK_USERS[0].rut);
+  const [selectedQuickRut, setSelectedQuickRut] = useState(DEFAULT_RUT);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [rememberSession, setRememberSession] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const [error, setError] = useState<{ title: string; detail: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<"rut" | "password" | null>(null);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem(LOGIN_THEME_KEY);
+    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+    const shouldUseDark = savedTheme ? savedTheme === "dark" : Boolean(prefersDark);
+    setDarkMode(shouldUseDark);
+    document.documentElement.classList.toggle("dark", shouldUseDark);
+
+    const savedRemember = window.localStorage.getItem(REMEMBER_SESSION_KEY);
+    const shouldRemember = savedRemember !== "false";
+    setRememberSession(shouldRemember);
+
+    const savedRut = window.localStorage.getItem(REMEMBER_RUT_KEY);
+    if (shouldRemember && savedRut) {
+      setRut(formatearRut(savedRut));
+      setSelectedQuickRut(savedRut.replace(/[^0-9Kk]/g, "").toUpperCase());
+    }
+  }, []);
+
+  function toggleDarkMode() {
+    const next = !darkMode;
+    setDarkMode(next);
+    document.documentElement.classList.toggle("dark", next);
+    window.localStorage.setItem(LOGIN_THEME_KEY, next ? "dark" : "light");
+  }
 
   function handleQuickUserSelect(rutUsuario: string) {
     setSelectedQuickRut(rutUsuario);
-    setError("");
+    setError(null);
     setRut(formatearRut(rutUsuario));
     setPassword(DEMO_PASSWORD);
   }
 
+  function handleRememberChange(checked: boolean) {
+    setRememberSession(checked);
+    window.localStorage.setItem(REMEMBER_SESSION_KEY, String(checked));
+    if (!checked) {
+      window.localStorage.removeItem(REMEMBER_RUT_KEY);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError("");
+    setError(null);
     setLoading(true);
+    toast.info("Validando credenciales...");
+
     try {
-      await login(rutParaApi(rut), password);
-      router.replace("/inicio");
+      const rutApi = rutParaApi(rut);
+      await login(rutApi, password);
+      if (rememberSession) {
+        window.localStorage.setItem(REMEMBER_RUT_KEY, rutApi);
+      }
+      toast.success("Ingreso exitoso. Cargando panel...");
+      window.setTimeout(() => router.replace("/inicio"), 450);
     } catch (err: unknown) {
-      const errorData = err as { non_field_errors?: string[]; detail?: string };
+      const errorData = err as { non_field_errors?: string[]; detail?: string; message?: string };
       const rawMessage =
         errorData.non_field_errors?.[0] ||
         errorData.detail ||
+        errorData.message ||
         "Error al iniciar sesión.";
-      setError(rawMessage.toLowerCase().includes("no active account") 
-        ? "No se encontró una cuenta activa para estas credenciales."
-        : rawMessage);
+      const normalized = normalizeLoginError(rawMessage);
+      setError(normalized);
+      toast.error(`${normalized.title}: ${normalized.detail}`);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="w-full max-w-5xl ccr-fade-up overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_24px_48px_-28px_rgba(15,23,42,0.28)]">
-      <div className="grid md:grid-cols-[40%_60%] min-h-[600px]">
-        {/* Panel Lateral (Modo Dev / Accesos Rápidos) */}
-        <aside className="relative flex flex-col bg-[linear-gradient(160deg,#0f172a_0%,#1e293b_100%)] p-8 text-white overflow-hidden">
-          <div className="pointer-events-none absolute -left-12 -top-12 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-          <div className="pointer-events-none absolute -bottom-16 -right-16 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
-          <div className="pointer-events-none absolute top-1/4 right-8 h-4 w-4 rounded-full bg-white/20" />
-          <div className="pointer-events-none absolute bottom-1/4 left-12 h-6 w-6 rounded-full bg-white/10" />
-          
-          <div className="relative z-10">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/20 text-white mb-6 shadow-lg border border-blue-400/10">
-              <FiActivity size={24} />
+    <div className="ccr-login-background relative flex min-h-screen w-full items-center justify-center overflow-hidden p-4 sm:p-6">
+      <button
+        type="button"
+        onClick={toggleDarkMode}
+        aria-label={darkMode ? "Activar modo claro" : "Activar modo oscuro"}
+        className="ccr-login-theme-toggle group fixed right-4 top-4 z-20 inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/75 px-4 py-2 text-xs font-black text-slate-700 shadow-lg shadow-slate-900/10 backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-4 focus:ring-sky-200 dark:!border-white/10 dark:!bg-slate-950/70 dark:!text-white dark:focus:!ring-sky-500/25"
+      >
+        {darkMode ? <FiSun size={16} /> : <FiMoon size={16} />}
+        <span>{darkMode ? "Modo claro" : "Modo oscuro"}</span>
+      </button>
+
+      <div className="ccr-login-shell ccr-login-enter relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[2.75rem] bg-white shadow-2xl shadow-slate-900/18 dark:!bg-slate-950 lg:grid-cols-[0.9fr_1.1fr]">
+        <aside className="hidden min-h-[720px] bg-gradient-to-br from-[#0b72bf] via-[#075494] to-[#07305f] p-7 text-white dark:!from-[#02111f] dark:!via-[#07305f] dark:!to-[#0f172a] lg:flex lg:flex-col lg:justify-center">
+          <div className="mx-auto mb-7 max-w-[285px] rounded-[1.4rem] bg-white p-3 shadow-2xl shadow-slate-950/20">
+            <img
+              src={logoHorizontal.src}
+              alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
+              className="h-auto w-full object-contain"
+            />
+          </div>
+
+          <div className="rounded-[2rem] border border-white/12 bg-white/8 p-4 shadow-2xl shadow-slate-950/20">
+            <div className="mb-4 px-2">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">
+                Accesos rápidos
+              </p>
+              <p className="mt-1 text-xs font-bold text-sky-100/80">
+                Selecciona un perfil para cargar sus credenciales.
+              </p>
             </div>
-            <h2 className="text-2xl font-bold tracking-tight">Acceso Rápido</h2>
-            <p className="mt-2 text-sm text-white/60 leading-relaxed max-w-[20ch]">
-              Selecciona un entorno de pruebas para ingresar.
-            </p>
-          </div>
 
-          <div className="relative z-10 mt-8 space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-             {QUICK_USERS.map((user) => (
-                <button
-                  key={user.id}
-                  type="button"
-                  onClick={() => handleQuickUserSelect(user.rut)}
-                  className={`ccr-interactive w-full flex items-center gap-4 rounded-lg border p-3.5 outline-none ${
-                    selectedQuickRut === user.rut
-                      ? "border-blue-300/60 bg-blue-500/20 shadow-lg"
-                      : "border-white/10 bg-white/5 hover:bg-white/10"
-                  }`}
-                >
-                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-white shadow-inner`}>
-                     <user.icon size={16} style={{ color: user.iconColor }} />
-                  </div>
-                  <div className="text-left min-w-0">
-                    <p className="font-bold text-sm truncate leading-tight">{user.nombre}</p>
-                    <p className="text-[9px] uppercase tracking-wider text-white/50 font-bold mt-0.5">{ROL_LABELS[user.rol]}</p>
-                  </div>
-                </button>
-              ))}
-          </div>
-
-          <div className="mt-8 relative z-10 py-6 px-4 border-t border-white/10 text-center opacity-30">
-            <FiShield size={16} className="mx-auto mb-2" />
+            <div className="grid gap-2">
+              {QUICK_USERS.map((user) => {
+                const Icon = user.icon;
+                const selected = selectedQuickRut === user.rut;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => handleQuickUserSelect(user.rut)}
+                    aria-pressed={selected}
+                    className={`group flex min-h-[58px] items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-lg outline-none backdrop-blur transition duration-150 hover:-translate-y-0.5 focus:ring-4 focus:ring-white/30 ${quickAccessClasses(user.tone, selected)}`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-900 shadow-sm transition group-hover:scale-105">
+                      <Icon size={17} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-black">{user.nombre}</span>
+                      <span className="mt-0.5 block truncate text-[10px] font-black tracking-wide opacity-65">
+                        {formatearRut(user.rut)}
+                      </span>
+                    </span>
+                    {selected && <FiCheck className="shrink-0" size={16} />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </aside>
 
-        {/* Panel Formulario */}
-        <main className="flex flex-col justify-center p-8 lg:p-14 bg-[radial-gradient(circle_at_85%_10%,#ecf5f8_0%,transparent_40%)]">
-          <div className="mb-10 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 p-5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm border border-gray-200">
-                <FiKey size={22} />
-              </div>
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-gray-500">Seguridad Institucional</p>
-                <h1 className="text-2xl font-extrabold text-gray-900">Iniciar Sesión</h1>
-              </div>
+        <main className="relative flex min-h-[720px] w-full flex-col justify-center bg-white px-2 py-8 dark:!bg-white sm:px-6 lg:px-12">
+          <div className="mx-auto w-full max-w-xl">
+            <div className="ccr-login-panel mb-6 flex justify-center lg:hidden">
+              <img
+                src={logoHorizontal.src}
+                alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
+                className="h-auto w-full max-w-sm object-contain drop-shadow-[0_18px_34px_rgba(15,23,42,0.16)]"
+              />
             </div>
-            <FiShield className="text-blue-600/20" size={32} />
+
+            <div className="mb-6 grid grid-cols-2 gap-2 rounded-[1.75rem] bg-gradient-to-br from-sky-700 via-blue-900 to-slate-950 p-3 lg:hidden">
+              {QUICK_USERS.map((user) => {
+                const Icon = user.icon;
+                const selected = selectedQuickRut === user.rut;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    onClick={() => handleQuickUserSelect(user.rut)}
+                    aria-pressed={selected}
+                    className={`group flex min-h-[58px] items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-lg outline-none backdrop-blur transition duration-150 hover:-translate-y-0.5 focus:ring-4 focus:ring-sky-200 dark:focus:!ring-sky-500/25 ${quickAccessClasses(user.tone, selected)}`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-900 shadow-sm transition group-hover:scale-105 dark:!bg-white/90">
+                      <Icon size={17} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-black">{user.nombre}</span>
+                      <span className="mt-0.5 block truncate text-[10px] font-black tracking-wide opacity-65">
+                        {formatearRut(user.rut)}
+                      </span>
+                    </span>
+                    {selected && <FiCheck className="shrink-0" size={16} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex min-h-[520px] rounded-[2rem] border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-900/10 sm:p-8">
+            <form onSubmit={handleSubmit} className="flex w-full flex-col justify-center space-y-5" noValidate>
+              <div className="space-y-2">
+                <label htmlFor="rut" className="ml-1 text-xs font-black uppercase tracking-[0.15em] text-slate-600">
+                  Nombre de usuario / RUT
+                </label>
+                <div className="group relative">
+                  <FiUser
+                    className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 transition duration-200 ${
+                      focusedInput === "rut" ? "scale-110 text-sky-600" : "text-slate-400"
+                    }`}
+                    size={19}
+                  />
+                  <input
+                    id="rut"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="username"
+                    value={rut}
+                    onChange={(e) => {
+                      const nextRut = e.target.value.replace(/[^0-9Kk]/g, "").toUpperCase();
+                      setRut(formatearRut(e.target.value));
+                      setSelectedQuickRut(QUICK_USERS.some((user) => user.rut === nextRut) ? nextRut : "");
+                      setError(null);
+                    }}
+                    onFocus={() => setFocusedInput("rut")}
+                    onBlur={() => setFocusedInput(null)}
+                    placeholder="11.111.111-K"
+                    maxLength={12}
+                    required
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? "login-error" : undefined}
+                    className="ccr-login-input w-full rounded-2xl border border-slate-200 bg-white py-4 pl-12 pr-4 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="ml-1 text-xs font-black uppercase tracking-[0.15em] text-slate-600">
+                  Contraseña
+                </label>
+                <div className="group relative">
+                  <FiLock
+                    className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 transition duration-200 ${
+                      focusedInput === "password" ? "scale-110 text-sky-600" : "text-slate-400"
+                    }`}
+                    size={19}
+                  />
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError(null);
+                    }}
+                    onFocus={() => setFocusedInput("password")}
+                    onBlur={() => setFocusedInput(null)}
+                    placeholder="Ingresa tu contraseña"
+                    required
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? "login-error" : undefined}
+                    className="ccr-login-input w-full rounded-2xl border border-slate-200 bg-white py-4 pl-12 pr-14 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-sky-50 hover:text-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-100"
+                  >
+                    {showPassword ? <FiEyeOff size={19} /> : <FiEye size={19} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm">
+                <label htmlFor="remember-session" className="flex cursor-pointer items-center gap-3 font-bold text-slate-700">
+                  <input
+                    id="remember-session"
+                    type="checkbox"
+                    checked={rememberSession}
+                    onChange={(event) => handleRememberChange(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-300"
+                  />
+                  Mantener sesión iniciada
+                </label>
+              </div>
+
+              {error && (
+                <p id="login-error" role="alert" className="sr-only">
+                  {error.title}. {error.detail}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !rut.trim() || !password.trim()}
+                className="ccr-login-submit flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-700 to-indigo-700 px-4 py-4 text-base font-black text-white shadow-xl shadow-blue-700/25 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-blue-700/30 focus:outline-none focus:ring-4 focus:ring-sky-200 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <>
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Verificando credenciales
+                  </>
+                ) : (
+                  <>
+                    <FiCheckCircle size={18} />
+                    Entrar al sistema
+                  </>
+                )}
+              </button>
+
+              <p className="text-center text-xs font-bold text-slate-500">
+                Sistema de gestión de lista de espera CCR
+              </p>
+            </form>
+            </div>
           </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6 max-w-sm mx-auto w-full">
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-600 ml-1">RUT</label>
-              <div className="relative group">
-                <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-                <input
-                  type="text"
-                  value={rut}
-                  onChange={(e) => setRut(formatearRut(e.target.value))}
-                  placeholder="11.111.111-K"
-                  maxLength={12}
-                  required
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-4 pl-12 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 shadow-sm"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-600 ml-1">Contraseña</label>
-              <div className="relative group">
-                <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-600 transition-colors" size={18} />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="********"
-                  required
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-4 pl-12 pr-12 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 shadow-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600 transition-colors"
-                >
-                  {showPassword ? <FiEyeOff size={20} /> : <FiEye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-medium text-red-600">
-                <FiAlertCircle className="shrink-0" size={16} />
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-4 rounded-lg bg-[linear-gradient(135deg,#335fdb_0%,#284fc0_100%)] py-4 text-sm font-bold tracking-wide text-white shadow-xl shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-            >
-              {loading ? "Verificando..." : "Acceder al Sistema"}
-            </button>
-          </form>
         </main>
       </div>
     </div>

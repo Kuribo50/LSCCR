@@ -25,7 +25,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FiFilter, FiRefreshCw, FiSearch, FiUserPlus } from "react-icons/fi";
 import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
-import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import { usePersistentTableState } from "@/lib/tables/usePersistentTableState";
 import type { Categoria, Estado, Paciente, Prioridad } from "@/lib/types";
@@ -34,9 +33,7 @@ import FichaPaciente from "@/components/FichaPaciente";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import BadgeEstado from "@/components/BadgeEstado";
 import BadgeDias from "@/components/BadgeDias";
-import EditarPacienteModal from "@/components/EditarPacienteModal";
 import CrearPacienteModal from "@/components/CrearPacienteModal";
-import ConfirmDialog from "@/components/ConfirmDialog";
 import { TableSkeleton } from "@/components/Skeleton";
 import EmptyState from "@/components/EmptyState";
 
@@ -64,7 +61,10 @@ type MyPatientRow = {
   rut: string;
   rutRaw: string;
   edad: number;
+  sector_cesfam: string;
+  sector_oficial: string;
   diagnostico: string;
+  fecha_ingreso: string | null;
   prioridad: Prioridad;
   prioridadLabel: string;
   categoria: Categoria;
@@ -87,21 +87,6 @@ type ColumnMeta = {
 type FilterDraftState = Record<string, string[]>;
 type FilterQueryState = Record<string, string>;
 type FilterPopoverPosition = { top: number; left: number };
-type PatientTab = "INGRESADOS" | "SELECCIONADOS" | "EGRESADOS";
-
-const EGRESO_STATES: Estado[] = [
-  "ALTA_MEDICA",
-  "EGRESO_VOLUNTARIO",
-  "EGRESO_ADMINISTRATIVO",
-  "ABANDONO",
-  "DERIVADO",
-];
-
-const TABS: Array<{ id: PatientTab; label: string }> = [
-  { id: "INGRESADOS", label: "Ingresados" },
-  { id: "SELECCIONADOS", label: "Seleccionados" },
-  { id: "EGRESADOS", label: "Egresados" },
-];
 
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
@@ -140,6 +125,20 @@ function calcularDiasDesde(fecha: string | null | undefined) {
   if (diffMs < 0) return 0;
 
   return Math.floor(diffMs / 86400000);
+}
+
+function formatDateDisplay(value: string | null | undefined) {
+  if (!value) return "Sin fecha";
+  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "Sin fecha";
+  return parsed.toLocaleDateString("es-CL");
+}
+
+function dateSortValue(value: string | null | undefined) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return Number.POSITIVE_INFINITY;
+  return parsed.getTime();
 }
 
 const multiSelectFilter: FilterFn<MyPatientRow> = (
@@ -228,13 +227,15 @@ const BASE_COLUMN_VISIBILITY: VisibilityState = {
   nombre: true,
   rut: true,
   edad: true,
+  sector_cesfam: true,
+  sector_oficial: true,
   diagnostico: true,
+  fecha_ingreso: true,
   prioridadLabel: true,
   categoriaLabel: true,
   estadoLabel: true,
   proximaAtencion: true,
   dias_display: true,
-  acciones: true,
 };
 
 function getResponsiveColumnVisibility(width: number): VisibilityState {
@@ -243,7 +244,10 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
       ...BASE_COLUMN_VISIBILITY,
       kine_asignado_nombre: false,
       edad: false,
+      sector_cesfam: false,
+      sector_oficial: false,
       diagnostico: false,
+      fecha_ingreso: false,
       prioridadLabel: false,
       categoriaLabel: false,
       estadoLabel: false,
@@ -254,6 +258,7 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
     return {
       ...BASE_COLUMN_VISIBILITY,
       diagnostico: false,
+      fecha_ingreso: false,
       categoriaLabel: false,
     };
   }
@@ -261,36 +266,92 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
   return BASE_COLUMN_VISIBILITY;
 }
 
+function getCompactColumnSizing(): Record<string, number> {
+  return {
+    kine_asignado_nombre: 132,
+    nombre: 200,
+    rut: 126,
+    edad: 72,
+    sector_cesfam: 170,
+    sector_oficial: 170,
+    diagnostico: 230,
+    fecha_ingreso: 112,
+    prioridadLabel: 104,
+    categoriaLabel: 104,
+    estadoLabel: 104,
+    proximaAtencion: 126,
+    dias_display: 88,
+  };
+}
+
+function getDefaultColumnOrder(isAdmin: boolean) {
+  return [
+    ...(isAdmin ? ["kine_asignado_nombre"] : []),
+    "nombre",
+    "rut",
+    "edad",
+    "sector_cesfam",
+    "sector_oficial",
+    "diagnostico",
+    "fecha_ingreso",
+    "prioridadLabel",
+    "categoriaLabel",
+    "estadoLabel",
+    "dias_display",
+    "proximaAtencion",
+  ];
+}
+
+function mergeColumnOrder(current: string[], requiredOrder: string[]) {
+  if (current.length === 0) return requiredOrder;
+
+  const requiredSet = new Set(requiredOrder);
+  const next = current.filter((id) => requiredSet.has(id));
+
+  for (const columnId of requiredOrder) {
+    if (next.includes(columnId)) continue;
+
+    const requiredIndex = requiredOrder.indexOf(columnId);
+    const previousColumn = [...requiredOrder.slice(0, requiredIndex)]
+      .reverse()
+      .find((id) => next.includes(id));
+
+    if (previousColumn) {
+      next.splice(next.indexOf(previousColumn) + 1, 0, columnId);
+    } else {
+      next.unshift(columnId);
+    }
+  }
+
+  return next;
+}
+
 export default function MisPacientesPage() {
   const { user } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
 
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null);
-  const [editando, setEditando] = useState<Paciente | null>(null);
   const [creando, setCreando] = useState(false);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [draftFilters, setDraftFilters] = useState<FilterDraftState>({});
   const [filterQueries, setFilterQueries] = useState<FilterQueryState>({});
   const [filterPosition, setFilterPosition] = useState<FilterPopoverPosition | null>(null);
-  const [activeTab, setActiveTab] = useState<PatientTab>("INGRESADOS");
   const [isPending, startTransition] = useTransition();
-  const [deleteTarget, setDeleteTarget] = useState<{ id: number; nombre: string } | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const horizontalScrollRef = useRef(0);
 
   const initialTableState = useMemo(
     () => ({
       globalSearch: "",
       sorting: [{ id: "dias_display", desc: true as const }],
       columnFilters: [],
-      columnSizing: {},
-      columnOrder: [],
+      columnSizing: getCompactColumnSizing(),
+      columnOrder: getDefaultColumnOrder(user?.rol === "ADMIN"),
       columnVisibility: {},
     }),
-    [],
+    [user?.rol],
   );
 
   const {
@@ -304,7 +365,7 @@ export default function MisPacientesPage() {
     setColumnVisibility,
     resetTableState,
   } = usePersistentTableState({
-    storageKey: "table-prefs:mis-pacientes",
+    storageKey: "table-prefs:mis-pacientes:v2",
     initialState: initialTableState,
   });
 
@@ -321,7 +382,7 @@ export default function MisPacientesPage() {
       setPacientes(data);
     } catch {
       setPacientes([]);
-      setError("No se pudo cargar mi cartera.");
+      setError("No se pudieron cargar mis pacientes.");
     } finally {
       setLoading(false);
     }
@@ -355,35 +416,32 @@ export default function MisPacientesPage() {
   useEffect(() => {
     if (!hasHydrated) return;
 
-    const defaultActionsWidth = user?.rol === "ADMIN" ? 278 : 232;
+    const compactSizing = getCompactColumnSizing();
     setColumnSizing((prev) => {
-      const current = prev.acciones;
-      if (current === defaultActionsWidth) {
+      let changed = false;
+      const next = { ...prev };
+      for (const [columnId, width] of Object.entries(compactSizing)) {
+        if (next[columnId] !== width) {
+          next[columnId] = width;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [hasHydrated, setColumnSizing]);
+
+  useEffect(() => {
+    if (!hasHydrated) return;
+
+    const requiredOrder = getDefaultColumnOrder(user?.rol === "ADMIN");
+    setColumnOrder((prev) => {
+      const next = mergeColumnOrder(prev, requiredOrder);
+      if (next.length === prev.length && next.every((id, index) => id === prev[index])) {
         return prev;
       }
-      return { ...prev, acciones: defaultActionsWidth };
+      return next;
     });
-  }, [hasHydrated, setColumnSizing, user?.rol]);
-
-  async function handleEliminar(id: number, nombre: string) {
-    if (user?.rol !== "ADMIN") return;
-    setDeleteTarget({ id, nombre });
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/pacientes/${deleteTarget.id}/`);
-      toastSuccess(`Paciente "${deleteTarget.nombre}" eliminado correctamente.`);
-      setDeleteTarget(null);
-      void cargar();
-    } catch {
-      toastError("No se pudo eliminar el paciente.");
-    } finally {
-      setDeleting(false);
-    }
-  }
+  }, [hasHydrated, setColumnOrder, user?.rol]);
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
@@ -400,27 +458,36 @@ export default function MisPacientesPage() {
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [openFilter]);
 
-  const tabCounts = useMemo(
-    () => ({
-      SELECCIONADOS: pacientes.filter((p) => p.estado === "PENDIENTE").length,
-      INGRESADOS: pacientes.filter((p) => ["INGRESADO", "RESCATE"].includes(p.estado)).length,
-      EGRESADOS: pacientes.filter((p) => EGRESO_STATES.includes(p.estado))
-        .length,
-    }),
+  useEffect(() => {
+    if (!openFilter) return;
+
+    function closeOnScrollOrResize() {
+      setOpenFilter(null);
+      setFilterPosition(null);
+    }
+
+    const scrollElement = tableScrollRef.current;
+    window.addEventListener("resize", closeOnScrollOrResize);
+    window.addEventListener("scroll", closeOnScrollOrResize, true);
+    scrollElement?.addEventListener("scroll", closeOnScrollOrResize, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("resize", closeOnScrollOrResize);
+      window.removeEventListener("scroll", closeOnScrollOrResize, true);
+      scrollElement?.removeEventListener("scroll", closeOnScrollOrResize);
+    };
+  }, [openFilter]);
+
+  const pacientesIngresados = useMemo(
+    () => pacientes.filter((p) => p.estado === "INGRESADO"),
     [pacientes],
   );
 
-  const pacientesPorTab = useMemo(() => {
-    if (activeTab === "SELECCIONADOS")
-      return pacientes.filter((p) => p.estado === "PENDIENTE");
-    if (activeTab === "INGRESADOS")
-      return pacientes.filter((p) => ["INGRESADO", "RESCATE"].includes(p.estado));
-    return pacientes.filter((p) => EGRESO_STATES.includes(p.estado));
-  }, [activeTab, pacientes]);
-
   const rowsData = useMemo<MyPatientRow[]>(
     () =>
-      pacientesPorTab.map((patient) => {
+      pacientesIngresados.map((patient) => {
         const rut = formatearRut(patient.rut);
         const rutRaw = normalizeRut(patient.rut);
         const nombreNormalizado = normalizeSearchText(patient.nombre);
@@ -428,11 +495,11 @@ export default function MisPacientesPage() {
         const estadoLabel = toCapitalizedWords(
           ESTADO_LABELS[patient.estado] ?? patient.estado,
         );
+        const prioridadLabel = PRIORIDAD_LABELS[patient.prioridad] ?? patient.prioridad;
+        const categoriaLabel = CATEGORIA_LABELS[patient.categoria] ?? patient.categoria;
+        const responsable = patient.kine_asignado_nombre ?? patient.responsable_nombre ?? "";
         const diasIngreso = calcularDiasDesde(
           patient.fecha_ingreso ?? patient.fecha_cambio_estado,
-        );
-        const diasEgreso = calcularDiasDesde(
-          patient.fecha_egreso ?? patient.fecha_cambio_estado,
         );
         return {
           patient,
@@ -440,37 +507,42 @@ export default function MisPacientesPage() {
           rut,
           rutRaw,
           edad: patient.edad,
+          sector_cesfam: patient.sector_cesfam || "-",
+          sector_oficial: patient.sector_oficial || "-",
           diagnostico: toCapitalizedWords(patient.diagnostico),
+          fecha_ingreso: patient.fecha_ingreso ?? patient.fecha_cambio_estado ?? null,
           prioridad: patient.prioridad,
-          prioridadLabel: toCapitalizedWords(
-            PRIORIDAD_LABELS[patient.prioridad] ?? patient.prioridad,
-          ),
+          prioridadLabel: toCapitalizedWords(prioridadLabel),
           categoria: patient.categoria,
-          categoriaLabel: toCapitalizedWords(
-            CATEGORIA_LABELS[patient.categoria] ?? patient.categoria,
-          ),
+          categoriaLabel: toCapitalizedWords(categoriaLabel),
           estado: patient.estado,
           estadoLabel,
           proxima_atencion: patient.proxima_atencion,
           dias_en_lista: patient.dias_en_lista,
-          dias_display:
-            activeTab === "INGRESADOS"
-              ? (diasIngreso ?? 0)
-              : activeTab === "EGRESADOS"
-                ? (diasEgreso ?? 0)
-                : patient.dias_en_lista,
-          searchIndex: `${nombreNormalizado} ${rutRaw} ${diagnosticoNormalizado} ${normalizeSearchText(estadoLabel)}`,
+          dias_display: diasIngreso ?? 0,
+          searchIndex: [
+            patient.id_ccr,
+            nombreNormalizado,
+            rutRaw,
+            diagnosticoNormalizado,
+            responsable,
+            estadoLabel,
+            prioridadLabel,
+            patient.prioridad,
+            categoriaLabel,
+            patient.categoria,
+            patient.sector_cesfam,
+            patient.sector_oficial,
+            patient.profesional,
+            patient.percapita_desde,
+            patient.observaciones,
+          ].map((value) => normalizeSearchText(String(value ?? ""))).join(" "),
         };
       }),
-    [activeTab, pacientesPorTab],
+    [pacientesIngresados],
   );
 
-  const daysColumnLabel =
-    activeTab === "INGRESADOS"
-      ? "Días de ingreso"
-      : activeTab === "EGRESADOS"
-        ? "Días de egreso"
-        : "Días de espera";
+  const daysColumnLabel = "Días de ingreso";
 
   const columns = useMemo(
     () => [
@@ -482,8 +554,8 @@ export default function MisPacientesPage() {
               enableColumnFilter: true,
               filterFn: multiSelectFilter,
               enableResizing: true,
-              size: 160,
-              minSize: 120,
+              size: 132,
+              minSize: 108,
               meta: { label: "Responsable CCR", filterable: true } satisfies ColumnMeta,
               cell: (info) => (
               <div
@@ -501,8 +573,8 @@ export default function MisPacientesPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 260,
-        minSize: 220,
+        size: 200,
+        minSize: 160,
         meta: { label: "Nombre", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <div
@@ -518,8 +590,8 @@ export default function MisPacientesPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 160,
-        minSize: 130,
+        size: 126,
+        minSize: 102,
         sortingFn: (a, b) =>
           a.original.rutRaw.localeCompare(b.original.rutRaw, "es"),
         meta: { label: "RUT", filterable: true } satisfies ColumnMeta,
@@ -532,13 +604,41 @@ export default function MisPacientesPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 112,
-        minSize: 96,
+        size: 72,
+        minSize: 64,
         meta: {
           label: "Edad",
           filterable: true,
           kind: "number",
         } satisfies ColumnMeta,
+      }),
+      columnHelper.accessor("sector_cesfam", {
+        header: "Sector CESFAM",
+        enableColumnFilter: true,
+        filterFn: multiSelectFilter,
+        enableResizing: true,
+        size: 170,
+        minSize: 140,
+        meta: { label: "Sector CESFAM", filterable: true } satisfies ColumnMeta,
+        cell: (info) => (
+          <div className="truncate text-gray-600" title={info.getValue()}>
+            {info.getValue()}
+          </div>
+        ),
+      }),
+      columnHelper.accessor("sector_oficial", {
+        header: "Sector oficial",
+        enableColumnFilter: true,
+        filterFn: multiSelectFilter,
+        enableResizing: true,
+        size: 170,
+        minSize: 140,
+        meta: { label: "Sector oficial", filterable: true } satisfies ColumnMeta,
+        cell: (info) => (
+          <div className="truncate text-gray-600" title={info.getValue()}>
+            {info.getValue()}
+          </div>
+        ),
       }),
       columnHelper.accessor("diagnostico", {
         header: "Diagnóstico",
@@ -554,13 +654,29 @@ export default function MisPacientesPage() {
           </div>
         ),
       }),
+      columnHelper.accessor("fecha_ingreso", {
+        header: "Fecha ingreso",
+        enableColumnFilter: false,
+        enableResizing: true,
+        size: 112,
+        minSize: 104,
+        sortingFn: (a, b) =>
+          dateSortValue(a.original.fecha_ingreso) -
+          dateSortValue(b.original.fecha_ingreso),
+        meta: { label: "Fecha ingreso" } satisfies ColumnMeta,
+        cell: (info) => (
+          <span className="whitespace-nowrap text-gray-600">
+            {formatDateDisplay(info.getValue())}
+          </span>
+        ),
+      }),
       columnHelper.accessor("prioridadLabel", {
         header: "Prioridad",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 145,
-        minSize: 124,
+        size: 104,
+        minSize: 92,
         sortingFn: (a, b) =>
           PRIORIDAD_ORDER[a.original.prioridad] -
           PRIORIDAD_ORDER[b.original.prioridad],
@@ -574,8 +690,8 @@ export default function MisPacientesPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 145,
-        minSize: 126,
+        size: 104,
+        minSize: 92,
         meta: { label: "Categoría", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <span className="text-gray-600">{info.getValue()}</span>
@@ -586,65 +702,18 @@ export default function MisPacientesPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 150,
-        minSize: 130,
+        size: 104,
+        minSize: 92,
         meta: { label: "Estado", filterable: true } satisfies ColumnMeta,
         cell: (info) => <BadgeEstado estado={info.row.original.estado} />,
       }),
-      ...(activeTab === "INGRESADOS"
-        ? [
-            columnHelper.accessor("proxima_atencion", {
-              id: "proximaAtencion",
-              header: "Próxima atención",
-              enableColumnFilter: false,
-              enableResizing: true,
-              size: 170,
-              minSize: 150,
-              sortingFn: (a, b) => {
-                const aValue = a.original.proxima_atencion
-                  ? new Date(a.original.proxima_atencion).getTime()
-                  : Number.POSITIVE_INFINITY;
-                const bValue = b.original.proxima_atencion
-                  ? new Date(b.original.proxima_atencion).getTime()
-                  : Number.POSITIVE_INFINITY;
-                return aValue - bValue;
-              },
-              meta: { label: "Próxima atención" } satisfies ColumnMeta,
-              cell: (info) => {
-                const raw = info.getValue();
-                if (!raw) {
-                  return <span className="text-gray-400">Sin programar</span>;
-                }
-
-                const fecha = new Date(raw);
-                if (Number.isNaN(fecha.getTime())) {
-                  return <span className="text-gray-400">Sin programar</span>;
-                }
-
-                return (
-                  <div className="ccr-appointment-soft inline-flex min-w-[118px] flex-col items-start rounded-md px-2.5 py-1.5 leading-tight">
-                    <p className="font-bold text-white">
-                      {fecha.toLocaleDateString("es-CL")}
-                    </p>
-                    <p className="text-[11px] font-semibold text-white/85">
-                      {fecha.toLocaleTimeString("es-CL", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                );
-              },
-            }),
-          ]
-        : []),
       columnHelper.accessor("dias_display", {
         header: daysColumnLabel,
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 136,
-        minSize: 116,
+        size: 88,
+        minSize: 76,
         meta: {
           label: daysColumnLabel,
           filterable: true,
@@ -652,48 +721,51 @@ export default function MisPacientesPage() {
         } satisfies ColumnMeta,
         cell: (info) => <BadgeDias days={info.row.original.dias_display} />,
       }),
-      columnHelper.display({
-        id: "acciones",
-        header: "Acciones",
-        enableSorting: false,
+      columnHelper.accessor("proxima_atencion", {
+        id: "proximaAtencion",
+        header: "Próxima atención",
         enableColumnFilter: false,
         enableResizing: true,
-        size: 232,
-        minSize: 205,
-        meta: { label: "Acciones", align: "right" } satisfies ColumnMeta,
+        size: 126,
+        minSize: 112,
+        sortingFn: (a, b) => {
+          const aValue = a.original.proxima_atencion
+            ? new Date(a.original.proxima_atencion).getTime()
+            : Number.POSITIVE_INFINITY;
+          const bValue = b.original.proxima_atencion
+            ? new Date(b.original.proxima_atencion).getTime()
+            : Number.POSITIVE_INFINITY;
+          return aValue - bValue;
+        },
+        meta: { label: "Próxima atención" } satisfies ColumnMeta,
         cell: (info) => {
-          const paciente = info.row.original.patient;
+          const raw = info.getValue();
+          if (!raw) {
+            return <span className="text-gray-400">Sin programar</span>;
+          }
+
+          const fecha = new Date(raw);
+          if (Number.isNaN(fecha.getTime())) {
+            return <span className="text-gray-400">Sin programar</span>;
+          }
+
           return (
-            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
-              <button
-                type="button"
-                onClick={() => setEditando(paciente)}
-                className="ccr-table-action ccr-action-edit"
-              >
-                Editar
-              </button>
-              <button
-                type="button"
-                onClick={() => setSeleccionado(paciente)}
-                className="ccr-table-action ccr-action-view"
-              >
-                Ver ficha operativa
-              </button>
-              {user?.rol === "ADMIN" && (
-                <button
-                  type="button"
-                  onClick={() => void handleEliminar(paciente.id, paciente.nombre)}
-                  className="ccr-table-action ccr-action-danger"
-                >
-                  Eliminar
-                </button>
-              )}
+            <div className="ccr-appointment-soft inline-flex min-w-[118px] flex-col items-start rounded-md px-2.5 py-1.5 leading-tight">
+              <p className="font-bold text-white">
+                {fecha.toLocaleDateString("es-CL")}
+              </p>
+              <p className="text-[11px] font-semibold text-white/85">
+                {fecha.toLocaleTimeString("es-CL", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
             </div>
           );
         },
       }),
     ],
-    [activeTab, daysColumnLabel, user?.rol],
+    [daysColumnLabel, user?.rol],
   );
 
   const table = useReactTable({
@@ -740,15 +812,42 @@ export default function MisPacientesPage() {
 
   const columnTemplate = table
     .getVisibleLeafColumns()
-    .map((column) => `${column.getSize()}px`)
+    .map((column) => {
+      if (
+        column.id === "nombre" ||
+        column.id === "diagnostico" ||
+        column.id === "sector_cesfam" ||
+        column.id === "sector_oficial" ||
+        column.id === "categoriaLabel"
+      ) {
+        return `minmax(${column.getSize()}px, 1fr)`;
+      }
+      return `${column.getSize()}px`;
+    })
     .join(" ");
+  const tableMinWidth = table
+    .getVisibleLeafColumns()
+    .reduce((total, column) => total + column.getSize(), 0);
 
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => tableScrollRef.current,
-    estimateSize: () => 48,
+    estimateSize: () => 36,
     overscan: 10,
   });
+
+  useEffect(() => {
+    const scrollElement = tableScrollRef.current;
+    if (!scrollElement) return;
+
+    if (
+      horizontalScrollRef.current > 0 &&
+      scrollElement.scrollTop > 0 &&
+      scrollElement.scrollLeft === 0
+    ) {
+      scrollElement.scrollLeft = horizontalScrollRef.current;
+    }
+  }, [columnTemplate, tableRows.length]);
 
   function getColumnOptions(column: Column<MyPatientRow>) {
     const values = Array.from(column.getFacetedUniqueValues().keys())
@@ -822,7 +921,7 @@ export default function MisPacientesPage() {
         <div className="space-y-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-lg font-bold text-gray-900">
-              {user?.rol === "ADMIN" ? "Pacientes Asignados" : "Mis Pacientes"}
+              Mis pacientes
             </h1>
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <button
@@ -861,7 +960,7 @@ export default function MisPacientesPage() {
                   if (event.key === "Enter") event.preventDefault();
                 }}
                 className="w-full rounded-xl border border-gray-200 bg-white px-9 py-2.5 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                placeholder="Buscar por nombre, RUT o diagnóstico"
+                placeholder="Buscar por nombre, RUT, sector o diagnóstico"
                 aria-label="Buscar pacientes"
               />
             </div>
@@ -881,55 +980,12 @@ export default function MisPacientesPage() {
         </div>
       </header>
 
-      <section className="ccr-panel rounded-2xl p-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {TABS.map((tab) => {
-            const active = tab.id === activeTab;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setOpenFilter(null);
-                  setFilterPosition(null);
-                }}
-                className={
-                  active
-                    ? tab.id === "INGRESADOS"
-                      ? "inline-flex items-center gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700"
-                      : tab.id === "EGRESADOS"
-                        ? "inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
-                        : "inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700"
-                    : "inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
-                }
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={
-                    active
-                      ? tab.id === "INGRESADOS"
-                        ? "rounded-full bg-green-100 px-2 py-0.5 text-[10px]"
-                        : tab.id === "EGRESADOS"
-                          ? "rounded-full bg-red-100 px-2 py-0.5 text-[10px]"
-                          : "rounded-full bg-amber-100 px-2 py-0.5 text-[10px]"
-                      : "rounded-full bg-gray-100 px-2 py-0.5 text-[10px]"
-                  }
-                >
-                  {tabCounts[tab.id]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
       {error && (
         <EmptyState variant="error" compact message={error} />
       )}
 
       {!error && (
-        <section className="ccr-panel ccr-data-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+        <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
           {(loading || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
               {loading && !hasHydrated ? (
@@ -947,14 +1003,24 @@ export default function MisPacientesPage() {
 
         <div
           ref={tableScrollRef}
-          className="max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
+          onScroll={(event) => {
+            horizontalScrollRef.current = event.currentTarget.scrollLeft;
+          }}
+          className="ccr-table-scroll max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
         >
-          <div className="min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]">
+          <div
+            className="w-full min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]"
+            style={{ minWidth: tableMinWidth }}
+          >
             {table.getHeaderGroups().map((headerGroup) => (
               <div
                 key={headerGroup.id}
                 className="ccr-table-head sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]"
-                style={{ gridTemplateColumns: columnTemplate }}
+                style={{
+                  gridAutoColumns: "max-content",
+                  gridAutoFlow: "column",
+                  gridTemplateColumns: columnTemplate,
+                }}
               >
                 {headerGroup.headers.map((header) => {
                   const meta = getColumnMeta(header.column);
@@ -972,7 +1038,7 @@ export default function MisPacientesPage() {
                   return (
                     <div
                       key={header.id}
-                      className="relative border-r border-gray-200 px-3 py-2.5 last:border-r-0 dark:border-[#262626]"
+                      className="relative border-r border-gray-200 px-2 py-1.5 last:border-r-0 dark:border-[#262626]"
                     >
                       {header.isPlaceholder ? null : (
                         <div className="flex items-center justify-between gap-2">
@@ -987,7 +1053,7 @@ export default function MisPacientesPage() {
                                 );
                               });
                             }}
-                            className="ccr-table-sort-button flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-semibold text-gray-700 dark:text-[#daebf1]"
+                            className="ccr-table-sort-button flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] font-semibold text-gray-700 dark:text-[#daebf1]"
                           >
                             <span className="whitespace-normal leading-tight">
                               {flexRender(
@@ -1111,11 +1177,7 @@ export default function MisPacientesPage() {
               <EmptyState
                 variant="search"
                 compact
-                message={
-                  activeTab === "EGRESADOS"
-                    ? "Sin pacientes egresados en historial con los filtros seleccionados."
-                    : "Sin pacientes en seguimiento con los filtros seleccionados."
-                }
+                message="Sin pacientes ingresados con los filtros seleccionados."
               />
             ) : (
               <div
@@ -1127,11 +1189,14 @@ export default function MisPacientesPage() {
                   return (
                     <div
                       key={row.id}
-                      className="ccr-table-row absolute left-0 top-0 grid w-full border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full cursor-pointer border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
                       style={{
+                        gridAutoColumns: "max-content",
+                        gridAutoFlow: "column",
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
+                      onClick={() => setSeleccionado(row.original.patient)}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const meta = getColumnMeta(cell.column);
@@ -1145,7 +1210,7 @@ export default function MisPacientesPage() {
                         return (
                           <div
                             key={cell.id}
-                            className={`border-r border-gray-100 px-2 py-1.5 text-[12px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-3 lg:px-4 ${alignment}`}
+                            className={`flex h-9 items-center overflow-hidden border-r border-gray-100 px-1.5 py-0.5 text-[11px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-2 ${alignment}`}
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -1164,8 +1229,8 @@ export default function MisPacientesPage() {
 
         <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
           <p>
-            {filteredRows} paciente{filteredRows !== 1 ? "s" : ""}{" "}
-            {activeTab === "EGRESADOS" ? "en historial" : "en seguimiento"}
+            {filteredRows} paciente{filteredRows !== 1 ? "s" : ""} ingresado
+            {filteredRows !== 1 ? "s" : ""}
           </p>
           <p className="text-gray-400">
             Mostrando {filteredRows} de {rowsData.length}
@@ -1182,22 +1247,6 @@ export default function MisPacientesPage() {
           onRefresh={() => {
             void cargar();
             setSeleccionado(null);
-          }}
-        />
-      )}
-
-      {editando && (
-        <EditarPacienteModal
-          paciente={editando}
-          mode="contact-only"
-          onClose={() => setEditando(null)}
-          onGuardado={(actualizado) => {
-            setPacientes((prev) =>
-              prev.map((item) =>
-                item.id === actualizado.id ? actualizado : item,
-              ),
-            );
-            setEditando(null);
           }}
         />
       )}
@@ -1219,21 +1268,6 @@ export default function MisPacientesPage() {
         isOpen={creando}
         onOpenChange={setCreando}
         onSuccess={() => void cargar()}
-      />
-
-      <ConfirmDialog
-        isOpen={deleteTarget !== null}
-        variant="danger"
-        title="Eliminar paciente"
-        message={
-          deleteTarget
-            ? `¿Eliminar permanentemente a "${deleteTarget.nombre}"? Esta acción no se puede deshacer.`
-            : ""
-        }
-        confirmLabel="Eliminar permanentemente"
-        loading={deleting}
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
       />
     </div>
   );

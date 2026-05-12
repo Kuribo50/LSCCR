@@ -73,7 +73,8 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
           </div>
           <div className="text-right text-sm text-gray-600">
             <p>Edad: <span className="font-semibold">{perfil.edad} años</span></p>
-            <p>Sect. Per Cápita: <span className="font-semibold">{perfil.percapita_desde || 'Sin dato'}</span></p>
+            <p>SectorCesfam: <span className="font-semibold">{perfil.sector_cesfam || 'Sin dato'}</span></p>
+            <p>Sector oficial: <span className="font-semibold">{perfil.sector_oficial || 'Sin dato'}</span></p>
           </div>
         </div>
         {perfil.mayor_60 && (

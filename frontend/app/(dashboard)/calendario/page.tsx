@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Paciente } from "@/lib/types";
 import { getErrorMessage } from "@/lib/errors";
@@ -33,6 +34,13 @@ function toDateKey(date: Date) {
 
 function fromDateKey(dateKey: string) {
   return new Date(`${dateKey}T00:00:00`);
+}
+
+function dateFromParam(value: string | null) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = fromDateKey(value);
+  if (Number.isNaN(date.getTime()) || toDateKey(date) !== value) return null;
+  return date;
 }
 
 function formatMonthYear(date: Date) {
@@ -115,14 +123,16 @@ interface InasistenciaAgendaResponse {
 export default function CalendarioPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const fechaParam = searchParams.get("fecha");
+  const fechaInicial = dateFromParam(fechaParam) ?? new Date();
   const [pacientes, setPacientes] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [mesActual, setMesActual] = useState(() => {
-    const hoy = new Date();
-    return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  });
-  const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(new Date()));
+  const [mesActual, setMesActual] = useState(
+    () => new Date(fechaInicial.getFullYear(), fechaInicial.getMonth(), 1),
+  );
+  const [fechaSeleccionada, setFechaSeleccionada] = useState(() => toDateKey(fechaInicial));
   const [programando, setProgramando] = useState<Paciente | null>(null);
   const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
   const [gestionandoCita, setGestionandoCita] = useState<Paciente | null>(null);
@@ -150,6 +160,14 @@ export default function CalendarioPage() {
   useEffect(() => {
     if (user) void cargar();
   }, [cargar, user]);
+
+  useEffect(() => {
+    const fechaUrl = dateFromParam(fechaParam);
+    if (!fechaUrl) return;
+    const dateKey = toDateKey(fechaUrl);
+    setMesActual(new Date(fechaUrl.getFullYear(), fechaUrl.getMonth(), 1));
+    setFechaSeleccionada(dateKey);
+  }, [fechaParam]);
 
   useEffect(() => {
     if (!sameMonth(fechaSeleccionada, mesActual)) {
@@ -214,7 +232,13 @@ export default function CalendarioPage() {
   }, [mesActual]);
 
   const pacientesDelDia = porFecha.get(fechaSeleccionada) ?? [];
-  const pacientesSinFecha = pacientesProgramables.filter((p) => !p.proxima_atencion);
+  const pacientesSinFecha = useMemo(
+    () =>
+      pacientesProgramables
+        .filter((p) => !p.proxima_atencion)
+        .sort((a, b) => (b.dias_en_lista ?? 0) - (a.dias_en_lista ?? 0) || a.nombre.localeCompare(b.nombre, "es")),
+    [pacientesProgramables],
+  );
   const citasHoy = porFecha.get(toDateKey(new Date()))?.length ?? 0;
 
   async function handleAsistencia(paciente: Paciente) {
@@ -345,7 +369,7 @@ export default function CalendarioPage() {
         </motion.div>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.95fr)_430px]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <motion.main variants={itemVariants} className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -372,13 +396,13 @@ export default function CalendarioPage() {
             {loading ? (
               <div className="grid grid-cols-7 gap-1.5">
                 {Array.from({ length: 35 }).map((_, i) => (
-                  <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100 lg:h-16" />
+                  <div key={i} className="h-[74px] animate-pulse rounded-lg bg-slate-100 lg:h-[86px]" />
                 ))}
               </div>
             ) : (
               <div className="grid grid-cols-7 gap-1.5">
                 {diasDelMes.map((dia, index) => {
-                  if (!dia) return <div key={`empty-${index}`} className="h-14 rounded-lg border border-transparent lg:h-16" />;
+                  if (!dia) return <div key={`empty-${index}`} className="h-[74px] rounded-lg border border-transparent lg:h-[86px]" />;
                   const dateKey = toDateKey(dia);
                   const items = porFecha.get(dateKey) ?? [];
                   const isSelected = fechaSeleccionada === dateKey;
@@ -408,7 +432,7 @@ export default function CalendarioPage() {
                       key={dateKey}
                       type="button"
                       onClick={() => setFechaSeleccionada(dateKey)}
-                      className={`relative flex h-14 flex-col items-start justify-between rounded-lg border p-1.5 text-left transition lg:h-16 ${dayClass}`}
+                      className={`relative flex h-[74px] flex-col items-start justify-between rounded-lg border p-2 text-left transition lg:h-[86px] ${dayClass}`}
                     >
                       <span className="text-sm font-black">{dia.getDate()}</span>
                       {items.length > 0 && (
@@ -425,35 +449,38 @@ export default function CalendarioPage() {
         </motion.main>
 
         <motion.aside variants={itemVariants} className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-4">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                <div>
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda del día</p>
-                  <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatDay(fechaSeleccionada)}</h2>
+                  <h2 className="mt-1 text-sm font-black capitalize text-slate-900">{formatDay(fechaSeleccionada)}</h2>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">Citas programadas para el día.</p>
                 </div>
-                <p className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
+                <p className="shrink-0 rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
                   {pacientesDelDia.length} cita{pacientesDelDia.length !== 1 ? "s" : ""} programada{pacientesDelDia.length !== 1 ? "s" : ""}
                 </p>
               </div>
             </div>
 
-            <div className="custom-scrollbar max-h-[360px] space-y-2 overflow-y-auto p-4">
+            <div className="custom-scrollbar max-h-[204px] overflow-y-auto p-2">
               {loading ? (
-                Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-24 animate-pulse rounded-lg bg-slate-100" />
+                Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="mb-1 h-12 animate-pulse rounded-lg bg-slate-100" />
                 ))
               ) : pacientesDelDia.length > 0 ? (
-                pacientesDelDia.map((p) => (
-                  <AgendaDiaCard
-                    key={p.id}
-                    paciente={p}
-                    puedeGestionar={puedeGestionarAgenda(p)}
-                    disabled={accionEnCurso.endsWith(`-${p.id}`)}
-                    onEditar={() => setGestionandoCita(p)}
-                    onFicha={() => setFichaPaciente(p)}
-                  />
-                ))
+                <div className="space-y-1">
+                  {pacientesDelDia.map((p) => (
+                    <AgendaDiaCard
+                      key={p.id}
+                      paciente={p}
+                      puedeGestionar={puedeGestionarAgenda(p)}
+                      disabled={accionEnCurso.endsWith(`-${p.id}`)}
+                      onEditar={() => setGestionandoCita(p)}
+                      onFicha={() => setFichaPaciente(p)}
+                    />
+                  ))}
+                </div>
               ) : (
                 <EmptyState
                   title="Sin citas para este día"
@@ -463,28 +490,37 @@ export default function CalendarioPage() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Pendientes de agenda</p>
-                <h2 className="mt-1 text-sm font-black text-slate-900">{pacientesSinFecha.length} pacientes activos</h2>
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Pendientes de agenda</p>
+                  <h2 className="mt-1 text-sm font-black text-slate-900">{pacientesSinFecha.length} paciente{pacientesSinFecha.length !== 1 ? "s" : ""} sin próxima atención</h2>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">Ordenados por más tiempo en espera.</p>
+                </div>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <FiUserPlus size={16} />
+                </span>
               </div>
-              <FiUserPlus className="text-blue-600" size={18} />
             </div>
 
-            <div className="custom-scrollbar max-h-[740px] space-y-2 overflow-y-auto pr-1">
+            <div className="custom-scrollbar max-h-[204px] overflow-y-auto p-2">
               {pacientesSinFecha.length > 0 ? (
-                pacientesSinFecha.map((p) => (
-                  <PendienteAgendaItem
-                    key={p.id}
-                    paciente={p}
-                    puedeGestionar={puedeGestionarAgenda(p)}
-                    onProgramar={() => setProgramando(p)}
-                    onFicha={() => setFichaPaciente(p)}
-                  />
-                ))
+                <div className="space-y-1">
+                  {pacientesSinFecha.map((p) => (
+                    <PendienteAgendaItem
+                      key={p.id}
+                      paciente={p}
+                      puedeGestionar={puedeGestionarAgenda(p)}
+                      onProgramar={() => setProgramando(p)}
+                      onFicha={() => setFichaPaciente(p)}
+                    />
+                  ))}
+                </div>
               ) : (
-                <EmptyState title="Sin pendientes" description="Todos los pacientes activos tienen agenda próxima." />
+                <div className="p-3">
+                  <EmptyState title="Sin pendientes" description="Todos los pacientes activos tienen agenda próxima." />
+                </div>
               )}
             </div>
           </section>
@@ -601,40 +637,41 @@ function AgendaDiaCard({
   const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-2.5 transition hover:border-blue-100 hover:shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex flex-1 gap-2">
-          <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-50 px-2 text-[11px] font-black text-blue-700">
-            <FiClock size={12} />
+    <article className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent bg-white px-2.5 py-2 transition hover:border-blue-100 hover:bg-blue-50/40">
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-black leading-tight text-slate-950" title={paciente.nombre}>
+          {paciente.nombre}
+        </p>
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500">
+          <span className="inline-flex shrink-0 items-center gap-1 font-black text-blue-700">
+            <FiClock size={11} />
             {formatTime(paciente.proxima_atencion)}
           </span>
-          <div className="min-w-0">
-            <h3 className="break-words text-sm font-black leading-snug text-slate-950">{paciente.nombre}</h3>
-            <p className="mt-1 text-[11px] font-semibold leading-tight text-slate-500">Kine: {responsable}</p>
-          </div>
+          <span className="text-slate-300">•</span>
+          <span className="truncate">Kine: {responsable}</span>
         </div>
+      </div>
 
-        <div className="flex w-[88px] shrink-0 flex-col gap-1.5">
-          {puedeGestionar && (
-            <button
-              type="button"
-              onClick={onEditar}
-              disabled={disabled}
-              className="inline-flex items-center justify-center gap-1 rounded-md bg-[#335FDB] px-2 py-1.5 text-[11px] font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
-            >
-              <FiEdit3 size={12} />
-              Editar
-            </button>
-          )}
+      <div className="flex shrink-0 items-center gap-1.5">
+        {puedeGestionar && (
           <button
             type="button"
-            onClick={onFicha}
-            className="inline-flex items-center justify-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1.5 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+            onClick={onEditar}
+            disabled={disabled}
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-[#335FDB] px-2 text-[10px] font-bold text-white transition hover:bg-[#284FC0] focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
           >
-            <FiEye size={12} />
-            Ver ficha
+            <FiEdit3 size={11} />
+            Editar
           </button>
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={onFicha}
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+        >
+          <FiEye size={11} />
+          Ficha
+        </button>
       </div>
     </article>
   );
@@ -765,21 +802,26 @@ function PendienteAgendaItem({
   onFicha: () => void;
 }) {
   const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
+  const diasEspera = paciente.dias_en_lista === 1 ? "1 día" : `${paciente.dias_en_lista} días`;
 
   return (
-    <article className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 transition hover:bg-white">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="break-words text-xs font-black leading-snug text-slate-900">{paciente.nombre}</p>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">Kine: {responsable}</p>
+    <article className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent bg-white px-2.5 py-2 transition hover:border-blue-100 hover:bg-blue-50/40">
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-black leading-tight text-slate-950" title={paciente.nombre}>
+          {paciente.nombre}
+        </p>
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500">
+          <span className="truncate">Kine: {responsable}</span>
+          <span className="text-slate-300">•</span>
+          <span className="shrink-0">{diasEspera}</span>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         {puedeGestionar && (
           <button
             type="button"
             onClick={onProgramar}
-            className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2 py-1 text-[10px] font-bold text-white transition hover:bg-[#284FC0]"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-[#335FDB] px-2 text-[10px] font-bold text-white transition hover:bg-[#284FC0] focus:outline-none focus:ring-2 focus:ring-blue-200"
           >
             <FiCalendar size={11} />
             Programar
@@ -788,10 +830,10 @@ function PendienteAgendaItem({
         <button
           type="button"
           onClick={onFicha}
-          className="inline-flex items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 py-1 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50"
+          className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-100"
         >
           <FiEye size={11} />
-          Ver ficha
+          Ficha
         </button>
       </div>
     </article>

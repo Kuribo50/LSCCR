@@ -34,6 +34,9 @@ class Paciente(models.Model):
     id_ccr = models.CharField(max_length=12, unique=True, blank=True, editable=False)
     fecha_derivacion = models.DateField()
     percapita_desde = models.CharField(max_length=150, blank=True)
+    sector_oficial = models.CharField(max_length=120, blank=True, default="")
+    sector_cesfam = models.CharField(max_length=120, blank=True, default="")
+    asignado_historico = models.BooleanField(default=False)
     nombre = models.CharField(max_length=160)
     rut = models.CharField(max_length=12, db_index=True)
     edad = models.PositiveIntegerField()
@@ -83,12 +86,16 @@ class Paciente(models.Model):
         indexes = [
             models.Index(fields=["rut", "fecha_derivacion"]),
             models.Index(fields=["categoria"]),
+            models.Index(fields=["sector_cesfam"], name="paciente_sector_cesfam_idx"),
+            models.Index(fields=["sector_oficial"], name="paciente_sector_oficial_idx"),
             models.Index(fields=["prioridad"]),
             models.Index(fields=["estado"]),
         ]
 
     def save(self, *args, **kwargs):
         self.rut = self.rut.replace(".", "").replace("-", "").upper().strip()
+        self.sector_oficial = " ".join((self.sector_oficial or "").split()).upper()
+        self.sector_cesfam = " ".join((self.sector_cesfam or "").split()).upper()
         self.mayor_60 = self.edad >= 60
         is_new = self.pk is None
         if is_new and not self.id_ccr:

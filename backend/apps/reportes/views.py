@@ -156,6 +156,22 @@ def distribucion_por_choice(queryset, campo, choices, key):
     ]
 
 
+def distribucion_por_texto(queryset, campo, key, limit=12):
+    filas = (
+        queryset.values(campo)
+        .annotate(total=Count("id"))
+        .order_by("-total", campo)[:limit]
+    )
+    return [
+        {
+            key: item[campo] or "Sin dato",
+            "label": item[campo] or "Sin dato",
+            "total": item["total"],
+        }
+        for item in filas
+    ]
+
+
 def reporte_por_responsable_data(mes, anio):
     hoy = date.today()
     corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
@@ -309,6 +325,15 @@ class ResumenReporteView(APIView):
                 ),
                 "por_categoria": distribucion_por_choice(
                     corte, "categoria", Paciente.Categoria.choices, "categoria"
+                ),
+                "por_sector_cesfam": distribucion_por_texto(
+                    corte, "sector_cesfam", "sector_cesfam"
+                ),
+                "por_sector_oficial": distribucion_por_texto(
+                    corte, "sector_oficial", "sector_oficial"
+                ),
+                "por_diagnostico": distribucion_por_texto(
+                    corte, "diagnostico", "diagnostico"
                 ),
             }
         )

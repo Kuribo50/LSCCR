@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 
 from openpyxl import load_workbook
@@ -77,6 +77,67 @@ class PacienteWorkflowTests(APITestCase):
         item = next(p for p in data if p["id"] == paciente.id)
         self.assertEqual(item["categoria"], Paciente.Categoria.BORRADOR)
         self.assertEqual(item["categoria_label"], "No categorizado")
+
+    def test_busqueda_incluye_sector_responsable_y_observaciones(self):
+        responsable = Usuario.objects.create_user(
+            rut="33333333-3",
+            password="testpass",
+            nombre="Responsable Buscada",
+            rol=Usuario.Rol.KINE,
+        )
+        por_sector_cesfam = self.crear_paciente(
+            nombre="Paciente Sector Cesfam",
+            sector_cesfam="ROJO NORTE",
+        )
+        por_sector_oficial = self.crear_paciente(
+            nombre="Paciente Sector Oficial",
+            sector_oficial="AZUL SUR",
+        )
+        por_responsable = self.crear_paciente(
+            nombre="Paciente Responsable",
+            kine_asignado=responsable,
+        )
+        por_observacion = self.crear_paciente(
+            nombre="Paciente Observacion",
+            observaciones="Prefiere llamado en la tarde",
+        )
+
+        casos = [
+            ("ROJO NORTE", [por_sector_cesfam]),
+            ("AZUL SUR", [por_sector_oficial]),
+            ("Responsable Buscada", [por_responsable]),
+            ("llamado en la tarde", [por_observacion]),
+        ]
+        for termino, esperados in casos:
+            with self.subTest(termino=termino):
+                response = self.client.get("/api/pacientes/", {"search": termino})
+                self.assertResponseSoloPacientes(response, esperados)
+
+    def test_filtro_estado_acepta_multiples_valores(self):
+        pendiente = self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        rescate = self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        self.crear_paciente(estado=Paciente.Estado.ALTA_MEDICA)
+
+        response = self.client.get("/api/pacientes/?estado=PENDIENTE,RESCATE")
+
+        self.assertResponseSoloPacientes(response, [pendiente, rescate])
+
+    def test_solo_mios_acota_resultados_de_kine(self):
+        otro_kine = Usuario.objects.create_user(
+            rut="44444444-4",
+            password="testpass",
+            nombre="Otro Kine",
+            rol=Usuario.Rol.KINE,
+        )
+        mio = self.crear_paciente(nombre="Paciente Mio", kine_asignado=self.kine)
+        self.crear_paciente(nombre="Paciente Otro", kine_asignado=otro_kine)
+        self.crear_paciente(nombre="Paciente Sin Responsable", kine_asignado=None)
+        self.client.force_authenticate(self.kine)
+
+        response = self.client.get("/api/pacientes/?solo_mios=1")
+
+        self.assertResponseSoloPacientes(response, [mio])
 
     def test_registrar_llamado_contesto_crea_historial_e_ingresa(self):
         paciente = self.crear_paciente(fecha_ingreso=None)
@@ -497,6 +558,30 @@ class PacienteWorkflowTests(APITestCase):
         tipos = {accion["tipo"] for accion in response.data["acciones"]}
         self.assertEqual(tipos, {"CAMBIO_ESTADO", "CONTACTO", "INASISTENCIA", "AGENDA_ASISTIO"})
 
+    def test_historial_acciones_no_duplica_inasistencia_de_agenda(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        fecha_programada = timezone.now()
+        RegistroAgendaPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            fecha_programada=fecha_programada,
+            resultado=RegistroAgendaPaciente.Resultado.NO_ASISTIO,
+            observacion="No asiste a atención programada.",
+        )
+        InasistenciaPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            fecha=fecha_programada.date(),
+            motivo="No asiste a atención programada.",
+        )
+
+        response = self.client.get(f"/api/pacientes/{paciente.id}/historial-acciones/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tipos = [accion["tipo"] for accion in response.data["acciones"]]
+        self.assertIn("AGENDA_NO_ASISTIO", tipos)
+        self.assertNotIn("INASISTENCIA", tipos)
+
     def test_alertas_operativas_retorna_grupos_esperados(self):
         alta = self.crear_paciente(
             prioridad=Paciente.Prioridad.ALTA,
@@ -564,6 +649,7 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(response.data["pendientes"], 2)
         self.assertEqual(response.data["rescate"], 1)
         self.assertEqual(response.data["ingresados"], 1)
+        self.assertEqual(response.data["lista_espera_global"], 3)
         self.assertEqual(response.data["sin_asignar"], 2)
         self.assertEqual(response.data["asignados_activos"], 3)
         self.assertEqual(response.data["mios_activos"], 0)
@@ -592,11 +678,60 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(response.data["pendientes"], 1)
         self.assertEqual(response.data["rescate"], 1)
         self.assertEqual(response.data["ingresados"], 1)
+        self.assertEqual(response.data["lista_espera_global"], 4)
         self.assertEqual(response.data["sin_asignar"], 1)
         self.assertEqual(response.data["asignados_activos"], 4)
         self.assertEqual(response.data["mios_activos"], 3)
         self.assertEqual(response.data["rescates_globales"], 1)
         self.assertEqual(response.data["cola_llamados"], 2)
+
+    def test_agenda_resumen_admin_devuelve_citas_del_mes(self):
+        fecha_uno = timezone.make_aware(datetime(2026, 5, 6, 9, 0))
+        fecha_dos = timezone.make_aware(datetime(2026, 5, 6, 10, 0))
+        fecha_otro_dia = timezone.make_aware(datetime(2026, 5, 8, 11, 0))
+        fecha_otro_mes = timezone.make_aware(datetime(2026, 6, 1, 9, 0))
+        self.crear_paciente(proxima_atencion=fecha_uno)
+        self.crear_paciente(proxima_atencion=fecha_dos)
+        self.crear_paciente(proxima_atencion=fecha_otro_dia)
+        self.crear_paciente(proxima_atencion=fecha_otro_mes)
+        self.crear_paciente(
+            estado=Paciente.Estado.ALTA_MEDICA,
+            proxima_atencion=fecha_uno,
+        )
+
+        response = self.client.get("/api/pacientes/agenda-resumen/?mes=2026-05")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data,
+            [
+                {"fecha": "2026-05-06", "total": 2},
+                {"fecha": "2026-05-08", "total": 1},
+            ],
+        )
+
+    def test_agenda_resumen_kine_muestra_solo_su_cartera(self):
+        otro_kine = Usuario.objects.create_user(
+            rut="44444444-4",
+            password="testpass",
+            nombre="Kine Agenda",
+            rol=Usuario.Rol.KINE,
+        )
+        fecha = timezone.make_aware(datetime(2026, 5, 6, 9, 0))
+        self.crear_paciente(proxima_atencion=fecha)
+        self.crear_paciente(proxima_atencion=fecha, kine_asignado=otro_kine)
+        self.crear_paciente(proxima_atencion=fecha, kine_asignado=None)
+        self.client.force_authenticate(self.kine)
+
+        response = self.client.get("/api/pacientes/agenda-resumen/?mes=2026-05")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [{"fecha": "2026-05-06", "total": 1}])
+
+    def test_agenda_resumen_rechaza_mes_invalido(self):
+        response = self.client.get("/api/pacientes/agenda-resumen/?mes=2026")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def assertInPaciente(self, grupo, paciente):
         ids = {item["id"] for item in grupo["pacientes"]}
@@ -756,8 +891,9 @@ class PacienteWorkflowTests(APITestCase):
         ws = workbook.active
         fila = next(row for row in ws.iter_rows(min_row=8, values_only=True) if row[3])
         self.assertEqual(fila[3], "'=cmd")
-        self.assertEqual(fila[7], "'+diagnostico")
-        self.assertEqual(fila[18], "'@observacion")
+        self.assertEqual(fila[8], "NO")
+        self.assertEqual(fila[9], "'+diagnostico")
+        self.assertEqual(fila[20], "'@observacion")
 
     def test_exportar_lista_espera_muestra_no_categorizado(self):
         self.crear_paciente(categoria=Paciente.Categoria.BORRADOR)
@@ -768,7 +904,7 @@ class PacienteWorkflowTests(APITestCase):
         workbook = load_workbook(BytesIO(response.content))
         ws = workbook.active
         fila = next(row for row in ws.iter_rows(min_row=8, values_only=True) if row[3])
-        self.assertEqual(fila[10], "No categorizado")
+        self.assertEqual(fila[12], "No categorizado")
 
     def test_usuario_no_autenticado_no_puede_exportar(self):
         self.client.force_authenticate(user=None)

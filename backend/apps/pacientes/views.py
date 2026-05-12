@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 from django.db import transaction
 from django.db.models import Case, Count, IntegerField, Q, Value, When
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -65,6 +66,11 @@ ALERTAS_OPERATIVAS = (
     "posible_abandono",
     "telefonos_incompletos",
 )
+
+ESTADOS_LISTA_ESPERA = [
+    Paciente.Estado.PENDIENTE,
+    Paciente.Estado.RESCATE,
+]
 
 AGENDA_MOVIMIENTO_NOTAS = {
     "Paciente asistió a atención programada.",
@@ -177,9 +183,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             estado__in=ESTADOS_FINALES
         )
         activos_mios = Q(kine_asignado=request.user) & ~Q(estado__in=ESTADOS_FINALES)
-        cola_base = Q(
-            estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE]
-        )
+        cola_base = Q(estado__in=ESTADOS_LISTA_ESPERA)
         cola_filtro = (
             cola_base & Q(kine_asignado=request.user)
             if request.user.rol == Usuario.Rol.KINE
@@ -191,8 +195,17 @@ class PacienteViewSet(viewsets.ModelViewSet):
             pendientes=Count("id", filter=Q(estado=Paciente.Estado.PENDIENTE)),
             rescate=Count("id", filter=Q(estado=Paciente.Estado.RESCATE)),
             ingresados=Count("id", filter=Q(estado=Paciente.Estado.INGRESADO)),
+            egresados=Count("id", filter=Q(estado__in=ESTADOS_FINALES)),
+            agenda_hoy=Count(
+                "id",
+                filter=Q(
+                    estado__in=estados_activos,
+                    proxima_atencion__date=timezone.localdate(),
+                ),
+            ),
         )
         resumen_global = base.aggregate(
+            lista_espera_global=Count("id", filter=cola_base),
             sin_asignar=Count("id", filter=Q(kine_asignado__isnull=True)),
             asignados_activos=Count("id", filter=activos_asignados),
             mios_activos=Count("id", filter=activos_mios),
@@ -201,6 +214,53 @@ class PacienteViewSet(viewsets.ModelViewSet):
         )
 
         return Response({**resumen_visible, **resumen_global})
+
+    @action(detail=False, methods=["get"], url_path="agenda-resumen")
+    def agenda_resumen(self, request):
+        mes_param = request.query_params.get("mes")
+        try:
+            if mes_param:
+                inicio = datetime.strptime(mes_param, "%Y-%m").date().replace(day=1)
+            else:
+                hoy = timezone.localdate()
+                inicio = date(hoy.year, hoy.month, 1)
+        except ValueError:
+            return Response(
+                {"detail": "El mes debe tener formato YYYY-MM."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        fin = (
+            date(inicio.year + 1, 1, 1)
+            if inicio.month == 12
+            else date(inicio.year, inicio.month + 1, 1)
+        )
+        estados_visibles = [
+            Paciente.Estado.PENDIENTE,
+            Paciente.Estado.RESCATE,
+            Paciente.Estado.INGRESADO,
+        ]
+        queryset = Paciente.objects.filter(
+            estado__in=estados_visibles,
+            proxima_atencion__date__gte=inicio,
+            proxima_atencion__date__lt=fin,
+        )
+        if request.user.rol == Usuario.Rol.KINE:
+            queryset = queryset.filter(kine_asignado=request.user)
+
+        dias = (
+            queryset.annotate(fecha=TruncDate("proxima_atencion"))
+            .values("fecha")
+            .annotate(total=Count("id"))
+            .order_by("fecha")
+        )
+
+        return Response(
+            [
+                {"fecha": item["fecha"].isoformat(), "total": item["total"]}
+                for item in dias
+            ]
+        )
 
     def destroy(self, request, *args, **kwargs):
         if request.user.rol != Usuario.Rol.ADMIN:
@@ -214,6 +274,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
         queryset = super().filter_queryset(queryset)
         params = self.request.query_params
         categoria = params.get("categoria")
+        sector_cesfam = params.get("sector_cesfam")
+        sector_oficial = params.get("sector_oficial")
         prioridad = params.get("prioridad")
         estado = params.get("estado")
         kine = params.get("kine")
@@ -229,10 +291,18 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
         if categoria:
             queryset = queryset.filter(categoria=categoria)
+        if sector_cesfam:
+            queryset = queryset.filter(sector_cesfam__iexact=sector_cesfam)
+        if sector_oficial:
+            queryset = queryset.filter(sector_oficial__iexact=sector_oficial)
         if prioridad:
             queryset = queryset.filter(prioridad=prioridad)
         if estado:
-            queryset = queryset.filter(estado=estado)
+            estados = [item.strip() for item in estado.split(",") if item.strip()]
+            if len(estados) > 1:
+                queryset = queryset.filter(estado__in=estados)
+            else:
+                queryset = queryset.filter(estado=estado)
         if kine:
             queryset = queryset.filter(kine_asignado_id=kine)
         if importacion:
@@ -259,12 +329,42 @@ class PacienteViewSet(viewsets.ModelViewSet):
             ])
             
         if search:
-            queryset = queryset.filter(
+            search_clean = search.replace(".", "").replace("-", "").upper().strip()
+            prioridad_matches = [
+                value
+                for value, label in Paciente.Prioridad.choices
+                if search.lower() in value.lower() or search.lower() in label.lower()
+            ]
+            categoria_matches = [
+                value
+                for value, label in Paciente.Categoria.choices
+                if search.lower() in value.lower() or search.lower() in label.lower()
+            ]
+            estado_matches = [
+                value
+                for value, label in Paciente.Estado.choices
+                if search.lower() in value.lower() or search.lower() in label.lower()
+            ]
+            search_filter = (
                 Q(nombre__icontains=search)
                 | Q(rut__icontains=search)
+                | Q(rut__icontains=search_clean)
                 | Q(id_ccr__icontains=search)
                 | Q(diagnostico__icontains=search)
+                | Q(sector_cesfam__icontains=search)
+                | Q(sector_oficial__icontains=search)
+                | Q(kine_asignado__nombre__icontains=search)
+                | Q(profesional__icontains=search)
+                | Q(percapita_desde__icontains=search)
+                | Q(observaciones__icontains=search)
             )
+            if prioridad_matches:
+                search_filter |= Q(prioridad__in=prioridad_matches)
+            if categoria_matches:
+                search_filter |= Q(categoria__in=categoria_matches)
+            if estado_matches:
+                search_filter |= Q(estado__in=estado_matches)
+            queryset = queryset.filter(search_filter)
         if solo_mios in {"1", "true", "True"} and self.request.user.rol == Usuario.Rol.KINE:
             queryset = queryset.filter(kine_asignado=self.request.user)
 
@@ -834,7 +934,14 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        fechas_inasistencia_agenda = {
+            registro.fecha_programada.date()
+            for registro in registros_agenda
+            if registro.resultado == RegistroAgendaPaciente.Resultado.NO_ASISTIO
+        }
         for inasistencia in inasistencias:
+            if inasistencia.fecha in fechas_inasistencia_agenda:
+                continue
             fecha = timezone.make_aware(
                 datetime.combine(inasistencia.fecha, datetime.min.time())
             )
@@ -887,6 +994,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
             key: request.query_params.get(key, "")
             for key in [
                 "categoria",
+                "sector_cesfam",
+                "sector_oficial",
                 "prioridad",
                 "estado",
                 "kine",
@@ -969,6 +1078,15 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 diagnostico = str(item.get("diagnostico", "")).strip()
                 prioridad_raw = str(item.get("prioridad", "")).strip()
                 desde = str(item.get("percapita_desde", "")).strip()
+                sector_oficial = str(item.get("sector_oficial", "")).strip().upper()
+                sector_cesfam = str(item.get("sector_cesfam", "")).strip().upper()
+                asignado_historico = str(item.get("asignado_historico", "")).strip().upper() in {
+                    "SI",
+                    "S",
+                    "1",
+                    "TRUE",
+                    "X",
+                }
                 profesional = str(item.get("profesional", "KINESIOLOGO")).strip()
                 observaciones = str(item.get("observaciones", "")).strip()
 
@@ -1005,6 +1123,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
                         id_ccr=f"TMP-{len(creados) + 1:07d}",
                         fecha_derivacion=fecha,
                         percapita_desde=desde,
+                        sector_oficial=sector_oficial,
+                        sector_cesfam=sector_cesfam,
+                        asignado_historico=asignado_historico,
                         nombre=nombre,
                         rut=rut,
                         edad=edad,
@@ -1059,6 +1180,8 @@ class PerfilPacienteView(APIView):
             "nombre": latest.nombre,
             "edad": latest.edad,
             "percapita_desde": latest.percapita_desde,
+            "sector_oficial": latest.sector_oficial,
+            "sector_cesfam": latest.sector_cesfam,
             "mayor_60": latest.mayor_60,
             "derivaciones": derivaciones_data
         })

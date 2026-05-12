@@ -55,7 +55,11 @@ class ReportesOperativosTests(APITestCase):
         return Paciente.objects.create(**data)
 
     def test_resumen_mensual_separa_corte_y_actividad(self):
-        self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        self.crear_paciente(
+            estado=Paciente.Estado.PENDIENTE,
+            sector_cesfam="AZUL",
+            sector_oficial="CENTENARIO",
+        )
         self.crear_paciente(estado=Paciente.Estado.RESCATE)
         self.crear_paciente(
             estado=Paciente.Estado.INGRESADO,
@@ -89,6 +93,18 @@ class ReportesOperativosTests(APITestCase):
         self.assertEqual(response.data["actividad_mes"]["altas_medicas"], 1)
         self.assertEqual(response.data["actividad_mes"]["egresos_administrativos"], 1)
         self.assertEqual(response.data["actividad_mes"]["promedio_dias_hasta_ingreso"], 5)
+        por_sector_cesfam = {
+            item["label"]: item["total"] for item in response.data["por_sector_cesfam"]
+        }
+        por_sector_oficial = {
+            item["label"]: item["total"] for item in response.data["por_sector_oficial"]
+        }
+        por_diagnostico = {
+            item["label"]: item["total"] for item in response.data["por_diagnostico"]
+        }
+        self.assertEqual(por_sector_cesfam["AZUL"], 1)
+        self.assertEqual(por_sector_oficial["CENTENARIO"], 1)
+        self.assertEqual(por_diagnostico["Lumbago"], 5)
 
     def test_por_responsable_incluye_kines_y_sin_responsable(self):
         self.crear_paciente(estado=Paciente.Estado.PENDIENTE)

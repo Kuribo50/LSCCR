@@ -8,9 +8,11 @@ import type { Paciente, Usuario, Categoria, Prioridad, Estado } from '@/lib/type
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS, ESTADO_LABELS } from '@/lib/types'
 import PacienteTable from '@/components/PacienteTable'
 import ColaDeLlamados from '@/components/ColaDeLlamados'
+import { TableSkeleton } from '@/components/Skeleton'
 
 type Vista = 'tabla' | 'cola'
 
+const LISTA_ESPERA_ESTADOS = new Set<Estado>(['PENDIENTE', 'RESCATE'])
 const CATEGORIAS = Object.entries(CATEGORIA_LABELS) as [Categoria, string][]
 const PRIORIDADES = Object.entries(PRIORIDAD_LABELS) as [Prioridad, string][]
 const ESTADOS = Object.entries(ESTADO_LABELS) as [Estado, string][]
@@ -27,9 +29,10 @@ export default function PacientesPage() {
     user?.rol === 'ADMINISTRATIVO' ? 'cola' : 'tabla'
   )
   const [mostrarModal, setMostrarModal] = useState(false)
+  const searchUrl = searchParams.get('search') ?? ''
 
   // Filtros
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(searchUrl)
   const [filtroCategoria, setFiltroCategoria] = useState('')
   const [filtroPrioridad, setFiltroPrioridad] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('')
@@ -44,10 +47,15 @@ export default function PacientesPage() {
   const anio = searchParams.get('anio')
 
   const isEgresoParams = searchParams.get('is_egreso') === '1' || pathname === '/egresos'
+  const isSearchResults = pathname === '/pacientes' && Boolean(searchUrl)
 
   useEffect(() => {
     setSoloMios(searchParams.get('solo_mios') === '1' || pathname === '/mis-pacientes')
   }, [searchParams, pathname])
+
+  useEffect(() => {
+    setSearch(searchUrl)
+  }, [searchUrl])
 
   const cargarKines = useCallback(async () => {
     try {
@@ -76,13 +84,19 @@ export default function PacientesPage() {
       
       const qs = params.toString()
       const data = await api.get<Paciente[]>(`/pacientes/${qs ? `?${qs}` : ''}`)
-      setPacientes(data)
+      const visibles =
+        user?.rol === 'KINE' && pathname === '/pacientes'
+          ? data.filter((paciente) =>
+              LISTA_ESPERA_ESTADOS.has(paciente.estado) || paciente.kine_asignado === user.id
+            )
+          : data
+      setPacientes(visibles)
     } catch {
       setPacientes([])
     } finally {
       setLoading(false)
     }
-  }, [search, filtroCategoria, filtroPrioridad, filtroEstado, filtroKine, soloMios, isEgresoParams, ordering, mes, anio])
+  }, [search, filtroCategoria, filtroPrioridad, filtroEstado, filtroKine, soloMios, isEgresoParams, ordering, mes, anio, pathname, user])
 
   useEffect(() => {
     cargarPacientes()
@@ -110,8 +124,21 @@ export default function PacientesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-bold text-gray-800">
-            {isEgresoParams ? 'Egresos Históricos' : pathname === '/mis-pacientes' ? 'Mis Pacientes' : 'Lista de Espera'}
+            {isSearchResults
+              ? 'Resultados de búsqueda'
+              : isEgresoParams
+                ? 'Egresos Históricos'
+                : pathname === '/mis-pacientes'
+                  ? 'Mis pacientes'
+                  : pathname === '/pacientes'
+                    ? 'Pacientes'
+                    : 'Lista de Espera'}
           </h1>
+          {isSearchResults && (
+            <p className="mt-1 mb-1 text-xs text-[#335fdb] bg-[#e9f4fb] inline-block px-2 py-1 rounded-md font-medium" style={{ border: '0.5px solid #a8d4f0' }}>
+              Búsqueda: {searchUrl}
+            </p>
+          )}
           {mes && anio && (
             <p className="mt-1 mb-1 text-xs text-[#335fdb] bg-[#e9f4fb] inline-block px-2 py-1 rounded-md font-medium" style={{ border: '0.5px solid #a8d4f0' }}>
               Mostrando ingresados en: {new Date(parseInt(anio), parseInt(mes) - 1).toLocaleString('es-CL', { month: 'long', year: 'numeric' })}
@@ -157,7 +184,7 @@ export default function PacientesPage() {
       >
         <input
           type="text"
-          placeholder="Buscar por nombre, RUT o ID CCR…"
+          placeholder="Buscar por nombre, RUT, sector o diagnóstico…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs w-56 focus:outline-none focus:border-verde-ccr"
@@ -222,7 +249,7 @@ export default function PacientesPage() {
               onChange={(e) => setSoloMios(e.target.checked)}
               className="accent-verde-ccr"
             />
-            Solo mi cartera
+            Solo mis pacientes
           </label>
         )}
 
@@ -246,8 +273,8 @@ export default function PacientesPage() {
 
       {/* Vista principal */}
       {loading ? (
-        <div className="bg-white rounded-[10px] p-12 text-center text-gray-400 text-sm animate-pulse" style={{ border: '0.5px solid #a8d4f0' }}>
-          Cargando pacientes…
+        <div className="ccr-panel ccr-data-table rounded-lg bg-white p-3">
+          <TableSkeleton rows={7} />
         </div>
       ) : vista === 'cola' ? (
         <ColaDeLlamados
@@ -284,7 +311,8 @@ function NuevoPacienteModal({ onClose, onCreado }: { onClose: () => void; onCrea
     rut: '',
     edad: '',
     fecha_derivacion: '',
-    percapita_desde: '',
+    sector_oficial: '',
+    sector_cesfam: '',
     diagnostico: '',
     profesional: '',
     prioridad: 'MODERADA' as Prioridad,
@@ -306,6 +334,8 @@ function NuevoPacienteModal({ onClose, onCreado }: { onClose: () => void; onCrea
       await api.post('/pacientes/', {
         ...form,
         edad: parseInt(form.edad, 10),
+        sector_oficial: form.sector_oficial.trim().toUpperCase(),
+        sector_cesfam: form.sector_cesfam.trim().toUpperCase(),
       })
       onCreado()
       onClose()
@@ -355,8 +385,12 @@ function NuevoPacienteModal({ onClose, onCreado }: { onClose: () => void; onCrea
               <input required type="date" value={form.fecha_derivacion} onChange={e => set('fecha_derivacion', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-verde-ccr" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Perscápita / Desde</label>
-              <input value={form.percapita_desde} onChange={e => set('percapita_desde', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-verde-ccr" />
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Sector oficial</label>
+              <input value={form.sector_oficial} onChange={e => set('sector_oficial', e.target.value)} placeholder="AZUL" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-verde-ccr" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">SectorCesfam</label>
+              <input value={form.sector_cesfam} onChange={e => set('sector_cesfam', e.target.value)} placeholder="AZUL" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-verde-ccr" />
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-gray-600 mb-1">Diagnóstico *</label>

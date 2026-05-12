@@ -45,7 +45,8 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
   const [fechaDerivacion, setFechaDerivacion] = useState(() => 
     new Date().toISOString().split("T")[0]
   );
-  const [percapitaDesde, setPercapitaDesde] = useState("CESFAM Dr. Alberto Reyes");
+  const [sectorOficial, setSectorOficial] = useState("");
+  const [sectorCesfam, setSectorCesfam] = useState("");
   const [diagnostico, setDiagnostico] = useState("");
   const [prioridad, setPrioridad] = useState<Prioridad>("MODERADA");
   const [categoria, setCategoria] = useState<Categoria>("OA_MENOS65");
@@ -59,6 +60,8 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
     setEdad("");
     setTelefono("+569");
     setEmail("");
+    setSectorOficial("");
+    setSectorCesfam("");
     setDiagnostico("");
     setObservaciones("");
     setPrioridad("MODERADA");
@@ -96,7 +99,8 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
         telefono: telefono.length > 4 ? telefono.trim() : "",
         email: email.trim() || undefined,
         fecha_derivacion: fechaDerivacion,
-        percapita_desde: percapitaDesde,
+        sector_oficial: sectorOficial.trim().toUpperCase(),
+        sector_cesfam: sectorCesfam.trim().toUpperCase(),
         diagnostico: diagnostico.trim(),
         profesional: "KINESIOLOGO",
         prioridad,
@@ -300,12 +304,23 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[12px] font-semibold text-[#1D3B2A]">
-                          Centro Derivador
+                          Sector oficial
                         </label>
                         <input
-                          required
-                          value={percapitaDesde}
-                          onChange={(e) => setPercapitaDesde(e.target.value)}
+                          value={sectorOficial}
+                          onChange={(e) => setSectorOficial(e.target.value)}
+                          placeholder="AZUL, ROJO, VERDE..."
+                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                          SectorCesfam
+                        </label>
+                        <input
+                          value={sectorCesfam}
+                          onChange={(e) => setSectorCesfam(e.target.value)}
+                          placeholder="AZUL, CECOSF EL SANTO..."
                           className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>

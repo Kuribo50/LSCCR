@@ -10,12 +10,14 @@ import {
   FiEdit2,
   FiEye,
   FiMessageSquare,
+  FiMapPin,
   FiPhone,
   FiPhoneCall,
   FiPhoneMissed,
   FiPrinter,
   FiRefreshCw,
   FiSearch,
+  FiSend,
   FiUser,
   FiX,
 } from "react-icons/fi";
@@ -92,6 +94,10 @@ function responsablePaciente(paciente: Paciente) {
   return paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable";
 }
 
+function sectorLabel(value: string | null | undefined) {
+  return value?.trim() || "-";
+}
+
 function accionSugerida(paciente: Paciente) {
   if (paciente.estado === "RESCATE") {
     return "Registrar segundo contacto con observación si no contesta.";
@@ -100,7 +106,7 @@ function accionSugerida(paciente: Paciente) {
 }
 
 type AccionContacto = "CONTESTO" | "NO_CONTESTO";
-const SEGUNDOS_CANCELAR_REGISTRO = 20;
+const SEGUNDOS_CANCELAR_REGISTRO = 4;
 
 const PRIORIDAD_ORDER: Record<string, number> = {
   ALTA: 1,
@@ -190,13 +196,25 @@ export default function LlamadosPage() {
   // Lista visible después de aplicar filtros locales.
   const pacientesFiltrados = useMemo(() => {
     return pacientes.filter((p) => {
-      // Búsqueda por RUT o Nombre
       if (searchQuery) {
         const queryText = normalizeSearchText(searchQuery);
         const queryRut = normalizeRut(searchQuery);
-        const matchesNombre = normalizeSearchText(p.nombre).includes(queryText);
-        const matchesRut = normalizeRut(p.rut).includes(queryRut);
-        if (!matchesNombre && !matchesRut) return false;
+        const matchesText = [
+          p.nombre,
+          p.id_ccr,
+          p.diagnostico,
+          p.sector_cesfam,
+          p.sector_oficial,
+          responsablePaciente(p),
+          p.observaciones,
+          p.telefono,
+          p.telefono_recados,
+        ]
+          .map((value) => normalizeSearchText(String(value ?? "")))
+          .join(" ")
+          .includes(queryText);
+        const matchesRut = Boolean(queryRut) && normalizeRut(p.rut).includes(queryRut);
+        if (!matchesText && !matchesRut) return false;
       }
       
       // Filtro por Prioridad
@@ -400,7 +418,7 @@ export default function LlamadosPage() {
     setConfirmacionContacto(null);
     setObservacionContacto("");
     setFechaAtencion(fechaHoraLocalDefault());
-    toast.info("Registro pendiente. Puede cancelarlo durante 20 segundos.");
+    toast.info(`Registro pendiente. Puede cancelarlo durante ${SEGUNDOS_CANCELAR_REGISTRO} segundos.`);
 
     const creadoEn = Date.now();
     intervalRegistroRef.current = setInterval(() => {
@@ -516,7 +534,7 @@ export default function LlamadosPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter") event.preventDefault();
                   }}
-                  placeholder="Buscar por nombre o RUT"
+                  placeholder="Buscar por nombre, RUT, sector o diagnóstico"
                   className="ccr-control-input h-9 w-full px-9 text-xs"
                   aria-label="Buscar pacientes"
                 />
@@ -580,6 +598,7 @@ export default function LlamadosPage() {
           registro={registroPendiente}
           segundos={segundosCancelar}
           loading={Boolean(accionLoading)}
+          onConfirmNow={() => void ejecutarRegistroPendiente(registroPendiente)}
           onCancel={cancelarRegistroPendiente}
         />
       )}
@@ -696,6 +715,9 @@ export default function LlamadosPage() {
               <th>RUT</th>
               <th>Prioridad</th>
               <th>Responsable CCR</th>
+              <th>Sector CESFAM</th>
+              <th>Sector oficial</th>
+              <th>Diagnóstico</th>
               <th>Teléfono</th>
               <th>Intentos contacto</th>
               <th>Estado</th>
@@ -709,6 +731,9 @@ export default function LlamadosPage() {
                 <td>{paciente.rut}</td>
                 <td>{PRIORIDAD_LABELS[paciente.prioridad]}</td>
                 <td>{paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable"}</td>
+                <td>{sectorLabel(paciente.sector_cesfam)}</td>
+                <td>{sectorLabel(paciente.sector_oficial)}</td>
+                <td>{paciente.diagnostico || "Sin diagnóstico"}</td>
                 <td>{paciente.telefono || paciente.telefono_recados || "Sin teléfono"}</td>
                 <td>{paciente.n_intentos_contacto}</td>
                 <td>{ESTADO_LABELS[paciente.estado]}</td>
@@ -749,14 +774,16 @@ export default function LlamadosPage() {
           .ccr-llamados-print table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 10px !important;
+            table-layout: fixed !important;
+            font-size: 9px !important;
           }
           .ccr-llamados-print th,
           .ccr-llamados-print td {
             border: 1px solid #d1d5db !important;
-            padding: 5px !important;
+            padding: 3px 4px !important;
             text-align: left !important;
             vertical-align: top !important;
+            word-break: break-word !important;
           }
           .ccr-llamados-print th {
             background: #e7f3ec !important;
@@ -808,6 +835,8 @@ function ContactabilidadListItem({
 }) {
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
+  const sectorCesfam = sectorLabel(paciente.sector_cesfam);
+  const sectorOficial = sectorLabel(paciente.sector_oficial);
 
   return (
     <button
@@ -826,6 +855,12 @@ function ContactabilidadListItem({
           </h2>
           <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
             {paciente.id_ccr} · {telefonoPrincipal}
+          </p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+            {paciente.diagnostico || "Sin diagnóstico"}
+          </p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+            Sector CESFAM: {sectorCesfam} · Sector oficial: {sectorOficial}
           </p>
           <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
             {ultimoContacto ? ultimoContacto.resultado_label : "Sin contactos registrados"}
@@ -870,6 +905,8 @@ function ContactabilidadDetail({
   const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
   const ultimoContacto = paciente.ultimo_llamado;
   const accionBloqueada = loadingNoContesto || loadingContesto || registroPendienteActivo;
+  const sectorCesfam = sectorLabel(paciente.sector_cesfam);
+  const sectorOficial = sectorLabel(paciente.sector_oficial);
 
   return (
     <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -911,6 +948,29 @@ function ContactabilidadDetail({
             </span>
             <strong className="mt-0.5 block break-words text-slate-900">{responsablePaciente(paciente)}</strong>
           </p>
+          <p className="min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiMapPin size={12} />
+              Sector CESFAM
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">{sectorCesfam}</strong>
+          </p>
+          <p className="min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiMapPin size={12} />
+              Sector oficial
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">{sectorOficial}</strong>
+          </p>
+          <p className="col-span-2 min-w-0">
+            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
+              <FiMessageSquare size={12} />
+              Diagnóstico
+            </span>
+            <strong className="mt-0.5 block break-words text-slate-900">
+              {paciente.diagnostico || "Sin diagnóstico"}
+            </strong>
+          </p>
           <p className="col-span-2 min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
               <FiClock size={12} />
@@ -925,7 +985,7 @@ function ContactabilidadDetail({
         </div>
 
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
-          El resultado se confirma en el siguiente paso. Luego tendrá 20 segundos para cancelar el registro.
+          El resultado se confirma en el siguiente paso. Luego tendrá {SEGUNDOS_CANCELAR_REGISTRO} segundos para cancelar el registro.
         </p>
 
         <div className="grid grid-cols-2 gap-2">
@@ -973,11 +1033,13 @@ function RegistroPendienteBanner({
   registro,
   segundos,
   loading,
+  onConfirmNow,
   onCancel,
 }: {
   registro: RegistroPendienteContacto;
   segundos: number;
   loading: boolean;
+  onConfirmNow: () => void;
   onCancel: () => void;
 }) {
   const esNoContesto = registro.accion === "NO_CONTESTO";
@@ -1000,15 +1062,26 @@ function RegistroPendienteBanner({
             Se guardará automáticamente en {segundos}s. Si cancela, el paciente vuelve a la cola de llamados.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-4 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
-        >
-          <FiX size={14} />
-          Cancelar registro ({segundos}s)
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onConfirmNow}
+            disabled={loading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+          >
+            {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiSend size={13} />}
+            Confirmar envío
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+          >
+            <FiX size={13} />
+            Cancelar ({segundos}s)
+          </button>
+        </div>
       </div>
     </div>
   );

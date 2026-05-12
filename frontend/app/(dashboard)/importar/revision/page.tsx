@@ -18,6 +18,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
+import { TableSkeleton } from "@/components/Skeleton";
 import type {
   ImportacionRevisionActionResultado,
   ImportacionRevisionEstado,
@@ -31,6 +32,7 @@ const TYPE_FILTERS: Array<{ label: string; value: "TODOS" | ImportacionRevisionT
   { label: "Todos", value: "TODOS" },
   { label: "Errores", value: "ERROR" },
   { label: "Recurrentes", value: "RECURRENTE" },
+  { label: "Revisión", value: "ADVERTENCIA" },
 ];
 
 const STATUS_FILTERS: Array<{ label: string; value: "TODOS" | ImportacionRevisionEstado }> = [
@@ -47,7 +49,9 @@ type RevisionForm = {
   edad: string;
   diagnostico: string;
   prioridad: string;
-  percapita_desde: string;
+  sector_oficial: string;
+  sector_cesfam: string;
+  categoria: string;
   profesional: string;
   observaciones: string;
 };
@@ -64,12 +68,16 @@ function badgeClass(item: ImportacionRevisionItem) {
       ? "border-red-200 bg-red-50 text-red-700 dark:!border-red-400/40 dark:!bg-red-500/15 dark:!text-red-100"
       : "border-amber-200 bg-amber-50 text-amber-700 dark:!border-amber-300/40 dark:!bg-amber-400/15 dark:!text-amber-100";
   }
+  if (item.tipo === "ADVERTENCIA") {
+    return "border-amber-200 bg-amber-50 text-amber-700 dark:!border-amber-300/40 dark:!bg-amber-400/15 dark:!text-amber-100";
+  }
   return "border-blue-200 bg-blue-50 text-blue-800 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-white";
 }
 
 function estadoRevisionLabel(item: ImportacionRevisionItem) {
   if (item.estado_revision === "RESUELTO") return "Resuelto";
   if (item.estado_revision === "DESCARTADO") return "Descartado";
+  if (item.tipo === "ADVERTENCIA") return "Revisión";
   if (item.tipo === "RECURRENTE") return "Se mantiene";
   if (item.requiere_revision) return "Revisar datos";
   return "Vinculado a ficha";
@@ -91,7 +99,9 @@ function formFromItem(item: ImportacionRevisionItem): RevisionForm {
     edad: item.edad ? String(item.edad) : "",
     diagnostico: item.diagnostico || "",
     prioridad: item.prioridad || "MODERADA",
-    percapita_desde: item.percapita_desde || "",
+    sector_oficial: item.sector_oficial || "",
+    sector_cesfam: item.sector_cesfam || "",
+    categoria: item.categoria || "",
     profesional: item.profesional || "",
     observaciones: item.observaciones || "",
   };
@@ -345,7 +355,9 @@ export default function RevisionImportacionPage() {
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-sm font-bold text-slate-500 dark:!text-[#b5d8e3]">Cargando revisión...</div>
+          <div className="p-3">
+            <TableSkeleton rows={7} />
+          </div>
         ) : itemsFiltrados.length === 0 ? (
           <div className="p-8 text-center">
             <FiCheckCircle className="mx-auto text-blue-400" size={34} />
@@ -445,6 +457,7 @@ export default function RevisionImportacionPage() {
                       <p><span className="font-black">Estado:</span> {estadoRevisionLabel(seleccionado)}</p>
                       <p><span className="font-black">Ficha:</span> {seleccionado.paciente_id_ccr || "No vinculada"}</p>
                       <p><span className="font-black">Responsable CCR:</span> {seleccionado.kine_asignado_nombre || "Sin asignar"}</p>
+                      <p><span className="font-black">Asignado histórico:</span> {seleccionado.asignado_historico ? "SI" : "NO"}</p>
                       <p><span className="font-black">Archivo:</span> {seleccionado.archivo_nombre}</p>
                     </div>
                   </div>
@@ -482,8 +495,16 @@ export default function RevisionImportacionPage() {
                       </select>
                     </label>
                     <label className="text-xs font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
-                      Percápita / desde
-                      <input value={form.percapita_desde} onChange={(e) => setForm({ ...form, percapita_desde: e.target.value })} className="ccr-control-input mt-1 w-full px-3 py-2.5 text-sm" />
+                      Sector oficial
+                      <input value={form.sector_oficial} onChange={(e) => setForm({ ...form, sector_oficial: e.target.value })} className="ccr-control-input mt-1 w-full px-3 py-2.5 text-sm" />
+                    </label>
+                    <label className="text-xs font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                      SectorCesfam
+                      <input value={form.sector_cesfam} onChange={(e) => setForm({ ...form, sector_cesfam: e.target.value })} className="ccr-control-input mt-1 w-full px-3 py-2.5 text-sm" />
+                    </label>
+                    <label className="text-xs font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                      Categoría
+                      <input value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="ccr-control-input mt-1 w-full px-3 py-2.5 text-sm" />
                     </label>
                     <label className="text-xs font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6] sm:col-span-2">
                       Profesional

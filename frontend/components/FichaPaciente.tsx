@@ -73,6 +73,19 @@ function formatearFechaHora(fecha: string | null | undefined) {
   });
 }
 
+function formatearFechaHoraCorta(fecha: string | null | undefined) {
+  if (!fecha) return "-";
+  const parsed = new Date(fecha);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function Field({ label, value }: { label: string; value: ReactNode }) {
   const displayValue = value === null || value === undefined || value === "" ? "-" : value;
   return (
@@ -149,8 +162,14 @@ export default function FichaPaciente({
   const totalLlamados = paciente.llamados_count ?? llamados.length;
   const totalInasistencias =
     paciente.inasistencias_count ?? inasistencias.length;
+  const inasistenciasNoJustificadas =
+    inasistencias.length > 0
+      ? inasistencias.filter((item) => !item.justificada).length
+      : paciente.n_inasistencias ?? 0;
+  const motivoUltimaInasistencia =
+    ultimaInasistencia?.motivo || paciente.motivo_ultima_inasistencia || "";
   const alertaPosibleAbandono =
-    paciente.estado === "INGRESADO" && (paciente.n_inasistencias ?? 0) >= 2;
+    paciente.estado === "INGRESADO" && inasistenciasNoJustificadas >= 2;
 
   const puedeCambiarEstado = useMemo(() => {
     if (usuario.rol === "KINE" || usuario.rol === "ADMIN") return true;
@@ -207,11 +226,13 @@ export default function FichaPaciente({
 
   useEffect(() => {
     setPaciente(pacienteInicial);
-  }, [pacienteInicial]);
-
-  useEffect(() => {
+    setLlamados([]);
+    setInasistencias([]);
+    setAcciones([]);
+    setError("");
+    setLoadingHistorial(true);
     void cargarHistorial(pacienteInicial.id);
-  }, [cargarHistorial, pacienteInicial.id]);
+  }, [cargarHistorial, pacienteInicial]);
 
   useEffect(() => {
     const originalBodyOverflow = document.body.style.overflow;
@@ -304,7 +325,7 @@ export default function FichaPaciente({
               <div className="flex items-start gap-2">
                 <FiAlertTriangle className="mt-0.5 shrink-0" />
                 <span>
-                  Paciente tiene {paciente.n_inasistencias} inasistencias no justificadas.
+                  Paciente tiene {inasistenciasNoJustificadas} inasistencias no justificadas.
                   Evaluar marcar como ABANDONO.
                 </span>
               </div>
@@ -372,9 +393,11 @@ export default function FichaPaciente({
             <Section icon={<FiFileText />} title="Derivación">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Fecha derivación" value={formatearFecha(paciente.fecha_derivacion)} />
-                <Field label="Desde" value={paciente.percapita_desde || "-"} />
+                <Field label="SectorCesfam" value={paciente.sector_cesfam || "-"} />
+                <Field label="Sector oficial" value={paciente.sector_oficial || "-"} />
                 <Field label="Profesional" value={paciente.profesional || "-"} />
                 <Field label="Categoría" value={CATEGORIA_LABELS[paciente.categoria]} />
+                <Field label="Asignado histórico" value={paciente.asignado_historico ? "Sí" : "No"} />
                 <Field label="Prioridad" value={PRIORIDAD_LABELS[paciente.prioridad]} />
                 <Field label="Diagnóstico" value={paciente.diagnostico || "-"} />
               </div>
@@ -413,21 +436,38 @@ export default function FichaPaciente({
                 <Field label="Estado actual" value={ESTADO_LABELS[paciente.estado]} />
                 <Field
                   label="Fecha cambio estado"
-                  value={formatearFechaHora(paciente.fecha_cambio_estado)}
+                  value={
+                    paciente.fecha_cambio_estado
+                      ? formatearFechaHora(paciente.fecha_cambio_estado)
+                      : "Sin cambios registrados"
+                  }
                 />
-                <Field label="Fecha ingreso" value={formatearFecha(paciente.fecha_ingreso)} />
-                <Field label="Fecha egreso" value={formatearFecha(paciente.fecha_egreso)} />
+                <Field
+                  label="Fecha ingreso"
+                  value={paciente.fecha_ingreso ? formatearFecha(paciente.fecha_ingreso) : "No ingresado"}
+                />
+                <Field
+                  label="Fecha egreso"
+                  value={paciente.fecha_egreso ? formatearFecha(paciente.fecha_egreso) : "Sin egreso"}
+                />
                 <Field
                   label="Próxima atención"
-                  value={formatearFechaHora(paciente.proxima_atencion)}
+                  value={
+                    paciente.proxima_atencion
+                      ? formatearFechaHora(paciente.proxima_atencion)
+                      : "Sin agenda próxima"
+                  }
                 />
                 <Field
                   label="Inasistencias"
-                  value={paciente.n_inasistencias ?? 0}
-                />
-                <Field
-                  label="Total inasistencias"
-                  value={totalInasistencias}
+                  value={
+                    <div>
+                      <p>{inasistenciasNoJustificadas} no justificadas</p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                        {totalInasistencias} registro{totalInasistencias !== 1 ? "s" : ""} en total
+                      </p>
+                    </div>
+                  }
                 />
                 <Field
                   label="Última inasistencia"
@@ -441,7 +481,7 @@ export default function FichaPaciente({
                 />
                 <Field
                   label="Motivo última inasistencia"
-                  value={paciente.motivo_ultima_inasistencia || ultimaInasistencia?.motivo || "-"}
+                  value={motivoUltimaInasistencia || "-"}
                 />
               </div>
             </Section>
@@ -492,7 +532,9 @@ export default function FichaPaciente({
               value={paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin asignar"}
             />
             <PrintField label="Fecha derivación" value={formatearFecha(paciente.fecha_derivacion)} />
-            <PrintField label="Desde" value={paciente.percapita_desde || "-"} />
+            <PrintField label="SectorCesfam" value={paciente.sector_cesfam || "-"} />
+            <PrintField label="Sector oficial" value={paciente.sector_oficial || "-"} />
+            <PrintField label="Asignado histórico" value={paciente.asignado_historico ? "Sí" : "No"} />
             <PrintField label="Diagnóstico" value={paciente.diagnostico || "-"} />
             <PrintField label="Profesional" value={paciente.profesional || "-"} />
             <PrintField label="Categoría" value={CATEGORIA_LABELS[paciente.categoria]} />
@@ -687,46 +729,45 @@ function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
     return <p className="text-sm font-semibold text-slate-500">Sin acciones registradas.</p>;
   }
   return (
-    <div className="custom-scrollbar overflow-x-auto rounded-xl border border-slate-200">
-      <table className="min-w-[920px] w-full border-collapse bg-white text-[12px]">
-        <thead className="bg-slate-50 text-left text-[11px] font-black uppercase tracking-wide text-slate-500">
+    <div className="rounded-xl border border-slate-200">
+      <table className="w-full table-fixed border-collapse bg-white text-[11px]">
+        <thead className="bg-slate-50 text-left text-[10px] font-black uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="w-[150px] border border-slate-200 px-4 py-3">Fecha</th>
-            <th className="w-[120px] border border-slate-200 px-4 py-3">Tipo</th>
-            <th className="border border-slate-200 px-4 py-3">Acción</th>
-            <th className="w-[150px] border border-slate-200 px-4 py-3">Usuario</th>
-            <th className="w-[230px] border border-slate-200 px-4 py-3">Observación</th>
+            <th className="w-[14%] border border-slate-200 px-2.5 py-2">Fecha</th>
+            <th className="w-[17%] border border-slate-200 px-2.5 py-2">Evento</th>
+            <th className="w-[43%] border border-slate-200 px-2.5 py-2">Detalle</th>
+            <th className="w-[26%] border border-slate-200 px-2.5 py-2">Observación</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 text-[12px]">
+        <tbody className="text-[11px]">
           {items.map((accion, index) => (
             <tr key={`${accion.tipo}-${accion.fecha}-${index}`} className="align-top hover:bg-blue-50/40">
-              <td className="border border-slate-200 px-4 py-3 font-semibold text-slate-700">
-                {formatearFechaHora(accion.fecha)}
+              <td className="break-words border border-slate-200 px-2.5 py-2 font-semibold leading-snug text-slate-700">
+                {formatearFechaHoraCorta(accion.fecha)}
               </td>
-              <td className="border border-slate-200 px-4 py-3">
-                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-black ${badgeAccion(accion.tipo)}`}>
+              <td className="border border-slate-200 px-2.5 py-2">
+                <span className={`inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-black ${badgeAccion(accion.tipo)}`}>
                   {labelAccion(accion.tipo)}
                 </span>
+                <p className="mt-1 break-words text-[10px] font-semibold leading-snug text-slate-500">
+                  {accion.usuario_nombre ?? "Sistema"}
+                </p>
               </td>
-              <td className="border border-slate-200 px-4 py-3">
-                <p className="font-black text-slate-950">{accion.titulo}</p>
-                <p className="mt-1 text-[11px] font-semibold text-slate-600">{accion.descripcion}</p>
+              <td className="border border-slate-200 px-2.5 py-2">
+                <p className="break-words font-black leading-snug text-slate-950">{accion.titulo}</p>
+                <p className="mt-1 break-words text-[10px] font-semibold leading-snug text-slate-600">{accion.descripcion}</p>
                 {(accion.fecha_programada || accion.nueva_fecha) && (
-                  <div className="mt-2 space-y-1 text-[11px] font-semibold text-slate-500">
+                  <div className="mt-1 space-y-0.5 text-[10px] font-semibold leading-snug text-slate-500">
                     {accion.fecha_programada && (
-                      <p>Programada: {formatearFechaHora(accion.fecha_programada)}</p>
+                      <p>Programada: {formatearFechaHoraCorta(accion.fecha_programada)}</p>
                     )}
                     {accion.nueva_fecha && (
-                      <p>Nueva fecha: {formatearFechaHora(accion.nueva_fecha)}</p>
+                      <p>Nueva: {formatearFechaHoraCorta(accion.nueva_fecha)}</p>
                     )}
                   </div>
                 )}
               </td>
-              <td className="border border-slate-200 px-4 py-3 font-semibold text-slate-700">
-                {accion.usuario_nombre ?? "Sistema"}
-              </td>
-              <td className="border border-slate-200 px-4 py-3 text-[11px] font-semibold text-slate-700">
+              <td className="break-words border border-slate-200 px-2.5 py-2 text-[10px] font-semibold leading-snug text-slate-700">
                 {accion.observacion || "-"}
               </td>
             </tr>

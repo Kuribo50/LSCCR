@@ -164,7 +164,7 @@ export default function PerfilPage() {
           <h3 className="text-sm font-bold text-gray-700 mb-4">Mi actividad en el sistema</h3>
           <div className={`grid gap-4 ${user.rol === 'KINE' ? 'grid-cols-2' : 'grid-cols-3'}`}>
             {user.rol === 'KINE' && <>
-              <Stat label="Mi cartera activa" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
+              <Stat label="Mis pacientes activos" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
               <Stat label="Lista de espera global" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
             </>}
             {user.rol === 'ADMINISTRATIVO' && <>

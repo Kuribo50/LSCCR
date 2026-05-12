@@ -53,7 +53,7 @@ export default function PacienteTable({
       )}
       <div className="ccr-panel ccr-data-table overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
         <div className="max-h-[clamp(300px,calc(100dvh-340px),820px)] min-h-[300px] overflow-auto">
-          <table className="w-full text-xs">
+          <table className="w-full min-w-[1500px] text-xs">
             <thead className="sticky top-0 z-10">
               <tr className="ccr-table-head border-b border-slate-200 bg-slate-50 dark:border-[#262626] dark:bg-[#202020]">
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
@@ -64,6 +64,12 @@ export default function PacienteTable({
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Edad
+                </th>
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  Sector CESFAM
+                </th>
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  Sector oficial
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
                   Diagnóstico
@@ -119,7 +125,7 @@ export default function PacienteTable({
                   onAsignarme={async (p) => {
                     if (
                       !window.confirm(
-                        "¿Estás seguro que deseas tomar a este paciente? Comenzará su seguimiento y pasará a tu sección Mi cartera.",
+                        "¿Estás seguro que deseas tomar a este paciente? Comenzará su seguimiento y pasará a tu sección Mis pacientes.",
                       )
                     ) {
                       return;
@@ -142,7 +148,7 @@ export default function PacienteTable({
                       setError("");
                       await api.delete(`/pacientes/${p.id}/`);
                       onRefresh();
-                    } catch (e) {
+                    } catch {
                       setError("No se pudo eliminar el paciente.");
                     }
                   } : undefined}

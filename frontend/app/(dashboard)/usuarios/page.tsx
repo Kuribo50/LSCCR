@@ -20,6 +20,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatearRut, rutParaApi } from "@/lib/rut";
 import { useToast } from "@/lib/toast-context";
 import type { Rol, Usuario } from "@/lib/types";
+import { TableSkeleton } from "@/components/Skeleton";
 
 const ROL_LABELS: Record<Rol, string> = {
   KINE: "Kinesiólogo/a",
@@ -116,6 +117,11 @@ export default function UsuariosPage() {
     }),
     [usuarios],
   );
+  const activeFilterCount = [
+    busqueda.trim(),
+    rolFiltro !== "TODOS",
+    estadoFiltro !== "TODOS",
+  ].filter(Boolean).length;
 
   async function handleEliminar(id: number) {
     if (!window.confirm("¿Seguro que deseas eliminar este usuario?")) return;
@@ -239,49 +245,52 @@ export default function UsuariosPage() {
         </div>
       </section>
 
-      <section className="ccr-panel overflow-hidden rounded-xl bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+      <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#0f0f10]">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-[#262626]">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-[#b5d8e3]">
             {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en vista
           </p>
           <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
-            Filtros en azul
+            {activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""}
           </span>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-sm text-gray-400 animate-pulse">Cargando...</div>
+          <div className="p-3">
+            <TableSkeleton rows={6} />
+          </div>
         ) : usuariosFiltrados.length === 0 ? (
           <div className="p-10 text-center text-sm font-semibold text-slate-500">
             Sin usuarios para los filtros seleccionados.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500">Nombre</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500">RUT</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500">Rol</th>
-                  <th className="px-5 py-3 text-left text-xs font-bold text-slate-500">Estado</th>
-                  <th className="px-5 py-3 text-right text-xs font-bold text-slate-500">Acciones</th>
+          <>
+            <div className="ccr-table-scroll min-h-[320px] max-h-[clamp(320px,calc(100dvh-340px),820px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
+              <table className="w-full min-w-[920px] table-fixed text-[12px]">
+                <thead className="sticky top-0 z-10">
+                  <tr className="ccr-table-head border-b border-slate-200 bg-slate-50/90 dark:border-[#262626] dark:bg-[#202020]">
+                    <th className="w-[260px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Nombre</th>
+                    <th className="w-[150px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">RUT</th>
+                    <th className="w-[220px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Rol</th>
+                    <th className="w-[120px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Estado</th>
+                    <th className="w-[300px] text-right text-xs font-bold text-slate-600 dark:text-[#daebf1]">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {usuariosFiltrados.map((usuario) => (
-                  <tr key={usuario.id} className="border-b border-slate-50 transition hover:bg-blue-50/40">
-                    <td className="px-5 py-3 font-bold text-slate-900">{usuario.nombre}</td>
-                    <td className="px-5 py-3 font-mono text-xs text-slate-500">
+                  <tr key={usuario.id} className="ccr-table-row bg-white dark:bg-[#151515]">
+                    <td className="font-bold text-slate-900 dark:text-white">{usuario.nombre}</td>
+                    <td className="font-mono text-xs text-slate-600 dark:text-[#b5d8e3]">
                       {formatearRut(usuario.rut)}
                     </td>
-                    <td className="px-5 py-3">
+                    <td>
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${ROL_BADGE_CLASSES[usuario.rol]}`}
                       >
                         {etiquetaRolTabla(usuario.rol)}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td>
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${
                           usuario.is_active
@@ -292,7 +301,7 @@ export default function UsuariosPage() {
                         {usuario.is_active ? "Activo" : "Inactivo"}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td>
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
@@ -325,7 +334,17 @@ export default function UsuariosPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+
+            <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en la tabla
+              </p>
+              <p className="text-gray-400">
+                Mostrando {usuariosFiltrados.length} de {usuarios.length}
+              </p>
+            </div>
+          </>
         )}
       </section>
 

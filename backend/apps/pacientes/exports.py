@@ -108,7 +108,9 @@ def crear_excel_pacientes(
         "Nombre",
         "RUT",
         "Edad",
-        "Desde",
+        "SECTOR OFICIAL",
+        "SectorCesfam",
+        "Asignado histórico",
         "Diagnóstico",
         "Profesional",
         "Prioridad",
@@ -143,7 +145,9 @@ def crear_excel_pacientes(
                 paciente.nombre,
                 paciente.rut,
                 paciente.edad,
-                paciente.percapita_desde,
+                paciente.sector_oficial,
+                paciente.sector_cesfam,
+                "SI" if paciente.asignado_historico else "NO",
                 paciente.diagnostico,
                 paciente.profesional,
                 paciente.get_prioridad_display(),
@@ -169,7 +173,7 @@ def crear_excel_pacientes(
             row_number = ws.max_row
             fill_color = PRIORIDAD_FILL.get(paciente.prioridad)
             if fill_color:
-                ws.cell(row=row_number, column=10).fill = PatternFill("solid", fgColor=fill_color)
+                ws.cell(row=row_number, column=12).fill = PatternFill("solid", fgColor=fill_color)
 
     for row in ws.iter_rows(min_row=header_row + 1):
         for cell in row:
@@ -177,7 +181,7 @@ def crear_excel_pacientes(
 
     _ajustar_anchos(
         ws,
-        [13, 16, 13, 28, 14, 8, 16, 34, 20, 16, 18, 22, 16, 16, 14, 18, 14, 14, 36, 24, 18, 22],
+        [13, 16, 13, 28, 14, 8, 20, 20, 16, 34, 20, 16, 18, 22, 16, 16, 14, 18, 14, 14, 36, 24, 18, 22],
     )
     return wb
 

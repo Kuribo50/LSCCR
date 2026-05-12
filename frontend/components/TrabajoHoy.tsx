@@ -2,10 +2,8 @@
 
 import type { IconType } from "react-icons";
 import {
-  FiAlertTriangle,
   FiArrowRight,
   FiCalendar,
-  FiPhoneOff,
   FiUserX,
 } from "react-icons/fi";
 import type { AlertasOperativas, Paciente } from "@/lib/types";
@@ -35,31 +33,6 @@ interface CardConfig {
 }
 
 const CARDS: CardConfig[] = [
-  {
-    key: "alta_sin_responsable",
-    titulo: "Alta sin responsable",
-    descripcion: "Pacientes ALTA pendientes de asignación.",
-    icon: FiAlertTriangle,
-    tone: {
-      border: "border-red-200",
-      bg: "bg-red-50",
-      icon: "text-red-700",
-      text: "text-red-800",
-    },
-  },
-  {
-    key: "rescates_activos",
-    secondaryKey: "pendientes_con_1_intento",
-    titulo: "Contactabilidad pendiente",
-    descripcion: "Pacientes que requieren contacto operativo.",
-    icon: FiPhoneOff,
-    tone: {
-      border: "border-amber-200",
-      bg: "bg-amber-50",
-      icon: "text-amber-700",
-      text: "text-amber-800",
-    },
-  },
   {
     key: "ingresados_sin_proxima_atencion",
     titulo: "Ingresados sin próxima atención",
@@ -106,7 +79,7 @@ export default function TrabajoHoy({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {CARDS.map((card) => (
           <AlertaCard
             key={card.key}
