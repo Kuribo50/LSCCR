@@ -2,6 +2,8 @@ import { refreshAuthToken } from "@/app/actions";
 
 const BASE = "/api";
 
+// El access token vive en memoria para que los requests cliente sean rapidos,
+// mientras la copia persistente queda en cookies httpOnly manejadas por actions.ts.
 let memoryToken: string | null = null;
 
 export function setMemoryToken(token: string | null) {
@@ -27,6 +29,8 @@ async function fetchWithTimeout(
 }
 
 async function refreshTokenWithTimeout() {
+  // El refresh corre en server action porque la cookie httpOnly no es legible
+  // desde el navegador. El timeout evita dejar la UI bloqueada si backend no responde.
   return Promise.race<string | null>([
     refreshAuthToken(),
     new Promise<null>((resolve) => {
@@ -60,7 +64,8 @@ async function request<T>(
     headers,
   });
 
-  // Auto refresh
+  // Refresh automatico: si el access expiro, Next usa refresh-token httpOnly,
+  // actualiza cookie y devuelve un access nuevo para reintentar una sola vez.
   if (resp.status === 401 && path !== "/auth/login/") {
     const newAccess = await refreshTokenWithTimeout();
     if (newAccess) {
@@ -79,6 +84,8 @@ async function request<T>(
   }
 
   if (resp.ok && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method || "")) {
+    // Sidebar y badges dependen de resumen operativo; este evento desacopla la
+    // recarga de esos contadores de cada pantalla puntual.
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("ccr:refresh-sidebar"));
     }
@@ -108,6 +115,7 @@ async function requestBlob(
   });
 
   if (resp.status === 401 && path !== "/auth/login/") {
+    // Mismo flujo que request<T>, pero manteniendo respuesta Blob para Excel.
     const newAccess = await refreshTokenWithTimeout();
     if (newAccess) {
       memoryToken = newAccess;

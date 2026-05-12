@@ -146,7 +146,7 @@ h6 {
   }
 }
 
-/* Login Page Styles */
+/* Estilos del login */
 .ccr-login-background {
   background:
     radial-gradient(circle at 14% 14%, rgba(56, 189, 248, 0.30), transparent 34%),
@@ -165,7 +165,7 @@ h6 {
   color: #f8fafc;
 }
 
-/* Smooth transitions for dark mode */
+/* Transiciones suaves para modo oscuro */
 .ccr-login-background,
 .ccr-login-background * {
   transition: background-color 150ms ease-in-out, color 150ms ease-in-out, border-color 150ms ease-in-out;

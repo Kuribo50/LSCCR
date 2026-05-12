@@ -27,6 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function bootstrapAuth() {
       try {
+        // Hidrata el token en memoria desde cookie httpOnly usando server action.
+        // Luego /auth/me/ confirma que el usuario sigue activo en backend.
         const access = await getAccessToken()
         if (access) setMemoryToken(access)
       } catch {
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function login(rut: string, password: string) {
+    // Login obtiene tokens JWT, los deja en cookies httpOnly y recarga perfil.
     const tokens = await api.post<{access: string, refresh: string}>('/auth/login/', { rut, password })
     await setAuthCookies(tokens.access, tokens.refresh)
     setMemoryToken(tokens.access)
@@ -70,6 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    // No basta con limpiar estado React: tambien se eliminan cookies para que
+    // middleware no vuelva a autenticar la siguiente navegacion.
     await clearAuthCookies()
     setMemoryToken(null)
     setUser(null)

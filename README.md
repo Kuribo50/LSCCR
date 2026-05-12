@@ -136,3 +136,11 @@ faltante, sin cambiar reglas de negocio ni accesos demo.
 
 Ver `docs/PENDIENTES.md` para el listado de pendientes antes de estreno y
 produccion.
+
+## Documentacion para continuar
+
+- `docs/ARQUITECTURA.md`: estructura del sistema y comunicacion entre capas.
+- `docs/FLUJO_OPERATIVO.md`: estados y procesos CCR.
+- `docs/GUIA_DESARROLLADOR_JUNIOR.md`: guia practica para modificar el proyecto.
+- `docs/MAPA_CODIGO.md`: ubicacion de carpetas y archivos clave.
+- `docs/PENDIENTES.md`: deuda tecnica y pendientes antes de produccion.

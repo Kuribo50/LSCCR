@@ -25,6 +25,10 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 
+// =============================================================================
+// Helpers de fecha y reglas locales de calendario
+// =============================================================================
+
 function toDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -120,6 +124,10 @@ interface InasistenciaAgendaResponse {
   mensaje?: string;
 }
 
+// =============================================================================
+// Componente principal
+// =============================================================================
+
 export default function CalendarioPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -145,6 +153,7 @@ export default function CalendarioPage() {
     setLoading(true);
     setError("");
     try {
+      // KINE ve solo su cartera; ADMIN/ADMINISTRATIVO pueden planificar global.
       const endpoint = user.rol === "KINE" ? "/pacientes/?solo_mios=1" : "/pacientes/";
       const data = await api.get<Paciente[]>(endpoint);
       setPacientes(data);
@@ -197,6 +206,7 @@ export default function CalendarioPage() {
     return pacientes.filter((paciente) => {
       const estadoProgramable = ESTADOS_PROGRAMABLES.has(paciente.estado);
       const esPropio = paciente.kine_asignado === user.id;
+      // Solo se agenda a pacientes activos y, para KINE, propios.
       if (!estadoProgramable) return false;
       if (user.rol === "KINE") return esPropio;
       return user.rol === "ADMIN" || user.rol === "ADMINISTRATIVO";
@@ -204,6 +214,7 @@ export default function CalendarioPage() {
   }, [pacientes, user]);
 
   const porFecha = useMemo(() => {
+    // Mapa fecha -> pacientes para pintar el calendario sin recalcular en render.
     const mapa = new Map<string, Paciente[]>();
     for (const p of pacientesProgramables) {
       if (!p.proxima_atencion) continue;

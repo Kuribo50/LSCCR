@@ -85,6 +85,12 @@ class RegistroAgendaPacienteSerializer(serializers.ModelSerializer):
 
 
 class PacienteSerializer(serializers.ModelSerializer):
+    """Serializer de lectura/escritura general que consume el frontend.
+
+    Expone alias `responsable_*` junto a `kine_asignado_*` para que la UI pueda
+    hablar de responsable CCR sin romper endpoints existentes.
+    """
+
     kine_asignado_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
     responsable_asignado = serializers.IntegerField(source="kine_asignado_id", read_only=True)
     responsable_nombre = serializers.CharField(source="kine_asignado.nombre", read_only=True)
@@ -210,6 +216,8 @@ class PacienteCreateSerializer(serializers.ModelSerializer):
 
 
 class CambiarEstadoSerializer(serializers.Serializer):
+    """Valida la carga minima para cambiar estado desde modales y acciones."""
+
     estado = serializers.ChoiceField(choices=Paciente.Estado.choices)
     notas = serializers.CharField(required=False, allow_blank=True, default="")
 
@@ -225,27 +233,41 @@ class CambiarEstadoSerializer(serializers.Serializer):
 
 
 class ProgramarAtencionSerializer(serializers.Serializer):
+    """Payload usado para agendar una proxima atencion vigente."""
+
     fecha_hora = serializers.DateTimeField(required=True)
 
 
 class AgendaFechaSerializer(serializers.Serializer):
+    """Payload comun para acciones que operan sobre una cita ya programada."""
+
     fecha_programada = serializers.DateTimeField(required=False)
     observacion = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RegistrarInasistenciaAgendaSerializer(serializers.Serializer):
+    """Registra no asistencia desde calendario y, si corresponde, inasistencia."""
+
     fecha_programada = serializers.DateTimeField(required=False)
     motivo = serializers.CharField(required=False, allow_blank=True, default="")
     justificada = serializers.BooleanField(default=False)
 
 
 class ReagendarAtencionSerializer(serializers.Serializer):
+    """Payload de reagendamiento: conserva fecha anterior y nueva fecha."""
+
     fecha_programada = serializers.DateTimeField(required=False)
     nueva_fecha = serializers.DateTimeField(required=True)
     observacion = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RegistrarLlamadoSerializer(serializers.Serializer):
+    """Entrada del flujo de llamados.
+
+    La vista decide el efecto operativo: contesta ingresa; no contesta pasa a
+    RESCATE o EGRESO_ADMINISTRATIVO segun estado actual.
+    """
+
     contesto = serializers.BooleanField()
     notas = serializers.CharField(required=False, allow_blank=True, default="")
     telefono_usado = serializers.CharField(required=False, allow_blank=True, default="")
@@ -253,6 +275,8 @@ class RegistrarLlamadoSerializer(serializers.Serializer):
 
 
 class RegistrarInasistenciaSerializer(serializers.Serializer):
+    """Entrada para inasistencias registradas desde la ficha del paciente."""
+
     fecha = serializers.DateField()
     justificada = serializers.BooleanField(default=False)
     motivo = serializers.CharField(required=False, allow_blank=True, default="")

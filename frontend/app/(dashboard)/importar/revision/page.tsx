@@ -27,6 +27,10 @@ import type {
 } from "@/lib/types";
 import { formatearRut, limpiarRut } from "@/lib/rut";
 
+// =============================================================================
+// Tipos, filtros y helpers de revision
+// =============================================================================
+
 const TYPE_FILTERS: Array<{ label: string; value: "TODOS" | ImportacionRevisionTipo }> = [
   { label: "Todos", value: "TODOS" },
   { label: "Errores", value: "ERROR" },
@@ -91,6 +95,8 @@ function toInputDate(value: string) {
 }
 
 function formFromItem(item: ImportacionRevisionItem): RevisionForm {
+  // Prefiere datos de paciente ya vinculado cuando existe; si no, usa la fila
+  // original del Excel para que el administrativo complete la ficha.
   return {
     nombre: item.paciente_nombre || item.nombre || "",
     rut: formatearRut(item.paciente_rut || item.rut || ""),
@@ -109,6 +115,10 @@ function formFromItem(item: ImportacionRevisionItem): RevisionForm {
 function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
+
+// =============================================================================
+// Componente principal
+// =============================================================================
 
 export default function RevisionImportacionPage() {
   const { user } = useAuth();
@@ -133,6 +143,8 @@ export default function RevisionImportacionPage() {
   }, [user, router]);
 
   const cargarRevision = useCallback(async () => {
+    // La bandeja viene filtrada desde backend para que los contadores coincidan
+    // con el estado real de observaciones persistidas en ImportacionMensual.
     setLoading(true);
     setError("");
     try {
@@ -180,6 +192,8 @@ export default function RevisionImportacionPage() {
       const payload = {
         accion,
         resolucion,
+        // COMPLETAR puede crear/vincular paciente; DESCARTAR conserva auditoria
+        // pero marca la observacion como resuelta sin tocar lista de espera.
         paciente: form
           ? {
               ...form,

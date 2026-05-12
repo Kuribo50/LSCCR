@@ -32,6 +32,10 @@ import BadgeEstado from "@/components/BadgeEstado";
 import EditarPacienteModal from "@/components/EditarPacienteModal";
 import FichaPaciente from "@/components/FichaPaciente";
 
+// =============================================================================
+// Helpers de busqueda, fechas y orden de contactabilidad
+// =============================================================================
+
 function normalizeRut(value: string) {
   return value.toLowerCase().replace(/[^0-9k]/g, "");
 }
@@ -99,6 +103,8 @@ function sectorLabel(value: string | null | undefined) {
 }
 
 function accionSugerida(paciente: Paciente) {
+  // Refleja la regla backend: primer no contesta pasa a RESCATE; segundo no
+  // contesta desde RESCATE permite egreso administrativo con observacion.
   if (paciente.estado === "RESCATE") {
     return "Registrar segundo contacto con observación si no contesta.";
   }
@@ -129,6 +135,7 @@ interface RegistroPendienteContacto {
 }
 
 function ordenarPacientesContactabilidad(pacientes: Paciente[], ordering: string) {
+  // La cola prioriza urgencia operativa antes que antiguedad.
   return [...pacientes].sort((a, b) => {
     const pA = PRIORIDAD_ORDER[a.prioridad] ?? 99;
     const pB = PRIORIDAD_ORDER[b.prioridad] ?? 99;
@@ -173,6 +180,8 @@ export default function LlamadosPage() {
         api.get<Paciente[]>(`/pacientes/?estado=RESCATE`),
       ]);
       const todos = [...pendientes, ...rescate].filter((p) => {
+        // Lista de llamados solo incluye pacientes con responsable. KINE ve su
+        // cartera; administrativos/admin ven la cola completa asignada.
         if (p.kine_asignado === null) return false;
         if (user?.rol === "KINE" && p.kine_asignado !== user.id) return false;
         return true;

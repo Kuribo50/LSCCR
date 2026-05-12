@@ -44,6 +44,8 @@ function sanitizeState(
   state: Partial<PersistedTableState> | null | undefined,
   fallback: PersistedTableState,
 ): PersistedTableState {
+  // LocalStorage puede quedar obsoleto despues de cambios de columnas. Sanitizar
+  // evita romper tablas cuando un usuario vuelve con preferencias antiguas.
   if (!state) return fallback
 
   return {
@@ -84,6 +86,8 @@ export function usePersistentTableState({
       }
 
       const parsed = JSON.parse(raw) as StoredPayload
+      // Versionado simple para poder invalidar preferencias cuando cambie la
+      // forma de la tabla sin migraciones complejas en cliente.
       const persistedState = parsed?.version === 1 ? parsed.state : undefined
       setState(sanitizeState(persistedState, mergedInitialState))
     } catch {

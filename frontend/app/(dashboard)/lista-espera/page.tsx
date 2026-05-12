@@ -39,6 +39,10 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { TableSkeleton } from "@/components/Skeleton";
 import EmptyState from "@/components/EmptyState";
 
+// =============================================================================
+// Tipos, constantes y helpers de tabla
+// =============================================================================
+
 const PRIORIDAD_ORDER: Record<Prioridad, number> = {
   ALTA: 0,
   MEDIANA: 1,
@@ -287,6 +291,10 @@ function getCompactColumnSizing(isAdmin: boolean): Record<string, number> {
   };
 }
 
+// =============================================================================
+// Componente principal
+// =============================================================================
+
 export default function ListaEsperaPage() {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -492,6 +500,8 @@ export default function ListaEsperaPage() {
       if (quickFilters.estado !== "TODOS") {
         params.set("estado", quickFilters.estado);
       } else if (!alertaActiva) {
+        // Alcance base de lista de espera: pendientes y rescates, sin limitar
+        // por responsable. Los filtros rapidos solo acotan esa vista.
         params.set("estado", LISTA_ESPERA_ESTADOS.join(","));
       }
       if (mes) params.set("mes", mes);
@@ -559,6 +569,8 @@ export default function ListaEsperaPage() {
   }, [openFilter]);
 
   const quickFilterOptions = useMemo(() => {
+    // Filtros rapidos: se construyen desde la data visible para acotar por
+    // dimensiones operativas. Son distintos a filtros por columna tipo Excel.
     const responsables = new Map<string, string>();
     const sectoresCesfam = new Set<string>();
     const sectoresOficiales = new Set<string>();
@@ -613,6 +625,8 @@ export default function ListaEsperaPage() {
   const pacientesFiltradosRapidos = useMemo(
     () =>
       pacientes.filter((paciente) => {
+        // Primero se aplican filtros rapidos de negocio; luego React Table
+        // aplica busqueda global, filtros por columna, orden y visibilidad.
         if (quickFilters.estado !== "TODOS" && paciente.estado !== quickFilters.estado) {
           return false;
         }
@@ -658,6 +672,8 @@ export default function ListaEsperaPage() {
   const rowsData = useMemo<WaitlistRow[]>(
     () =>
       pacientesFiltradosRapidos.map((patient) => {
+        // `searchIndex` alimenta la busqueda global cliente. Debe mantenerse
+        // alineado con el search amplio del backend para evitar resultados raros.
         const rut = formatearRut(patient.rut);
         const rutRaw = normalizeRut(patient.rut);
         const nombreNormalizado = normalizeSearchText(patient.nombre);

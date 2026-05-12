@@ -20,7 +20,7 @@ function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-/* ---------- Primitives ---------- */
+/* ---------- Primitivos ---------- */
 
 export function SkeletonBlock({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
@@ -41,7 +41,7 @@ export function SkeletonText({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   return <SkeletonBlock className={`${w} ${h}`} />;
 }
 
-/* ---------- Cards ---------- */
+/* ---------- Tarjetas ---------- */
 
 export function SkeletonCard() {
   return (
@@ -67,7 +67,7 @@ export function SkeletonCard() {
 export function DashboardSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Encabezado */}
       <div className="rounded-3xl border border-gray-200 bg-white p-6">
         <div className="flex items-center gap-5">
           <SkeletonBlock className="h-16 w-16 rounded-2xl" />
@@ -80,7 +80,7 @@ export function DashboardSkeleton() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Charts */}
+        {/* Graficos */}
         <div className="rounded-3xl border border-gray-200 bg-white p-6 lg:col-span-8">
           <div className="mb-6 flex items-center justify-between">
             <SkeletonBlock className="h-5 w-48 rounded-md" />
@@ -96,7 +96,7 @@ export function DashboardSkeleton() {
           </div>
         </div>
 
-        {/* Action cards */}
+        {/* Tarjetas de accion */}
         <div className="lg:col-span-4 grid grid-cols-1 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonBlock key={i} className="h-[88px] w-full rounded-3xl" />
@@ -107,7 +107,7 @@ export function DashboardSkeleton() {
   );
 }
 
-/* ---------- Table ---------- */
+/* ---------- Tabla ---------- */
 
 export function TableSkeleton({ rows = 8 }: { rows?: number }) {
   const reduceMotion = useReducedMotion();

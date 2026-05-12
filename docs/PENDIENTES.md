@@ -33,6 +33,8 @@ razonable de uso funcional.
   `/pacientes`, por eso no fue eliminado.
 - Revisar endpoints administrativos de borrado de importaciones. Existen en el
   backend y no deben eliminarse sin decidir primero la politica operativa.
+- Evaluar archivado logico de cortes de importacion para conservar trazabilidad
+  sin borrar datos fisicos cuando se limpia un periodo.
 - Agregar pruebas frontend de humo para rutas principales.
 - Agregar CI con `python manage.py check`, migraciones dry-run, tests backend,
   `npm run lint` y `npm run build`.

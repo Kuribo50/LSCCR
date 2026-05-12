@@ -35,6 +35,8 @@ ESTADOS_FINALES = {
     Paciente.Estado.DERIVADO,
 }
 
+# Activos para reportes: siguen en gestion operativa y no deben contarse como
+# egresados aunque tengan responsable o citas.
 ESTADOS_ACTIVOS = {
     Paciente.Estado.PENDIENTE,
     Paciente.Estado.RESCATE,
@@ -97,6 +99,7 @@ def conteo_estado(queryset, estado):
 
 
 def resumen_corte(corte, hoy=None):
+    """Resumen del corte mensual segun fecha de derivacion."""
     hoy = hoy or date.today()
     activos = corte.filter(estado__in=ESTADOS_ACTIVOS)
     return {
@@ -122,6 +125,7 @@ def resumen_corte(corte, hoy=None):
 
 
 def resumen_actividad_mes(mes, anio, queryset=None):
+    """Actividad ocurrida en el mes, aunque el paciente venga de otro corte."""
     if queryset is None:
         queryset = Paciente.objects.all()
     ingresos = filtrar_mes(queryset.exclude(fecha_ingreso__isnull=True), "fecha_ingreso", mes, anio)
@@ -173,6 +177,7 @@ def distribucion_por_texto(queryset, campo, key, limit=12):
 
 
 def reporte_por_responsable_data(mes, anio):
+    """Construye el contrato JSON usado por estadisticas y exportacion Excel."""
     hoy = date.today()
     corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
     responsables = []
@@ -247,6 +252,7 @@ def reporte_por_responsable_data(mes, anio):
 
 
 def crear_excel_responsables(data):
+    """Exportacion mensual por responsable CCR."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Responsables"
@@ -307,6 +313,7 @@ class ResumenReporteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        """Reporte agregado que consume /analisis/estadisticas."""
         mes, anio = obtener_mes_anio(request)
         hoy = date.today()
         corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)

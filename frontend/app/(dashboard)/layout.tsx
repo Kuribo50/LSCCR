@@ -16,6 +16,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   useEffect(() => {
+    // Segunda barrera de proteccion en cliente. El middleware ya protege rutas,
+    // pero este fallback evita mostrar dashboard si el contexto quedo sin usuario.
     if (!loading && !user) {
       router.replace('/login')
     }
@@ -49,6 +51,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       {user.requiere_cambio_password && (
+        // Cuando admin resetea clave, backend marca este flag y bloqueamos la
+        // navegacion hasta que el usuario defina una clave propia.
         <CambioPasswordObligatorio onLogout={logout} onPasswordChanged={refreshUser} />
       )}
     </div>

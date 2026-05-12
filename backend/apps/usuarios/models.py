@@ -4,6 +4,8 @@ from django.db import models
 
 
 class UsuarioManager(BaseUserManager):
+    """Manager para autenticar por RUT en vez de username."""
+
     use_in_migrations = True
 
     def _normalizar_rut(self, rut: str) -> str:
@@ -35,6 +37,12 @@ class UsuarioManager(BaseUserManager):
 
 
 class Usuario(AbstractUser):
+    """Usuario del sistema CCR.
+
+    El RUT es el identificador de login. Los roles controlan acceso a vistas y
+    acciones: KINE, ADMINISTRATIVO y ADMIN.
+    """
+
     class Rol(models.TextChoices):
         KINE = "KINE", "Kinesiólogo"
         ADMINISTRATIVO = "ADMINISTRATIVO", "Administrativo"

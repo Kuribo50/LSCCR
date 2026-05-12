@@ -27,8 +27,9 @@ MESES_NUM = {
     "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12,
 }
 
-# Alias normalizados para la detección dinámica de columnas
-# IMPORTANTE: Las listas van de más específico a más genérico. Se usa coincidencia EXACTA.
+# Alias normalizados para la deteccion dinamica de columnas.
+# IMPORTANTE: Las listas van de mas especifico a mas generico. Se usa
+# coincidencia exacta para evitar que columnas parecidas se asignen mal.
 COLUMN_ALIASES: dict[str, list[str]] = {
     "fecha":        ["FECHA DERIV", "FECHA DERIV.", "FECHA DERIVACION",
                      "F DERIVACION", "FECHA"],
@@ -578,6 +579,11 @@ def _registro_preview(
     es_duplicado: bool = False,
     error: str = "",
 ) -> dict:
+    """Construye la fila que ve el frontend antes de importar.
+
+    `tipo_revision` es la llave operativa que luego decide si se guarda una
+    observacion en ImportacionMensual: ERROR, ADVERTENCIA o RECURRENTE.
+    """
     advertencias = advertencias or []
     if error:
         estado = "ERROR"
@@ -664,6 +670,8 @@ def _procesar_hoja(
         prioridad = prioridad_normalizada(valores["prioridad"] or "")
         observaciones_base = _cs(valores["observaciones"])
         desde = _normalizar_percapita(valores["desde"])
+        # Sector oficial y SectorCesfam son campos distintos. En formato legacy
+        # `DESDE` puede poblar SectorCesfam, pero no debe inventar sector oficial.
         sector_oficial = _normalizar_sector_oficial(valores["sector_oficial"])
         sector_cesfam, sector_cesfam_motivo = _normalizar_sector_cesfam(valores["sector_cesfam"])
         if not valores["sector_cesfam"] and desde:

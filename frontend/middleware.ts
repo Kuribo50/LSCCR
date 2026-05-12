@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 function decodeExp(token: string): number | null {
+  // Solo se lee `exp`; no se valida firma aqui porque la autorizacion real la
+  // hace Django. Esto permite decidir si conviene renovar antes de renderizar.
   try {
     const payload = token.split('.')[1]
     if (!payload) return null
@@ -45,6 +47,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Si el access expiro pero hay refresh cookie, se renueva antes de llegar a
+  // la pagina protegida. Sin refresh se redirige a login.
   if (!refreshToken) {
     return NextResponse.redirect(new URL('/login', request.url))
   }

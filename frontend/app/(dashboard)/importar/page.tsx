@@ -28,6 +28,10 @@ import type {
   ImportacionResultado,
 } from "@/lib/types";
 
+// =============================================================================
+// Tipos, constantes y helpers de importacion
+// =============================================================================
+
 const MESES = [
   "Enero",
   "Febrero",
@@ -106,6 +110,7 @@ const PEGADO_COLUMN_WIDTHS = [
 type ModoImportacion = "archivo" | "pegado";
 
 function parsePastedRows(texto: string) {
+  // Soporta pegado desde Excel/Sheets con tabulador, punto y coma o coma.
   const lineas = texto.split(/\r?\n/).filter((linea) => linea.trim().length > 0);
   const muestra = lineas.slice(0, 20).join("\n");
   const tabuladores = (muestra.match(/\t/g) ?? []).length;
@@ -184,6 +189,8 @@ function looksLikePastedAge(valor: string) {
 }
 
 function normalizePastedDataRow(fila: string[]) {
+  // Algunas planillas pegadas llegan corridas por celdas vacias. Esta funcion
+  // detecta fecha, RUT, edad, profesional y prioridad para reconstruir columnas.
   const limpia = fila.map(cleanPastedCell);
   const dateIndex = limpia.findIndex(looksLikePastedDate);
   const rutIndex = limpia.findIndex(looksLikePastedRut);
@@ -342,6 +349,10 @@ function PreviewCountBadges({
   );
 }
 
+// =============================================================================
+// Componente principal
+// =============================================================================
+
 export default function ImportarPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -415,6 +426,8 @@ export default function ImportarPage() {
   }, [anioGestion, cargarDetalleGestion, cargarHistorial, mesGestion]);
 
   const handlePrevisualizar = useCallback(async () => {
+    // Previsualizar no crea pacientes; solo pide al backend validacion,
+    // conteos y observaciones de revision antes de confirmar importacion.
     if (!archivo) return;
     setPreviewLoading(true);
     setError("");
@@ -442,6 +455,8 @@ export default function ImportarPage() {
   }, [archivo, toast]);
 
   const handlePrevisualizarPegado = useCallback(async () => {
+    // Mismo contrato que archivo, pero el backend recibe una planilla temporal
+    // generada desde texto pegado.
     if (!textoPegado.trim()) {
       setError("Pega las filas de datos desde la hoja de cálculo.");
       return;
@@ -489,7 +504,7 @@ export default function ImportarPage() {
     }
   }, [anioGestion, cargarDetalleGestion, mesGestion, user]);
 
-  // Auto-previsualizar al seleccionar archivo
+  // Auto-previsualiza al seleccionar archivo para detectar errores antes de importar.
   useEffect(() => {
     if (modoImportacion === "archivo" && archivo) {
       void handlePrevisualizar();
@@ -593,6 +608,7 @@ export default function ImportarPage() {
   }
 
   async function importarArchivo(forzarReemplazo = false, suplementar = false) {
+    // Confirmacion final: este paso si crea pacientes y observaciones de revision.
     if (!archivo) return;
     setImportLoading(true);
     setError("");
@@ -671,6 +687,8 @@ export default function ImportarPage() {
   }
 
   async function importarPegado(forzarReemplazo = false, suplementar = false) {
+    // Importacion desde texto pegado mantiene los mismos controles de conflicto
+    // que la carga por archivo mensual.
     if (!textoPegado.trim()) return;
     setImportLoading(true);
     setError("");

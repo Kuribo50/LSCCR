@@ -187,7 +187,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                 )}
 
                 <form id="crear-paciente-form" onSubmit={handleSubmit} className="space-y-4">
-                  {/* Row 1: Identification */}
+                  {/* Identificacion del paciente */}
                   <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
                     <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Identificacion</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -218,7 +218,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                     </div>
                   </div>
 
-                  {/* Row 2: Demographics & Contact */}
+                  {/* Demografia y datos de contacto */}
                   <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
                     <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Demografia y Contacto</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">

@@ -27,6 +27,8 @@ const REMEMBER_RUT_KEY = "ccr-login-rut";
 const REMEMBER_SESSION_KEY = "ccr-login-remember";
 const LOGIN_THEME_KEY = "ccr-login-theme";
 
+// Accesos rapidos visibles para presentacion/demo. No retirarlos hasta la etapa
+// final de endurecimiento indicada en docs/PENDIENTES.md.
 type QuickUser = {
   id: string;
   nombre: string;
@@ -129,6 +131,7 @@ export default function LoginPage() {
   const [focusedInput, setFocusedInput] = useState<"rut" | "password" | null>(null);
 
   useEffect(() => {
+    // Preferencias locales del login: no participan en autenticacion backend.
     const savedTheme = window.localStorage.getItem(LOGIN_THEME_KEY);
     const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
     const shouldUseDark = savedTheme ? savedTheme === "dark" : Boolean(prefersDark);
@@ -154,6 +157,8 @@ export default function LoginPage() {
   }
 
   function handleQuickUserSelect(rutUsuario: string) {
+    // Carga credenciales demo sin autenticar todavia; el submit sigue pasando
+    // por SimpleJWT y validaciones reales del backend.
     setSelectedQuickRut(rutUsuario);
     setError(null);
     setRut(formatearRut(rutUsuario));

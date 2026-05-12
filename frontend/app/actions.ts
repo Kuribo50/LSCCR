@@ -3,6 +3,8 @@
 import { cookies } from 'next/headers'
 
 export async function setAuthCookies(access: string, refresh: string) {
+  // Cookies httpOnly: el navegador las envia, pero JS cliente no puede leerlas.
+  // El access tambien se copia a memoria en lib/api.ts para llamadas cliente.
   const cookieStore = await cookies()
   const secure = process.env.NODE_ENV !== 'development'
   const sameSite = 'lax' as const
@@ -34,6 +36,8 @@ export async function getAccessToken() {
 }
 
 export async function refreshAuthToken() {
+  // Server action usada por lib/api.ts y middleware para renovar access sin
+  // exponer el refresh token al cliente.
   const cookieStore = await cookies()
   const refresh = cookieStore.get('refresh-token')?.value
   if (!refresh) return null

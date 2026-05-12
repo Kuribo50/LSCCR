@@ -1,6 +1,8 @@
 from .models import Paciente
 
 
+# Estados finales: salen de la lista activa y se muestran en egresos.
+# Si se agrega un nuevo cierre operativo, debe sumarse aqui, en reportes y en UI.
 ESTADOS_FINALES = {
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
@@ -9,6 +11,8 @@ ESTADOS_FINALES = {
     Paciente.Estado.ABANDONO,
 }
 
+# Por trazabilidad, los cierres requieren nota. Esto evita egresos o abandonos
+# sin contexto clinico-operativo para auditoria posterior.
 ESTADOS_REQUIEREN_NOTA = {
     Paciente.Estado.ALTA_MEDICA,
     Paciente.Estado.EGRESO_VOLUNTARIO,
@@ -17,6 +21,8 @@ ESTADOS_REQUIEREN_NOTA = {
     Paciente.Estado.ABANDONO,
 }
 
+# Matriz de transiciones permitidas del flujo CCR. Mantenerla centralizada evita
+# que cada vista invente reglas distintas para lista de espera, rescate e ingreso.
 TRANSICIONES_VALIDAS: dict[str, set[str]] = {
     Paciente.Estado.PENDIENTE: {Paciente.Estado.INGRESADO, Paciente.Estado.RESCATE},
     Paciente.Estado.RESCATE: {
@@ -63,6 +69,7 @@ TRANSICIONES_VALIDAS: dict[str, set[str]] = {
 
 
 def validar_transicion_estado(estado_actual: str, estado_nuevo: str) -> bool:
+    """Valida cambios de estado sin tocar base de datos."""
     if estado_actual == estado_nuevo:
         return True
     permitidos = TRANSICIONES_VALIDAS.get(estado_actual, set())
@@ -70,10 +77,16 @@ def validar_transicion_estado(estado_actual: str, estado_nuevo: str) -> bool:
 
 
 def estado_requiere_nota(estado: str) -> bool:
+    """Indica si el cambio debe traer observacion obligatoria."""
     return estado in ESTADOS_REQUIEREN_NOTA
 
 
 def categoria_por_diagnostico(diagnostico: str, edad: int) -> str:
+    """Heuristica operativa para precategorizar cuando el Excel no trae categoria.
+
+    No reemplaza criterio clinico: solo ayuda a ordenar la lista de espera y debe
+    mantenerse alineada con el catalogo que usa importacion.
+    """
     if edad >= 65:
         return Paciente.Categoria.MAS65
 
@@ -95,6 +108,7 @@ def categoria_por_diagnostico(diagnostico: str, edad: int) -> str:
 
 
 def prioridad_normalizada(valor: str) -> str:
+    """Normaliza variantes frecuentes de prioridad escritas en planillas."""
     limpio = (valor or "").upper().strip()
     mapping = {
         "ALTA GES": Paciente.Prioridad.ALTA,

@@ -32,6 +32,10 @@ import TrabajoHoy from "@/components/TrabajoHoy";
 
 type GrupoAlerta = keyof AlertasOperativas;
 
+// =============================================================================
+// Helpers y contratos visuales del dashboard
+// =============================================================================
+
 function toDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -91,6 +95,8 @@ const ACTION_LINKS = [
 ];
 
 const RUTAS_ALERTA: Record<GrupoAlerta, string> = {
+  // Cada clave corresponde a backend ALERTAS_OPERATIVAS. Cambiar nombres rompe
+  // los links profundos hacia /lista-espera?alerta=...
   alta_sin_responsable: "/lista-espera?alerta=alta_sin_responsable",
   sobre_90_dias: "/lista-espera?alerta=sobre_90_dias",
   pendientes_con_1_intento: "/lista-espera?alerta=pendientes_con_1_intento",
@@ -127,6 +133,10 @@ const RESUMEN_VACIO: DashboardResumenOperativo = {
   agenda_hoy: 0,
 };
 
+// =============================================================================
+// Componente principal
+// =============================================================================
+
 export default function InicioPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -156,6 +166,8 @@ export default function InicioPage() {
       setAlertasError("");
     }
     try {
+      // Resumen y alertas se cargan separados para que una falla parcial no
+      // deje inutilizable todo el dashboard.
       const data = await api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/");
       setResumen(data);
       setLastUpdated(new Date());
@@ -191,6 +203,8 @@ export default function InicioPage() {
 
   useEffect(() => {
     if (!user) return;
+    // Refresco liviano de contadores operativos. No reemplaza eventos
+    // `ccr:refresh-sidebar`, solo mantiene el dashboard vigente.
     const intervalId = window.setInterval(() => {
       void cargarDashboard({ silent: true });
     }, 45000);

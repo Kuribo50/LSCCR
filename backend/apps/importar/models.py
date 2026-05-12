@@ -3,6 +3,12 @@ from django.db import models
 
 
 class ImportacionMensual(models.Model):
+    """Corte mensual importado desde Excel.
+
+    Una importacion puede crear pacientes, detectar recurrentes o dejar
+    observaciones de revision para que un funcionario las complete despues.
+    """
+
     class Estado(models.TextChoices):
         PROCESANDO = "PROCESANDO", "Procesando"
         COMPLETADO = "COMPLETADO", "Completado"
@@ -29,6 +35,8 @@ class ImportacionMensual(models.Model):
     registros_importados = models.PositiveIntegerField(default=0)
     duplicados = models.PositiveIntegerField(default=0)
     errores = models.JSONField(default=list, blank=True)
+    # Observaciones normalizadas que alimentan /importar/revision/.
+    # Incluyen ERROR, ADVERTENCIA y RECURRENTE; no son solo fallas de archivo.
     observaciones_revision = models.JSONField(default=list, blank=True)
     mes_datos = models.PositiveSmallIntegerField(null=True, blank=True)
     anio_datos = models.PositiveSmallIntegerField(null=True, blank=True)

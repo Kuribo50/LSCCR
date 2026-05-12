@@ -142,7 +142,8 @@ def _id_ccr_desde_pk(pk: int) -> str:
 
 def _vaciar_importaciones(importaciones: list[ImportacionMensual], *, borrar_importacion: bool) -> dict:
     # Acción destructiva de mantenimiento: solo borra pacientes importados sin asignación activa.
-    # TODO: evaluar archivado lógico de cortes para conservar trazabilidad sin borrar datos físicos.
+    # Pendiente documentado: evaluar archivado logico de cortes para conservar
+    # trazabilidad sin borrar datos fisicos.
     pacientes_eliminados = 0
     importaciones_eliminadas = 0
     archivos_eliminados = 0
@@ -443,6 +444,11 @@ def _build_observacion_revision(
     importacion: ImportacionMensual,
     paciente: Paciente | None,
 ) -> dict:
+    """Normaliza una observacion para la bandeja de revision de importaciones.
+
+    La revision no es solo de errores: tambien muestra recurrentes y advertencias
+    importadas correctamente pero que requieren decision humana.
+    """
     motivo = registro.get("error") or registro.get("motivo") or ""
     if tipo == "RECURRENTE":
         accion = (
@@ -515,6 +521,12 @@ def _registrar_observaciones_revision(
     anio_fallback: int,
     usuario,
 ) -> None:
+    """Persiste observaciones generadas por el parser en su corte mensual.
+
+    Se agrupan por periodo detectado para soportar archivos con mas de un mes.
+    Los movimientos automaticos se limitan a errores vinculados a pacientes ya
+    existentes; las advertencias y recurrentes quedan para revision manual.
+    """
     if not registros or not importaciones:
         return
 
@@ -575,6 +587,7 @@ def _registrar_observaciones_revision(
 
 
 def _observaciones_revision_persistidas(importacion: ImportacionMensual) -> list[dict]:
+    """Devuelve observaciones listas para UI y migra estructura antigua en caliente."""
     observaciones = list(importacion.observaciones_revision or [])
     if observaciones:
         normalizadas = []
@@ -1121,6 +1134,7 @@ class ObservacionesRevisionImportacionView(APIView):
     permission_classes = [IsAdminOrAdministrativoRole]
 
     def get(self, request):
+        """Bandeja operativa para completar o descartar observaciones del corte."""
         tipo = request.query_params.get("tipo")
         estado_revision = request.query_params.get("estado", "PENDIENTE")
         mes = request.query_params.get("mes")
@@ -1190,6 +1204,7 @@ class ObservacionRevisionDetalleView(APIView):
 
     @transaction.atomic
     def patch(self, request, importacion_id: int, index: int):
+        """Resuelve una observacion sin reimportar todo el archivo."""
         try:
             index_int = int(index)
         except (TypeError, ValueError):

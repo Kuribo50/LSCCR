@@ -57,6 +57,9 @@ ORDEN_PRIORIDAD = Case(
     output_field=IntegerField(),
 )
 
+# Alertas que alimentan el dashboard y links rapidos del frontend. El nombre de
+# cada item tambien viaja como query param `alerta`, por eso no debe cambiarse
+# sin actualizar la UI.
 ALERTAS_OPERATIVAS = (
     "alta_sin_responsable",
     "sobre_90_dias",
@@ -72,6 +75,8 @@ ESTADOS_LISTA_ESPERA = [
     Paciente.Estado.RESCATE,
 ]
 
+# Notas generadas por agenda para no duplicar esos eventos en el timeline
+# cuando ya existe un RegistroAgendaPaciente equivalente.
 AGENDA_MOVIMIENTO_NOTAS = {
     "Paciente asistió a atención programada.",
     "No asiste a atención programada.",
@@ -81,6 +86,13 @@ AGENDA_MOVIMIENTO_NOTAS = {
 
 
 class PacienteViewSet(viewsets.ModelViewSet):
+    """API principal de pacientes.
+
+    Este ViewSet concentra lista de espera, busqueda, asignacion, cambios de
+    estado, contactabilidad, agenda, exportacion e historial. Evitar cambiar
+    rutas `url_path` porque el frontend las consume directamente.
+    """
+
     queryset = (
         Paciente.objects.select_related("kine_asignado")
         .prefetch_related("llamados", "inasistencias")
@@ -271,6 +283,11 @@ class PacienteViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
     def filter_queryset(self, queryset):
+        """Aplica filtros usados por tablas, buscador global, exportacion y reportes.
+
+        `estado` acepta un valor o una lista separada por coma, por ejemplo
+        `PENDIENTE,RESCATE`, que es el alcance operativo de lista de espera.
+        """
         queryset = super().filter_queryset(queryset)
         params = self.request.query_params
         categoria = params.get("categoria")
@@ -329,6 +346,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
             ])
             
         if search:
+            # Busqueda amplia compartida por listado y buscador global:
+            # permite encontrar por identidad, diagnostico, sectores,
+            # responsable CCR, procedencia y observaciones.
             search_clean = search.replace(".", "").replace("-", "").upper().strip()
             prioridad_matches = [
                 value
@@ -427,6 +447,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
         estado_nuevo = serializer.validated_data["estado"]
         notas = serializer.validated_data["notas"].strip()
 
+        # El administrativo participa en contacto/rescate, pero no debe cerrar
+        # estados clinicos salvo egreso administrativo documentado.
         if request.user.rol == Usuario.Rol.ADMINISTRATIVO:
             if estado_nuevo not in {
                 Paciente.Estado.INGRESADO,
@@ -459,6 +481,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Estos atributos temporales son leidos por señales/modelos para dejar
+        # una bitacora de MovimientoPaciente junto al cambio de estado.
         paciente._movimiento_usuario = request.user
         paciente._movimiento_notas = notas
         paciente.estado = estado_nuevo
@@ -512,6 +536,10 @@ class PacienteViewSet(viewsets.ModelViewSet):
             if not contesto and paciente.estado == Paciente.Estado.PENDIENTE and not observacion:
                 observacion = "Primer contacto sin respuesta. Pasa a RESCATE."
 
+            # Contactabilidad CCR:
+            # - Si contesta, se confirma ingreso.
+            # - Si no contesta desde PENDIENTE, pasa a RESCATE.
+            # - Si no contesta desde RESCATE, egresa administrativamente con nota.
             LlamadoPaciente.objects.create(
                 paciente=paciente,
                 usuario=request.user,
@@ -593,6 +621,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 "motivo_ultima_inasistencia",
                 "actualizado_en",
             ]
+            # Solo las no justificadas suman para la alerta de posible abandono.
             if not inasistencia.justificada:
                 paciente.n_inasistencias += 1
                 campos.append("n_inasistencias")
@@ -646,6 +675,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
             )
 
             campos = ["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"]
+            # Una asistencia a cita programada confirma ingreso aunque el
+            # paciente estuviera pendiente o en rescate.
             if paciente.estado in {Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE}:
                 paciente._movimiento_usuario = request.user
                 paciente._movimiento_notas = nota_movimiento
@@ -703,6 +734,8 @@ class PacienteViewSet(viewsets.ModelViewSet):
             )
 
             campos = ["proxima_atencion", "fecha_siguiente_cita", "actualizado_en"]
+            # Para pacientes aun no ingresados, se registra el evento de agenda
+            # pero no se suma inasistencia clinica.
             if paciente.estado == Paciente.Estado.INGRESADO:
                 inasistencia = InasistenciaPaciente.objects.create(
                     paciente=paciente,

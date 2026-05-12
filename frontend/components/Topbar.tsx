@@ -85,7 +85,7 @@ export default function Topbar({ user }: { user: Usuario }) {
       <div className="flex items-center gap-6">
         <div className="text-sm font-bold text-gray-800">ListaEsperaCCR</div>
 
-        {/* Search */}
+        {/* Busqueda por RUT */}
         <div ref={containerRef} className="relative">
           <form onSubmit={handleSearch} className="flex relative items-center w-[320px]">
             <svg className="absolute left-3.5 h-4 w-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,7 +108,7 @@ export default function Topbar({ user }: { user: Usuario }) {
             )}
           </form>
 
-          {/* Dropdown result */}
+          {/* Resultado desplegable */}
           {open && (
             <div className="absolute top-[calc(100%+8px)] left-0 w-[360px] bg-white rounded-2xl shadow-xl border border-[#E6EEE6] z-50 overflow-hidden">
               {searching ? (

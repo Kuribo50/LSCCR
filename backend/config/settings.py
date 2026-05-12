@@ -51,7 +51,7 @@ def _normalize_host(raw: str) -> str:
         parsed = urlparse(candidate)
         candidate = parsed.hostname or ""
     else:
-        # Remove an optional :port suffix if provided without scheme.
+        # Acepta valores tipo host:puerto cuando vienen sin esquema.
         candidate = candidate.split(":", 1)[0]
     return candidate.strip().strip("[]")
 
@@ -135,7 +135,8 @@ def origins_from_urls(*names: str) -> list[str]:
 
 
 def postgres_connection_from_env() -> dict[str, str]:
-    # Explicit vars have priority; URL is used as fallback when provided.
+    # Las variables explicitas tienen prioridad; DATABASE_URL queda como fallback
+    # para plataformas que entregan una URL unica.
     db_name = env_optional("POSTGRES_DB")
     db_user = env_optional("POSTGRES_USER")
     db_password = env_optional("POSTGRES_PASSWORD")
@@ -159,7 +160,7 @@ def postgres_connection_from_env() -> dict[str, str]:
         if not db_name and parsed.path:
             db_name = parsed.path.lstrip("/")
     else:
-        # Supports POSTGRES_HOST like "host:5432".
+        # Soporta POSTGRES_HOST tipo "host:5432".
         if db_host.count(":") == 1 and "://" not in db_host:
             host_part, port_part = db_host.split(":", 1)
             if host_part.strip() and port_part.strip().isdigit():
@@ -180,6 +181,9 @@ IS_PRODUCTION = env_bool("DJANGO_PRODUCTION", DJANGO_ENV in {"prod", "production
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "replace-me")
 DEBUG = env_bool("DJANGO_DEBUG", not IS_PRODUCTION)
+
+# En produccion los hosts/origins se pueden inferir desde Coolify o Railway,
+# pero siguen siendo sobreescribibles por variables explicitas.
 allowed_hosts_default = "localhost,127.0.0.1"
 if IS_PRODUCTION:
     deployment_hosts = _unique(hosts_from_coolify() + hosts_from_railway())
@@ -256,6 +260,8 @@ ASGI_APPLICATION = "config.asgi.application"
 
 DB_ENGINE = env("DJANGO_DB_ENGINE", "sqlite").lower()
 
+# SQLite permite levantar rapido en desarrollo; Docker/produccion deben usar
+# PostgreSQL para coincidir con despliegue real.
 if DB_ENGINE == "postgres":
     pg = postgres_connection_from_env()
     DATABASES = {
@@ -278,6 +284,8 @@ else:
 
 CACHE_BACKEND = env("DJANGO_CACHE_BACKEND", "locmem").lower()
 
+# Redis se usa en Docker/produccion para cache/sesiones compartidas. Locmem es
+# suficiente para desarrollo local de un solo proceso.
 if CACHE_BACKEND == "redis":
     CACHES = {
         "default": {
@@ -355,6 +363,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "usuarios.Usuario"
 
 REST_FRAMEWORK = {
+    # JWT es la ruta principal del frontend. SessionAuthentication queda solo en
+    # DEBUG para facilitar browsable API y pruebas manuales locales.
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         *(
@@ -383,6 +393,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
+    # Mantener vidas de token alineadas con cookies del frontend.
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=env_int("JWT_ACCESS_MINUTES", 20 if IS_PRODUCTION else 30)
     ),

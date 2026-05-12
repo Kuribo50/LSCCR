@@ -21,6 +21,10 @@ const ESTADOS_EGRESO = new Set<Estado>([
   "DERIVADO",
 ]);
 
+// =============================================================================
+// Agrupacion y busqueda amplia
+// =============================================================================
+
 type SearchSectionId = "lista-espera" | "ingresados" | "egresados";
 
 type SearchGroup = {
@@ -53,6 +57,8 @@ function terminoParaApi(value: string) {
 }
 
 function pacienteSearchIndex(paciente: Paciente) {
+  // Debe mantenerse alineado con PacienteViewSet.filter_queryset(search):
+  // identidad, diagnostico, sectores, responsable, procedencia y observaciones.
   return [
     paciente.id_ccr,
     paciente.nombre,
@@ -97,11 +103,15 @@ function puedeVerEnBuscador(paciente: Paciente, usuario: Usuario | null) {
   const seccion = seccionPaciente(paciente);
   if (!seccion) return false;
   if (usuario?.rol !== "KINE") return true;
+  // KINE puede buscar lista de espera global, pero en ingresados/egresados solo
+  // debe ver su propia cartera.
   if (seccion === "lista-espera") return true;
   return paciente.kine_asignado === usuario.id;
 }
 
 function agruparResultados(pacientes: Paciente[], usuario: Usuario | null): SearchGroup[] {
+  // El buscador global separa resultados por estado operativo para evitar que
+  // una busqueda mezcle pendientes, ingresados y egresos sin contexto.
   const grupos: Record<SearchSectionId, Paciente[]> = {
     "lista-espera": [],
     ingresados: [],
@@ -147,6 +157,10 @@ function saveHistory(items: Paciente[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(items));
 }
+
+// =============================================================================
+// Componente principal
+// =============================================================================
 
 export default function PacienteSearchBox({
   onSelect,

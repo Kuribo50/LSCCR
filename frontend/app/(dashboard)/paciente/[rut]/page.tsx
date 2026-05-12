@@ -58,7 +58,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {/* Header with Basic Info */}
+      {/* Encabezado con datos principales */}
       <div className="rounded-[10px] bg-white p-6" style={{ border: '0.5px solid #a8d4f0' }}>
         <div className="flex items-start justify-between">
           <div>
@@ -93,7 +93,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
             className="overflow-hidden rounded-[10px] bg-white"
             style={{ border: '1px solid #E6EEE6' }}
           >
-            {/* Derivacion Summary */}
+            {/* Resumen de la derivacion */}
             <div 
               className="p-5"
               style={{ backgroundColor: getKineRowBackground(derivacion.kine_asignado_nombre) }}
@@ -150,7 +150,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
               )}
             </div>
 
-            {/* Movements / Activity Stream inside Derivacion */}
+            {/* Movimientos y actividad de esta derivacion */}
             <div className="bg-gray-50 p-5 border-t border-[#E6EEE6]">
               <h4 className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-3">
                 Registro de Actividad y Días de Asistencia

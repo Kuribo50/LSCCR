@@ -9,6 +9,8 @@ def healthcheck(_request):
 
 
 urlpatterns = [
+    # Todas las rutas publicas del backend cuelgan de /api/ para que Next pueda
+    # proxyearlas sin conocer la estructura interna de Django.
     path("api/health/", healthcheck, name="healthcheck"),
     path("api/auth/", include("apps.usuarios.auth_urls")),
     path("api/", include("apps.pacientes.urls")),
@@ -18,4 +20,5 @@ urlpatterns = [
 ]
 
 if settings.ENABLE_DJANGO_ADMIN:
+    # En produccion puede deshabilitarse con DJANGO_ENABLE_ADMIN=false.
     urlpatterns.insert(0, path("admin/", admin.site.urls))

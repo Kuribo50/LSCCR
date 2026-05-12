@@ -3,6 +3,13 @@ from django.db import models
 
 
 class Paciente(models.Model):
+    """Ficha operativa principal de una derivacion CCR.
+
+    Este modelo no solo guarda datos demograficos: tambien representa en que
+    etapa del flujo esta la persona, quien la tiene asignada y que hitos
+    operativos ya ocurrieron.
+    """
+
     class Prioridad(models.TextChoices):
         ALTA = "ALTA", "Alta"
         MEDIANA = "MEDIANA", "Mediana"
@@ -22,6 +29,11 @@ class Paciente(models.Model):
         DUPLA = "DUPLA", "Dupla"
 
     class Estado(models.TextChoices):
+        # Flujo base:
+        # PENDIENTE -> INGRESADO / RESCATE
+        # RESCATE -> INGRESADO / EGRESO_ADMINISTRATIVO / PENDIENTE
+        # INGRESADO -> estados finales clinico-operativos.
+        # Las reglas completas estan centralizadas en services.TRANSICIONES_VALIDAS.
         PENDIENTE = "PENDIENTE", "Pendiente"
         INGRESADO = "INGRESADO", "Ingresado"
         RESCATE = "RESCATE", "Rescate"
@@ -62,7 +74,9 @@ class Paciente(models.Model):
     motivo_ultima_inasistencia = models.TextField(blank=True, default="")
     n_meses_espera = models.PositiveIntegerField(default=1, help_text="Veces que ha aparecido en listas mensuales")
     observaciones = models.TextField(blank=True)
-    # Datos de contacto y seguimiento
+    # Datos de contacto y seguimiento operativo: los llamados, agenda y reportes
+    # dependen de estos campos, por eso deben mantenerse sincronizados con vistas
+    # de contacto y calendario.
     fecha_nacimiento = models.DateField(null=True, blank=True)
     telefono = models.CharField(max_length=20, blank=True, default='')
     telefono_recados = models.CharField(max_length=20, blank=True, default='')
@@ -93,12 +107,16 @@ class Paciente(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # Normalizacion defensiva para que busquedas por RUT y sectores sean
+        # consistentes sin importar si el dato vino desde importacion o formulario.
         self.rut = self.rut.replace(".", "").replace("-", "").upper().strip()
         self.sector_oficial = " ".join((self.sector_oficial or "").split()).upper()
         self.sector_cesfam = " ".join((self.sector_cesfam or "").split()).upper()
         self.mayor_60 = self.edad >= 60
         is_new = self.pk is None
         if is_new and not self.id_ccr:
+            # El ID CCR se deriva del PK para mantener una clave humana estable
+            # y unica sin pedirla manualmente en cada importacion.
             super().save(*args, **kwargs)
             self.id_ccr = f"CCR-{self.pk:04d}"
             super().save(update_fields=["id_ccr"])
@@ -110,6 +128,8 @@ class Paciente(models.Model):
 
 
 class MovimientoPaciente(models.Model):
+    """Bitacora de cambios de estado y eventos relevantes de agenda."""
+
     paciente = models.ForeignKey(
         Paciente, on_delete=models.CASCADE, related_name="movimientos"
     )
@@ -129,6 +149,13 @@ class MovimientoPaciente(models.Model):
 
 
 class LlamadoPaciente(models.Model):
+    """Registro auditable de contactabilidad.
+
+    El resultado NO_CONTESTA alimenta el paso a RESCATE o egreso administrativo
+    desde la vista correspondiente; no mover esa regla al modelo sin revisar API
+    y frontend.
+    """
+
     class Resultado(models.TextChoices):
         CONTESTA_CONFIRMADO = "CONTESTA_CONFIRMADO", "Contesta y confirma"
         NO_CONTESTA = "NO_CONTESTA", "No contesta"
@@ -158,6 +185,8 @@ class LlamadoPaciente(models.Model):
 
 
 class InasistenciaPaciente(models.Model):
+    """Inasistencia clinico-operativa de pacientes ingresados."""
+
     paciente = models.ForeignKey(
         Paciente, related_name="inasistencias", on_delete=models.CASCADE
     )
@@ -177,6 +206,12 @@ class InasistenciaPaciente(models.Model):
 
 
 class RegistroAgendaPaciente(models.Model):
+    """Historial de eventos de calendario.
+
+    Se conserva aunque la cita vigente cambie, para poder reconstruir asistencia,
+    reagendamientos y cancelaciones desde el perfil del paciente.
+    """
+
     class Resultado(models.TextChoices):
         ASISTIO = "ASISTIO", "Asistió"
         NO_ASISTIO = "NO_ASISTIO", "No asistió"
@@ -203,6 +238,8 @@ class RegistroAgendaPaciente(models.Model):
 
 
 class DiagnosticoCatalogo(models.Model):
+    """Catalogo liviano usado para sugerir categorias por diagnostico."""
+
     categoria = models.CharField(max_length=20, choices=Paciente.Categoria.choices)
     diagnostico = models.CharField(max_length=255, unique=True)
 

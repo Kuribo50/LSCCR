@@ -117,7 +117,7 @@ export default function PerfilPage() {
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-bold text-gray-900">Mi Perfil</h1>
 
-      {/* Profile Card */}
+      {/* Tarjeta principal del perfil */}
       <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E6EEE6' }}>
         <div className="h-24" style={{ background: 'linear-gradient(135deg, #335fdb 0%, #2694d9 100%)' }} />
         <div className="bg-white px-6 pb-6">
@@ -158,7 +158,7 @@ export default function PerfilPage() {
         </div>
       </div>
 
-      {/* Stats based on role */}
+      {/* Indicadores segun rol */}
       {contadores && !loading && (
         <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
           <h3 className="text-sm font-bold text-gray-700 mb-4">Mi actividad en el sistema</h3>
@@ -179,7 +179,7 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {/* Admin panel: user list */}
+      {/* Panel admin: resumen de usuarios */}
       {user.rol === 'ADMIN' && todosUsuarios.length > 0 && (
         <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
           <div className="flex items-center justify-between mb-4">
@@ -211,7 +211,7 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {/* Administrativo: quick links */}
+      {/* Administrativo: accesos rapidos */}
       {user.rol === 'ADMINISTRATIVO' && (
         <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
           <h3 className="text-sm font-bold text-gray-700 mb-4">Accesos rápidos</h3>

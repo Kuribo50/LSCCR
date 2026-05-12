@@ -17,6 +17,8 @@ from .serializers import (
 
 
 class LoginView(APIView):
+    """Login de sesion Django usado por endpoints legacy/desarrollo."""
+
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -41,6 +43,8 @@ class MeView(APIView):
 
 
 class ChangePasswordView(APIView):
+    """Cambio obligatorio cuando un admin restablece la clave de un usuario."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -62,6 +66,8 @@ class UsuarioViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Administracion de usuarios, reservada a ADMIN."""
+
     queryset = Usuario.objects.order_by("nombre")
     permission_classes = [IsAdminRole]
 
@@ -74,6 +80,8 @@ class UsuarioViewSet(
 
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
+        # Regla operativa actual: la clave temporal se deriva del RUT y fuerza
+        # cambio al siguiente ingreso. No cambiar sin revisar demo/soporte.
         usuario = self.get_object()
         rut_sin_verificador = usuario.rut[:-1]
         nueva_password = rut_sin_verificador[-4:]

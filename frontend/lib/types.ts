@@ -12,6 +12,7 @@ export type Categoria =
   | "AATT"
   | "DUPLA";
 export type Estado =
+  // Debe mantenerse alineado con Paciente.Estado en backend/apps/pacientes/models.py.
   | "PENDIENTE"
   | "INGRESADO"
   | "RESCATE"
@@ -32,6 +33,8 @@ export interface Usuario {
 }
 
 export interface Paciente {
+  // Contrato principal que usa la mayoria de pantallas. Si backend agrega un
+  // campo visible en tabla/exportacion, agregarlo aqui antes de usarlo en UI.
   id: number;
   id_ccr: string;
   fecha_derivacion: string;
@@ -191,6 +194,8 @@ export interface AlertasOperativas {
 }
 
 export interface DashboardResumenOperativo {
+  // Badges del sidebar y dashboard. `lista_espera_global` es el conteo nuevo de
+  // PENDIENTE + RESCATE global; `sin_asignar` queda como fallback legacy.
   lista_activa: number;
   pendientes: number;
   rescate: number;

@@ -5,6 +5,8 @@ from .models import Paciente
 
 
 class PuedeAsignarPaciente(BasePermission):
+    """Permite que un KINE tome pacientes desde lista de espera."""
+
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated)
 
@@ -13,6 +15,12 @@ class PuedeAsignarPaciente(BasePermission):
 
 
 class PuedeCambiarEstado(BasePermission):
+    """Restringe cambios de estado segun rol y asignacion.
+
+    ADMIN puede corregir globalmente; KINE trabaja su cartera; ADMINISTRATIVO
+    puede operar cuando ya existe responsable CCR asignado.
+    """
+
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated)
 
@@ -24,6 +32,8 @@ class PuedeCambiarEstado(BasePermission):
 
 
 class PuedeRegistrarLlamado(BasePermission):
+    """Permiso comun para el flujo de contactabilidad."""
+
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
@@ -32,6 +42,8 @@ class PuedeRegistrarLlamado(BasePermission):
 
 
 class PuedeProgramarAtencion(BasePermission):
+    """Controla agenda: solo pacientes activos y con responsable CCR."""
+
     ESTADOS_PROGRAMABLES = {
         Paciente.Estado.PENDIENTE,
         Paciente.Estado.RESCATE,
