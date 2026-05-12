@@ -35,6 +35,12 @@ async function refreshTokenWithTimeout() {
   ]);
 }
 
+function toRequestInit(options: FetchOptions): RequestInit {
+  const requestOptions = { ...options };
+  delete requestOptions.skipContentType;
+  return requestOptions;
+}
+
 async function request<T>(
   path: string,
   options: FetchOptions = {},
@@ -48,7 +54,7 @@ async function request<T>(
   }
   Object.assign(headers, options.headers || {});
 
-  const { skipContentType: _, ...restOptions } = options;
+  const restOptions = toRequestInit(options);
   let resp = await fetchWithTimeout(`${BASE}${path}`, {
     ...restOptions,
     headers,
@@ -95,7 +101,7 @@ async function requestBlob(
   }
   Object.assign(headers, options.headers || {});
 
-  const { skipContentType: _, ...restOptions } = options;
+  const restOptions = toRequestInit(options);
   let resp = await fetchWithTimeout(`${BASE}${path}`, {
     ...restOptions,
     headers,

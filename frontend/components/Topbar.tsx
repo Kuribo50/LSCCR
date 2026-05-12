@@ -43,7 +43,7 @@ export default function Topbar({ user }: { user: Usuario }) {
       const data = await api.get<PerfilPaciente>(`/pacientes/perfil/${norm}`)
       setResultado(data)
       setNotFound(false)
-    } catch (e: unknown) {
+    } catch {
       setResultado(null)
       setNotFound(true)
     } finally {

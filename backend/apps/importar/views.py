@@ -524,9 +524,12 @@ def _registrar_observaciones_revision(
     movimientos_error: list[MovimientoPaciente] = []
     movimientos_error_keys: set[tuple[int, str, int | None]] = set()
 
+    tipos_revision = {"ERROR", "ADVERTENCIA", "RECURRENTE"}
+
     for registro in registros:
         estado_registro = registro.get("estado")
-        if estado_registro != "ERROR":
+        tipo = registro.get("tipo_revision") or ("ERROR" if estado_registro == "ERROR" else "")
+        if tipo not in tipos_revision:
             continue
 
         periodo_registro = _periodo_desde_registro(registro, mes_fallback, anio_fallback)
@@ -535,7 +538,6 @@ def _registrar_observaciones_revision(
             if periodo_registro is not None
             else None
         ) or next(iter(importaciones.values()))
-        tipo = "ERROR"
         paciente = _paciente_vinculado_por_registro(registro)
         observacion = _build_observacion_revision(
             registro=registro,
@@ -578,10 +580,6 @@ def _observaciones_revision_persistidas(importacion: ImportacionMensual) -> list
         normalizadas = []
         changed = False
         for observacion in observaciones:
-            tipo_observacion = observacion.get("tipo")
-            if tipo_observacion and tipo_observacion != "ERROR":
-                changed = True
-                continue
             if "estado_revision" not in observacion:
                 observacion = {**observacion, "estado_revision": "PENDIENTE"}
                 changed = True

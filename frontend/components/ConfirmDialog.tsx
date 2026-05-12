@@ -26,12 +26,6 @@ export default function ConfirmDialog({
   variant = "danger",
   loading = false,
 }: ConfirmDialogProps) {
-  const bgMap = {
-    danger: "bg-red-50 border border-red-100",
-    warning: "bg-amber-50 border border-amber-100",
-    info: "bg-sky-50 border border-sky-100",
-  };
-
   const iconMap = {
     danger: FiTrash2,
     warning: FiAlertTriangle,

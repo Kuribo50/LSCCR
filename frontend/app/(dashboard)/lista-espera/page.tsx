@@ -461,10 +461,10 @@ export default function ListaEsperaPage() {
     });
   }, [hasHydrated, setColumnOrder]);
 
-  async function handleEliminar(id: number, nombre: string) {
+  const handleEliminar = useCallback((id: number, nombre: string) => {
     if (user?.rol !== "ADMIN") return;
     setDeleteTarget({ id, nombre });
-  }
+  }, [user?.rol]);
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -904,7 +904,7 @@ export default function ListaEsperaPage() {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    void handleEliminar(paciente.id, paciente.nombre);
+                    handleEliminar(paciente.id, paciente.nombre);
                   }}
                   className="ccr-table-action ccr-action-danger px-2 py-1 text-[10px]"
                 >
@@ -916,7 +916,7 @@ export default function ListaEsperaPage() {
         },
       }),
     ],
-    [asignando, user?.rol],
+    [asignando, handleEliminar, user?.rol],
   );
 
   const table = useReactTable({
@@ -965,26 +965,21 @@ export default function ListaEsperaPage() {
     quickFilterCount +
     (tableState.globalSearch.trim() ? 1 : 0) +
     (alertaActiva ? 1 : 0);
-  const columnTemplate = useMemo(
-    () => {
-      const visibleColumns = table.getVisibleLeafColumns();
-      return visibleColumns
-        .map((column) => {
-          if (
-            column.id === "nombre" ||
-            column.id === "diagnostico" ||
-            column.id === "sector_cesfam" ||
-            column.id === "sector_oficial" ||
-            column.id === "categoriaLabel"
-          ) {
-            return `minmax(${column.getSize()}px, 1fr)`;
-          }
-          return `${column.getSize()}px`;
-        })
-        .join(" ");
-    },
-    [table, tableState.columnSizing],
-  );
+  const columnTemplate = table
+    .getVisibleLeafColumns()
+    .map((column) => {
+      if (
+        column.id === "nombre" ||
+        column.id === "diagnostico" ||
+        column.id === "sector_cesfam" ||
+        column.id === "sector_oficial" ||
+        column.id === "categoriaLabel"
+      ) {
+        return `minmax(${column.getSize()}px, 1fr)`;
+      }
+      return `${column.getSize()}px`;
+    })
+    .join(" ");
   const tableMinWidth = table
     .getVisibleLeafColumns()
     .reduce((total, column) => total + column.getSize(), 0);

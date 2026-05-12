@@ -58,7 +58,7 @@ export async function refreshAuthToken() {
       })
       return data.access
     }
-  } catch (e) {
+  } catch {
     return null
   }
   return null

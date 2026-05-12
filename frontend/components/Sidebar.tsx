@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
@@ -368,10 +369,11 @@ export default function Sidebar({
         <div className="flex items-center justify-between px-4 py-5">
           {!compact && (
             <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-              <img
-                src={logoHorizontal.src}
+              <Image
+                src={logoHorizontal}
                 alt="Centro Comunitario de Rehabilitación"
                 className="h-16 w-full origin-left scale-125 object-contain object-left"
+                priority
               />
             </div>
           )}
@@ -410,10 +412,11 @@ export default function Sidebar({
               <>
                 <div className="flex items-center justify-between px-4 py-5">
                   <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-                    <img
-                      src={logoHorizontal.src}
+                    <Image
+                      src={logoHorizontal}
                       alt="Centro Comunitario de Rehabilitación"
                       className="h-16 w-full origin-left scale-125 object-contain object-left"
+                      priority
                     />
                   </div>
                   <Button

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  FiAlertTriangle,
   FiCheckCircle,
   FiClipboard,
   FiExternalLink,
@@ -133,7 +132,7 @@ export default function RevisionImportacionPage() {
     }
   }, [user, router]);
 
-  async function cargarRevision() {
+  const cargarRevision = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -150,13 +149,13 @@ export default function RevisionImportacionPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [estado, tipo, toast]);
 
   useEffect(() => {
     if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
       void cargarRevision();
     }
-  }, [user, tipo, estado]);
+  }, [cargarRevision, user]);
 
   function abrirRevision(item: ImportacionRevisionItem) {
     setSeleccionado(item);

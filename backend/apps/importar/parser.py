@@ -664,7 +664,7 @@ def _procesar_hoja(
         prioridad = prioridad_normalizada(valores["prioridad"] or "")
         observaciones_base = _cs(valores["observaciones"])
         desde = _normalizar_percapita(valores["desde"])
-        sector_oficial = _normalizar_sector_oficial(valores["sector_oficial"]) or _normalizar_sector_oficial(desde)
+        sector_oficial = _normalizar_sector_oficial(valores["sector_oficial"])
         sector_cesfam, sector_cesfam_motivo = _normalizar_sector_cesfam(valores["sector_cesfam"])
         if not valores["sector_cesfam"] and desde:
             sector_cesfam = desde

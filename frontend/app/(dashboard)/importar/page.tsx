@@ -1,6 +1,6 @@
 "use client";
 
-import { type ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,7 +21,6 @@ import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
 import type {
   ImportacionConflictoResponse,
-  ImportacionDeletePeriodoResultado,
   ImportacionHistorialDetalle,
   ImportacionHistorialItem,
   ImportacionPreviewRegistro,
@@ -373,13 +372,104 @@ export default function ImportarPage() {
   const [resetConfirm, setResetConfirm] = useState(false);
   const [mesGestion, setMesGestion] = useState(() => new Date().getMonth() + 1);
   const [anioGestion, setAnioGestion] = useState(() => new Date().getFullYear());
-  const [detalleGestion, setDetalleGestion] =
-    useState<ImportacionHistorialDetalle | null>(null);
-  const [detalleGestionLoading, setDetalleGestionLoading] = useState(false);
-  const [deletePeriodoConfirm, setDeletePeriodoConfirm] = useState(false);
-  const [deletePeriodoLoading, setDeletePeriodoLoading] = useState(false);
-  const [deleteCorteConfirmId, setDeleteCorteConfirmId] = useState<number | null>(null);
-  const [deleteCorteLoadingId, setDeleteCorteLoadingId] = useState<number | null>(null);
+
+  const cargarHistorial = useCallback(async () => {
+    setHistorialLoading(true);
+    try {
+      const data = await api.get<ImportacionHistorialItem[]>(
+        "/importar/historial/",
+      );
+      setHistorial(data);
+    } catch {
+      setHistorial([]);
+    } finally {
+      setHistorialLoading(false);
+    }
+  }, []);
+
+  const cargarDetalleGestion = useCallback(
+    async (mes = mesGestion, anio = anioGestion) => {
+      try {
+        const data = await api.get<ImportacionHistorialDetalle>(
+          `/importar/historial/${mes}/${anio}/`,
+        );
+        setDetalleHistorial((prev) => ({ ...prev, [`${mes}-${anio}`]: data }));
+      } catch {
+        setDetalleHistorial((prev) => ({
+          ...prev,
+          [`${mes}-${anio}`]: {
+            mes,
+            anio,
+            mes_label: MESES[mes - 1] ?? String(mes),
+            items: [],
+          },
+        }));
+      }
+    },
+    [anioGestion, mesGestion],
+  );
+
+  const refrescarGestionActual = useCallback(async () => {
+    await cargarHistorial();
+    await cargarDetalleGestion(mesGestion, anioGestion);
+  }, [anioGestion, cargarDetalleGestion, cargarHistorial, mesGestion]);
+
+  const handlePrevisualizar = useCallback(async () => {
+    if (!archivo) return;
+    setPreviewLoading(true);
+    setError("");
+    setResultado(null);
+    setConflicto(null);
+
+    try {
+      const form = new FormData();
+      form.append("archivo", archivo);
+      const data = await api.postForm<ImportacionPreviewResultado>(
+        "/importar/previsualizar/",
+        form,
+      );
+      setPreview(data);
+      setConfirmImportOpen(false);
+      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
+    } catch (e: unknown) {
+      setPreview(null);
+      const message = getErrorMessage(e, "No se pudo previsualizar el archivo.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [archivo, toast]);
+
+  const handlePrevisualizarPegado = useCallback(async () => {
+    if (!textoPegado.trim()) {
+      setError("Pega las filas de datos desde la hoja de cálculo.");
+      return;
+    }
+    setPreviewLoading(true);
+    setError("");
+    setResultado(null);
+    setConflicto(null);
+
+    try {
+      const data = await api.post<ImportacionPreviewResultado>(
+        "/importar/previsualizar-pegado/",
+        {
+          texto: textoPegado,
+        },
+      );
+      setPreview(data);
+      setConfirmImportOpen(false);
+      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
+    } catch (e: unknown) {
+      setPreview(null);
+      const message = getErrorMessage(e, "No se pudo previsualizar la planilla pegada.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [textoPegado, toast]);
 
   useEffect(() => {
     if (user && !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
@@ -391,29 +481,27 @@ export default function ImportarPage() {
     if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
       void cargarHistorial();
     }
-  }, [user]);
+  }, [cargarHistorial, user]);
 
   useEffect(() => {
     if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
-      setDeletePeriodoConfirm(false);
-      setDeleteCorteConfirmId(null);
       void cargarDetalleGestion(mesGestion, anioGestion);
     }
-  }, [user, mesGestion, anioGestion]);
+  }, [anioGestion, cargarDetalleGestion, mesGestion, user]);
 
   // Auto-previsualizar al seleccionar archivo
   useEffect(() => {
-    if (modoImportacion === "archivo" && archivo && !previewLoading && !resultado) {
-      handlePrevisualizar();
+    if (modoImportacion === "archivo" && archivo) {
+      void handlePrevisualizar();
     }
-  }, [archivo, modoImportacion]);
+  }, [archivo, handlePrevisualizar, modoImportacion]);
 
   useEffect(() => {
-    if (modoImportacion === "pegado" && autoPreviewPegado && textoPegado.trim() && !previewLoading) {
+    if (modoImportacion === "pegado" && autoPreviewPegado && textoPegado.trim()) {
       setAutoPreviewPegado(false);
       void handlePrevisualizarPegado();
     }
-  }, [autoPreviewPegado, modoImportacion, previewLoading, textoPegado]);
+  }, [autoPreviewPegado, handlePrevisualizarPegado, modoImportacion, textoPegado]);
 
   const registrosPreview = useMemo(
     () => preview?.registros ?? [],
@@ -484,45 +572,6 @@ export default function ImportarPage() {
       });
   }, [historial]);
 
-  async function cargarHistorial() {
-    setHistorialLoading(true);
-    try {
-      const data = await api.get<ImportacionHistorialItem[]>(
-        "/importar/historial/",
-      );
-      setHistorial(data);
-    } catch {
-      setHistorial([]);
-    } finally {
-      setHistorialLoading(false);
-    }
-  }
-
-  async function cargarDetalleGestion(mes = mesGestion, anio = anioGestion) {
-    setDetalleGestionLoading(true);
-    try {
-      const data = await api.get<ImportacionHistorialDetalle>(
-        `/importar/historial/${mes}/${anio}/`,
-      );
-      setDetalleGestion(data);
-      setDetalleHistorial((prev) => ({ ...prev, [`${mes}-${anio}`]: data }));
-    } catch {
-      setDetalleGestion({
-        mes,
-        anio,
-        mes_label: MESES[mes - 1] ?? String(mes),
-        items: [],
-      });
-    } finally {
-      setDetalleGestionLoading(false);
-    }
-  }
-
-  async function refrescarGestionActual() {
-    await cargarHistorial();
-    await cargarDetalleGestion(mesGestion, anioGestion);
-  }
-
   async function cargarDetalle(item: ImportacionHistorialItem) {
     const mes = item.mes_datos ?? item.mes;
     const anio = item.anio_datos ?? item.anio;
@@ -540,33 +589,6 @@ export default function ImportarPage() {
       setExpandido(expandido === key ? null : key);
     } catch {
       setExpandido(expandido === key ? null : key);
-    }
-  }
-
-  async function handlePrevisualizar() {
-    if (!archivo) return;
-    setPreviewLoading(true);
-    setError("");
-    setResultado(null);
-    setConflicto(null);
-
-    try {
-      const form = new FormData();
-      form.append("archivo", archivo);
-      const data = await api.postForm<ImportacionPreviewResultado>(
-        "/importar/previsualizar/",
-        form,
-      );
-      setPreview(data);
-      setConfirmImportOpen(false);
-      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
-    } catch (e: unknown) {
-      setPreview(null);
-      const message = getErrorMessage(e, "No se pudo previsualizar el archivo.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setPreviewLoading(false);
     }
   }
 
@@ -614,36 +636,6 @@ export default function ImportarPage() {
       }
     } finally {
       setImportLoading(false);
-    }
-  }
-
-  async function handlePrevisualizarPegado() {
-    if (!textoPegado.trim()) {
-      setError("Pega las filas de datos desde la hoja de cálculo.");
-      return;
-    }
-    setPreviewLoading(true);
-    setError("");
-    setResultado(null);
-    setConflicto(null);
-
-    try {
-      const data = await api.post<ImportacionPreviewResultado>(
-        "/importar/previsualizar-pegado/",
-        {
-          texto: textoPegado,
-        },
-      );
-      setPreview(data);
-      setConfirmImportOpen(false);
-      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
-    } catch (e: unknown) {
-      setPreview(null);
-      const message = getErrorMessage(e, "No se pudo previsualizar la planilla pegada.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setPreviewLoading(false);
     }
   }
 
@@ -770,54 +762,6 @@ export default function ImportarPage() {
       toast.error(message);
     } finally {
       setResetLoading(false);
-    }
-  }
-
-  async function handleDeletePeriodo() {
-    if (!deletePeriodoConfirm) {
-      setDeletePeriodoConfirm(true);
-      return;
-    }
-
-    setDeletePeriodoLoading(true);
-    setError("");
-    try {
-      await api.delete<ImportacionDeletePeriodoResultado>(
-        `/importar/historial/${mesGestion}/${anioGestion}/`,
-      );
-      setDeletePeriodoConfirm(false);
-      await refrescarGestionActual();
-      window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
-      toast.success("Mes seleccionado borrado correctamente.");
-    } catch (e: unknown) {
-      const message = getErrorMessage(e, "No se pudo borrar el mes seleccionado.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeletePeriodoLoading(false);
-    }
-  }
-
-  async function handleDeleteCorte(item: ImportacionHistorialItem) {
-    if (deleteCorteConfirmId !== item.id) {
-      setDeleteCorteConfirmId(item.id);
-      return;
-    }
-
-    setDeleteCorteLoadingId(item.id);
-    setError("");
-    try {
-      await api.delete(`/importar/historial/corte/${item.id}/`);
-      setDeleteCorteConfirmId(null);
-      await refrescarGestionActual();
-      window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
-      toast.success("Corte seleccionado borrado correctamente.");
-    } catch (e: unknown) {
-      const message = getErrorMessage(e, "No se pudo borrar el corte seleccionado.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeleteCorteLoadingId(null);
     }
   }
 

@@ -1,7 +1,6 @@
 'use client'
 
 import { use, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
@@ -12,7 +11,6 @@ import { formatearRut } from '@/lib/rut'
 export default function PerfilPacientePage({ params }: { params: Promise<{ rut: string }> }) {
   const { rut } = use(params)
   const { user } = useAuth()
-  const router = useRouter()
   const [perfil, setPerfil] = useState<PerfilPaciente | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

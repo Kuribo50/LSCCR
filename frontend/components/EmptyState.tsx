@@ -6,7 +6,6 @@ import {
   FiInbox,
   FiRefreshCw,
   FiSearch,
-  FiUsers,
   FiWifiOff,
 } from "react-icons/fi";
 

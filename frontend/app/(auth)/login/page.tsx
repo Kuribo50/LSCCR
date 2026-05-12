@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
@@ -211,10 +212,11 @@ export default function LoginPage() {
       <div className="ccr-login-shell ccr-login-enter relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[2.75rem] bg-white shadow-2xl shadow-slate-900/18 dark:!bg-slate-950 lg:grid-cols-[0.9fr_1.1fr]">
         <aside className="hidden min-h-[720px] bg-gradient-to-br from-[#0b72bf] via-[#075494] to-[#07305f] p-7 text-white dark:!from-[#02111f] dark:!via-[#07305f] dark:!to-[#0f172a] lg:flex lg:flex-col lg:justify-center">
           <div className="mx-auto mb-7 max-w-[285px] rounded-[1.4rem] bg-white p-3 shadow-2xl shadow-slate-950/20">
-            <img
-              src={logoHorizontal.src}
+            <Image
+              src={logoHorizontal}
               alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
               className="h-auto w-full object-contain"
+              priority
             />
           </div>
 
@@ -260,10 +262,11 @@ export default function LoginPage() {
         <main className="relative flex min-h-[720px] w-full flex-col justify-center bg-white px-2 py-8 dark:!bg-white sm:px-6 lg:px-12">
           <div className="mx-auto w-full max-w-xl">
             <div className="ccr-login-panel mb-6 flex justify-center lg:hidden">
-              <img
-                src={logoHorizontal.src}
+              <Image
+                src={logoHorizontal}
                 alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
                 className="h-auto w-full max-w-sm object-contain drop-shadow-[0_18px_34px_rgba(15,23,42,0.16)]"
+                priority
               />
             </div>
 
