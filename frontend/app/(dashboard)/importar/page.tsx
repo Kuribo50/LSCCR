@@ -789,17 +789,17 @@ export default function ImportarPage() {
       <header className="ccr-panel ccr-dashboard-card overflow-hidden rounded-xl">
         <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-700 shadow-sm dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#8fc4d6]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-700 shadow-sm dark:!border-[#262626] dark:!bg-[#202020] dark:!text-ink-black-300">
               <FiUploadCloud size={24} />
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700 dark:!text-[#8fc4d6]">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700 dark:!text-ink-black-300">
                 Gestión de derivaciones
               </p>
               <h1 className="mt-1 text-2xl font-black text-slate-900 dark:!text-white">
                 Importar derivaciones
               </h1>
-              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600 dark:!text-[#b5d8e3]">
+              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600 dark:!text-ink-black-200">
                 Carga archivos Excel, revisa la previsualización y administra cortes mensuales sin salir del flujo.
               </p>
             </div>
@@ -867,12 +867,12 @@ export default function ImportarPage() {
                   }}
                   className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-black transition ${
                     active && isArchivo
-                      ? "border-emerald-200 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                      ? "border-green-200 bg-green-600 text-white shadow-sm hover:bg-green-700"
                       : active
                         ? "border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
                         : isArchivo
-                          ? "border-transparent text-emerald-700 hover:border-emerald-100 hover:bg-emerald-50 dark:!text-emerald-300 dark:hover:!bg-[#18251e]"
-                          : "border-transparent text-blue-700 hover:border-blue-100 hover:bg-blue-50 dark:!text-[#8fc4d6] dark:hover:!bg-[#202020]"
+                          ? "border-transparent text-green-700 hover:border-green-100 hover:bg-green-50 dark:!text-green-300 dark:hover:!bg-[#18251e]"
+                          : "border-transparent text-blue-700 hover:border-blue-100 hover:bg-blue-50 dark:!text-ink-black-300 dark:hover:!bg-[#202020]"
                   }`}
                 >
                   <Icon size={14} />
@@ -903,7 +903,7 @@ export default function ImportarPage() {
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 dark:!border-[#262626] dark:!bg-[#202020]">
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px]">
               <label className="block">
-                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
                   Mes de referencia
                 </span>
                 <select
@@ -925,7 +925,7 @@ export default function ImportarPage() {
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
                   Año de referencia
                 </span>
                 <select
@@ -947,7 +947,7 @@ export default function ImportarPage() {
                 </select>
               </label>
             </div>
-            <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:!text-[#b5d8e3]">
+            <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
               La previsualización e importación usan las fechas reales de la planilla. El periodo detectado aparecerá en el resumen.
             </p>
           </div>
@@ -955,14 +955,14 @@ export default function ImportarPage() {
           <div className="mt-5 space-y-4">
             {modoImportacion === "archivo" ? (
               <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:!text-[#8fc4d6]">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
                   Archivo Excel completo
                 </label>
                 <div
                   className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
                     archivo
-                      ? "border-emerald-300 bg-emerald-50/70 dark:!border-[#1f4a35] dark:!bg-[#14251d]"
-                      : "border-emerald-200 bg-white hover:border-emerald-500 hover:bg-emerald-50/70 dark:!border-[#1f4a35] dark:!bg-[#111111] dark:hover:!bg-[#14251d]"
+                      ? "border-green-300 bg-green-50/70 dark:!border-[#1f4a35] dark:!bg-[#14251d]"
+                      : "border-green-200 bg-white hover:border-green-500 hover:bg-green-50/70 dark:!border-[#1f4a35] dark:!bg-[#111111] dark:hover:!bg-[#14251d]"
                   }`}
                   onClick={() => fileRef.current?.click()}
                   onDragOver={(event) => {
@@ -985,13 +985,13 @@ export default function ImportarPage() {
                     }
                   }}
                 >
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-emerald-200 bg-white text-emerald-700 shadow-sm transition group-hover:-translate-y-0.5 dark:!border-[#1f4a35] dark:!bg-[#202020] dark:!text-emerald-300">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-green-200 bg-white text-green-700 shadow-sm transition group-hover:-translate-y-0.5 dark:!border-[#1f4a35] dark:!bg-[#202020] dark:!text-green-300">
                     <FiFileText size={24} />
                   </div>
                   {archivo ? (
                     <div className="mt-4">
-                      <p className="text-sm font-black text-emerald-800 dark:!text-white">{archivo.name}</p>
-                      <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                      <p className="text-sm font-black text-green-800 dark:!text-white">{archivo.name}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
                         {(archivo.size / 1024).toFixed(1)} KB · haz clic o arrastra para cambiar
                       </p>
                     </div>
@@ -1000,7 +1000,7 @@ export default function ImportarPage() {
                       <p className="text-sm font-bold text-slate-700 dark:!text-white">
                         Arrastra el archivo aquí o selecciona desde tu equipo
                       </p>
-                      <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-[#6ab0c8]">Formatos: .xlsx / .xls</p>
+                      <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-ink-black-400">Formatos: .xlsx / .xls</p>
                     </div>
                   )}
                 </div>
@@ -1043,19 +1043,19 @@ export default function ImportarPage() {
                         <p className="text-[11px] font-black uppercase tracking-wide text-slate-700 dark:!text-white">
                           Grilla de pegado
                         </p>
-                        <p className="text-[11px] font-semibold text-slate-500 dark:!text-[#b5d8e3]">
+                        <p className="text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
                           Clic sobre la tabla y pega con Ctrl + V. No necesitas copiar encabezados.
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[11px] font-black text-blue-800 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-[#8fc4d6]">
+                        <span className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[11px] font-black text-blue-800 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-300">
                           {previewLoading && modoImportacion === "pegado" ? "Previsualizando..." : `${filasPegadas.length} filas`}
                         </span>
                         {textoPegado.trim() && (
                           <button
                             type="button"
                             onClick={() => aplicarTextoPegado("")}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-[#daebf1]"
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-100"
                           >
                             Limpiar
                           </button>
@@ -1066,14 +1066,14 @@ export default function ImportarPage() {
                       <table className="w-full min-w-[1900px] table-fixed border-collapse text-[11px]">
                         <thead className="sticky top-0 z-10">
                           <tr>
-                            <th className="w-10 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center font-black text-slate-500 dark:!border-[#333] dark:!bg-[#202020] dark:!text-[#8fc4d6]">
+                            <th className="w-10 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center font-black text-slate-500 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-300">
                               #
                             </th>
                             {PEGADO_HEADERS.map((header, index) => (
                               <th
                                 key={header}
                                 style={{ width: PEGADO_COLUMN_WIDTHS[index] }}
-                                className="border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-left font-black uppercase tracking-[0.02em] text-slate-700 last:border-r-0 dark:!border-[#333] dark:!bg-[#202020] dark:!text-[#daebf1]"
+                                className="border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-left font-black uppercase tracking-[0.02em] text-slate-700 last:border-r-0 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-100"
                               >
                                 {header}
                               </th>
@@ -1095,7 +1095,7 @@ export default function ImportarPage() {
                                 return (
                                   <td
                                     key={`${header}-${cellIndex}`}
-                                    className="h-8 truncate border-b border-r border-slate-200 px-2 py-1 font-mono text-[11px] font-semibold text-slate-700 last:border-r-0 dark:!border-[#262626] dark:!text-[#daebf1]"
+                                    className="h-8 truncate border-b border-r border-slate-200 px-2 py-1 font-mono text-[11px] font-semibold text-slate-700 last:border-r-0 dark:!border-[#262626] dark:!text-ink-black-100"
                                   >
                                     {value || (
                                       <span className="font-sans text-[11px] font-bold text-slate-300 dark:!text-[#566]">
@@ -1169,7 +1169,7 @@ export default function ImportarPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-base font-black text-slate-900 dark:!text-white">Previsualización del archivo</h2>
-                  <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
                     Revisa el corte antes de guardar pacientes y observaciones.
                   </p>
                 </div>
@@ -1228,7 +1228,7 @@ export default function ImportarPage() {
                     <p className="text-[11px] font-black uppercase tracking-wide text-slate-700">
                       Registros detectados
                     </p>
-                    <p className="text-[11px] font-bold text-[#335fdb]">
+                    <p className="text-[11px] font-bold text-blue-500">
                       {preview.registros.length} registros
                     </p>
                   </div>
@@ -1322,15 +1322,15 @@ export default function ImportarPage() {
           ) : previewLoading ? (
             <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white text-center dark:!border-[#262626] dark:!bg-[#111111]">
               <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
-              <p className="mt-4 text-sm font-bold text-slate-600 dark:!text-[#daebf1]">
+              <p className="mt-4 text-sm font-bold text-slate-600 dark:!text-ink-black-100">
                 {modoImportacion === "archivo" ? "Analizando archivo..." : "Analizando planilla pegada..."}
               </p>
             </div>
           ) : (
             <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white/80 text-center dark:!border-[#262626] dark:!bg-[#111111]">
               <FiShield className="text-blue-300" size={38} />
-              <p className="mt-3 text-sm font-bold text-slate-500 dark:!text-[#daebf1]">El resumen aparecerá aquí</p>
-              <p className="mt-1 text-xs text-slate-400 dark:!text-[#6ab0c8]">
+              <p className="mt-3 text-sm font-bold text-slate-500 dark:!text-ink-black-100">El resumen aparecerá aquí</p>
+              <p className="mt-1 text-xs text-slate-400 dark:!text-ink-black-400">
                 {modoImportacion === "archivo"
                   ? "Selecciona un archivo para comenzar."
                   : "Pega la planilla y previsualiza antes de importar."}
@@ -1346,11 +1346,11 @@ export default function ImportarPage() {
           <div className="mt-4 grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4 dark:!border-[#262626] dark:!bg-[#111111]">
               <p className="text-2xl font-black text-slate-900 dark:!text-white">{resultado.total}</p>
-              <p className="text-xs font-semibold text-slate-500 dark:!text-[#b5d8e3]">Total detectado</p>
+              <p className="text-xs font-semibold text-slate-500 dark:!text-ink-black-200">Total detectado</p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:!border-[#262626] dark:!bg-[#202020]">
               <p className="text-2xl font-black text-blue-800 dark:!text-white">{resultado.importados}</p>
-              <p className="text-xs font-semibold text-blue-700 dark:!text-[#b5d8e3]">Importados</p>
+              <p className="text-xs font-semibold text-blue-700 dark:!text-ink-black-200">Importados</p>
             </div>
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-2xl font-black text-amber-700">{resultado.duplicados}</p>
@@ -1399,7 +1399,7 @@ export default function ImportarPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-base font-black text-slate-900 dark:!text-white">Historial de cortes mensuales</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+            <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
               Revisa qué se procesó, quién subió el corte y si un período fue reemplazado.
             </p>
           </div>
@@ -1422,7 +1422,7 @@ export default function ImportarPage() {
                     <h3 className="text-sm font-black text-slate-900 dark:!text-white" style={{ textDecoration: tachado ? "line-through" : "none" }}>
                       {grupo.periodoLabel}
                     </h3>
-                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:!text-[#b5d8e3]">
+                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:!text-ink-black-200">
                       {grupo.items.length} corte{grupo.items.length !== 1 ? "s" : ""} registrado{grupo.items.length !== 1 ? "s" : ""}
                     </p>
                   </div>
@@ -1431,7 +1431,7 @@ export default function ImportarPage() {
                   </span>
                 </div>
 
-                <div className="mt-3 space-y-1 text-xs font-medium text-slate-600 dark:!text-[#b5d8e3]">
+                <div className="mt-3 space-y-1 text-xs font-medium text-slate-600 dark:!text-ink-black-200">
                   <p>{activo.registros_importados} registros importados</p>
                   <p>Última carga: {new Date(activo.fecha_subida).toLocaleString("es-CL")}</p>
                   <p>Usuario{grupo.usuarios.length !== 1 ? "s" : ""}: {grupo.usuarios.join(", ") || "No disponible"}</p>
@@ -1449,14 +1449,14 @@ export default function ImportarPage() {
                           {new Date(detalleItem.fecha_subida).toLocaleString("es-CL")}
                         </p>
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">
+                          <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">
                             Estado: {detalleItem.estado_label} · Duplicados: {detalleItem.duplicados}
                           </p>
-                          <button type="button" onClick={() => router.push(`/lista-espera?importacion=${detalleItem.id}`)} className="text-[10px] font-black text-blue-700 hover:underline dark:!text-[#8fc4d6]">
+                          <button type="button" onClick={() => router.push(`/lista-espera?importacion=${detalleItem.id}`)} className="text-[10px] font-black text-blue-700 hover:underline dark:!text-ink-black-300">
                             Ver corte
                           </button>
                         </div>
-                        <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">
+                        <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">
                           Subido por: <span className="font-bold text-slate-700 dark:!text-white">{detalleItem.usuario_nombre || "No disponible"}</span>
                         </p>
                         {detalleItem.errores.length > 0 ? (
@@ -1468,7 +1468,7 @@ export default function ImportarPage() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[11px] text-slate-500 dark:!text-[#b5d8e3]">Sin errores registrados.</p>
+                          <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">Sin errores registrados.</p>
                         )}
                       </div>
                     ))}
@@ -1486,7 +1486,7 @@ export default function ImportarPage() {
             <h2 className="text-lg font-black text-slate-900 dark:!text-white">
               Confirmar importación
             </h2>
-            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-[#b5d8e3]">
+            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-ink-black-200">
               Se subirá la planilla usando los periodos detectados por sus fechas reales. Revisa la previsualización antes de confirmar.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
@@ -1494,8 +1494,8 @@ export default function ImportarPage() {
                 <p className="text-lg font-black text-blue-800">{preview.total}</p>
                 <p className="font-bold text-slate-500">detectados</p>
               </div>
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
-                <p className="text-lg font-black text-emerald-700">{preview.validos}</p>
+              <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2">
+                <p className="text-lg font-black text-green-700">{preview.validos}</p>
                 <p className="font-bold text-slate-500">nuevos</p>
               </div>
               <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
@@ -1544,20 +1544,20 @@ export default function ImportarPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="ccr-panel w-full max-w-xl rounded-xl p-5">
             <h2 className="text-lg font-black text-slate-900 dark:!text-white">Ya existen datos para estos meses</h2>
-            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-[#b5d8e3]">{conflicto.mensaje}</p>
+            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-ink-black-200">{conflicto.mensaje}</p>
 
             <div className="mt-4 space-y-2">
               {conflicto.conflictos.map((item) => (
-                <div key={`${item.mes}-${item.anio}-${item.importacion_id}`} className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-slate-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#daebf1]">
+                <div key={`${item.mes}-${item.anio}-${item.importacion_id}`} className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-slate-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-ink-black-100">
                   <p className="font-bold">{item.hoja} {item.anio}</p>
-                  <p className="text-xs text-slate-500 dark:!text-[#b5d8e3]">
+                  <p className="text-xs text-slate-500 dark:!text-ink-black-200">
                     Importación previa: {item.importados_previos} registros · {new Date(item.fecha_subida_previa).toLocaleString("es-CL")}
                   </p>
                 </div>
               ))}
             </div>
 
-            <p className="mt-4 text-xs font-medium text-slate-500 dark:!text-[#b5d8e3]">
+            <p className="mt-4 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
               Complementar suma meses de espera a pacientes existentes y agrega los nuevos sin borrar lo anterior.
             </p>
 

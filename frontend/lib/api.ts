@@ -45,10 +45,13 @@ function toRequestInit(options: FetchOptions): RequestInit {
   return requestOptions;
 }
 
-async function request<T>(
+// Nucleo compartido: arma headers, ejecuta fetch con auth, reintenta en 401
+// y emite evento de sidebar para mutaciones. Tanto request() como requestBlob()
+// delegan aqui para evitar duplicar la logica de autenticacion y refresh.
+async function _fetch(
   path: string,
   options: FetchOptions = {},
-): Promise<T> {
+): Promise<Response> {
   const headers: Record<string, string> = {};
   if (!options.skipContentType) {
     headers["Content-Type"] = "application/json";
@@ -91,7 +94,16 @@ async function request<T>(
     }
   }
 
-  if (resp.status === 204) return undefined as T;
+  return resp;
+}
+
+async function request<T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<T> {
+  const resp = await _fetch(path, options);
+
+  if (resp.status === 204) return undefined as unknown as T;
 
   const data = await resp.json().catch(() => ({ detail: resp.statusText }));
   if (!resp.ok) throw data;
@@ -102,41 +114,7 @@ async function requestBlob(
   path: string,
   options: FetchOptions = {},
 ): Promise<Blob> {
-  const headers: Record<string, string> = {};
-  if (memoryToken) {
-    headers["Authorization"] = `Bearer ${memoryToken}`;
-  }
-  Object.assign(headers, options.headers || {});
-
-  const restOptions = toRequestInit(options);
-  let resp = await fetchWithTimeout(`${BASE}${path}`, {
-    ...restOptions,
-    headers,
-  });
-
-  if (resp.status === 401 && path !== "/auth/login/") {
-    // Mismo flujo que request<T>, pero manteniendo respuesta Blob para Excel.
-    const newAccess = await refreshTokenWithTimeout();
-    if (newAccess) {
-      memoryToken = newAccess;
-      headers["Authorization"] = `Bearer ${memoryToken}`;
-      resp = await fetchWithTimeout(`${BASE}${path}`, {
-        ...restOptions,
-        headers,
-      });
-    } else if (typeof window !== "undefined") {
-      memoryToken = null;
-      if (window.location.pathname !== "/login") {
-        window.location.replace("/login");
-      }
-    }
-  }
-
-  if (resp.ok && ["POST", "PUT", "PATCH", "DELETE"].includes(options.method || "")) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("ccr:refresh-sidebar"));
-    }
-  }
+  const resp = await _fetch(path, options);
 
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));

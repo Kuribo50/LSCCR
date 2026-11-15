@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -19,19 +19,16 @@ import { useAuth } from "@/lib/auth-context";
 import { getErrorMessage } from "@/lib/errors";
 import { formatearRut, rutParaApi } from "@/lib/rut";
 import { useToast } from "@/lib/toast-context";
-import type { Rol, Usuario } from "@/lib/types";
+import { useAPI, unwrapResults } from "@/lib/swr";
+import type { PaginatedResponse, Rol, Usuario } from "@/lib/types";
+import { ROL_LABELS } from "@/lib/types";
 import { TableSkeleton } from "@/components/Skeleton";
-
-const ROL_LABELS: Record<Rol, string> = {
-  KINE: "Kinesiólogo/a",
-  ADMINISTRATIVO: "Administrativo/a",
-  ADMIN: "Administrador/a",
-};
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 const ROL_BADGE_CLASSES: Record<Rol, string> = {
-  ADMIN: "border-blue-100 bg-blue-50 text-blue-700",
-  KINE: "border-emerald-100 bg-emerald-50 text-emerald-700",
-  ADMINISTRATIVO: "border-amber-100 bg-amber-50 text-amber-800",
+  ADMIN: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
+  KINE: "border-green-100 bg-green-50 text-green-700 dark:border-green-400/30 dark:bg-green-400/10 dark:text-green-100",
+  ADMINISTRATIVO: "border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100",
 };
 
 const ROLES_NUEVOS: Rol[] = ["KINE", "ADMIN"];
@@ -61,13 +58,15 @@ export default function UsuariosPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
-  const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<null | "crear" | Usuario>(null);
   const [busqueda, setBusqueda] = useState("");
   const [rolFiltro, setRolFiltro] = useState<Rol | "TODOS">("TODOS");
   const [estadoFiltro, setEstadoFiltro] = useState<"TODOS" | "ACTIVOS" | "INACTIVOS">("TODOS");
   const [resetLoadingId, setResetLoadingId] = useState<number | null>(null);
+  const [resetCandidate, setResetCandidate] = useState<Usuario | null>(null);
+  const [claveTemporal, setClaveTemporal] = useState<{ nombre: string; clave: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Usuario | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     if (user && user.rol !== "ADMIN") {
@@ -75,19 +74,12 @@ export default function UsuariosPage() {
     }
   }, [user, router]);
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.get<Usuario[]>("/usuarios/");
-      setUsuarios(data);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const {
+    data: swrData,
+    isLoading: loading,
+    mutate,
+  } = useAPI<Usuario[] | PaginatedResponse<Usuario>>("/usuarios/");
+  const usuarios = unwrapResults(swrData);
 
   const usuariosFiltrados = useMemo(
     () =>
@@ -123,30 +115,32 @@ export default function UsuariosPage() {
     estadoFiltro !== "TODOS",
   ].filter(Boolean).length;
 
-  async function handleEliminar(id: number) {
-    if (!window.confirm("¿Seguro que deseas eliminar este usuario?")) return;
+  async function confirmarEliminar() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
     try {
-      await api.delete(`/usuarios/${id}/`);
-      await cargar();
+      await api.delete(`/usuarios/${deleteTarget.id}/`);
+      await mutate();
       toast.success("Usuario eliminado correctamente.");
+      setDeleteTarget(null);
     } catch (error) {
       toast.error(
         getErrorMessage(error, "No se pudo eliminar el usuario. Es posible que tenga registros asociados."),
       );
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
-  async function handleResetPassword(usuario: Usuario) {
-    const rutFormateado = formatearRut(usuario.rut);
-    const confirmado = window.confirm(
-      `¿Resetear la contraseña de ${usuario.nombre}? Quedará como los últimos 4 dígitos del RUT ${rutFormateado}, sin dígito verificador.`,
-    );
-    if (!confirmado) return;
-
-    setResetLoadingId(usuario.id);
+  async function confirmarResetPassword() {
+    if (!resetCandidate) return;
+    setResetLoadingId(resetCandidate.id);
     try {
-      await api.post(`/usuarios/${usuario.id}/reset-password/`);
-      toast.success("Contraseña restablecida. Use los últimos 4 dígitos del RUT, sin dígito verificador.");
+      const respuesta = await api.post<{ detail: string; nueva_password: string }>(
+        `/usuarios/${resetCandidate.id}/reset-password/`,
+      );
+      setClaveTemporal({ nombre: resetCandidate.nombre, clave: respuesta.nueva_password });
+      setResetCandidate(null);
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo resetear la contraseña."));
     } finally {
@@ -163,23 +157,23 @@ export default function UsuariosPage() {
   if (!user || user.rol !== "ADMIN") return null;
 
   return (
-    <div className="space-y-4 text-[13px]">
-      <header className="ccr-panel rounded-xl bg-white p-5 shadow-sm">
+    <div className="ccr-page-fill space-y-4 text-[13px]">
+      <header className="ccr-panel rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
+            <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700 dark:text-blue-300">
               <FiShield size={13} />
               Administración
             </p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950">Usuarios</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Usuarios</h1>
+            <p className="mt-1 text-sm text-slate-500 dark:text-ink-black-200">
               Gestión básica de accesos y roles operativos.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setModal("crear")}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0]"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent !bg-blue-500 px-4 py-2 text-xs font-bold !text-white transition hover:!bg-blue-700"
           >
             <FiPlus size={14} />
             Nuevo usuario
@@ -194,11 +188,11 @@ export default function UsuariosPage() {
         </div>
       </header>
 
-      <section className="ccr-panel rounded-xl bg-white p-4 shadow-sm">
+      <section className="ccr-panel rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px_auto]">
           <div className="relative">
             <FiSearch
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 dark:text-blue-300"
               size={15}
             />
             <input
@@ -245,12 +239,12 @@ export default function UsuariosPage() {
         </div>
       </section>
 
-      <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#0f0f10]">
+      <section className="ccr-fill ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#0f0f10]">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-[#262626]">
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-[#b5d8e3]">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-ink-black-200">
             {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en vista
           </p>
-          <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
+          <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 dark:bg-blue-400/10 dark:text-blue-100">
             {activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""}
           </span>
         </div>
@@ -260,27 +254,27 @@ export default function UsuariosPage() {
             <TableSkeleton rows={6} />
           </div>
         ) : usuariosFiltrados.length === 0 ? (
-          <div className="p-10 text-center text-sm font-semibold text-slate-500">
+          <div className="ccr-fill-grow p-10 text-center text-sm font-semibold text-slate-500 dark:text-ink-black-200">
             Sin usuarios para los filtros seleccionados.
           </div>
         ) : (
           <>
-            <div className="ccr-table-scroll min-h-[320px] max-h-[clamp(320px,calc(100dvh-340px),820px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
+            <div className="ccr-table-scroll overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
               <table className="w-full min-w-[920px] table-fixed text-[12px]">
                 <thead className="sticky top-0 z-10">
                   <tr className="ccr-table-head border-b border-slate-200 bg-slate-50/90 dark:border-[#262626] dark:bg-[#202020]">
-                    <th className="w-[260px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Nombre</th>
-                    <th className="w-[150px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">RUT</th>
-                    <th className="w-[220px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Rol</th>
-                    <th className="w-[120px] text-left text-xs font-bold text-slate-600 dark:text-[#daebf1]">Estado</th>
-                    <th className="w-[300px] text-right text-xs font-bold text-slate-600 dark:text-[#daebf1]">Acciones</th>
+                    <th className="w-[260px] text-left text-xs font-bold text-slate-600 dark:text-ink-black-100">Nombre</th>
+                    <th className="w-[150px] text-left text-xs font-bold text-slate-600 dark:text-ink-black-100">RUT</th>
+                    <th className="w-[220px] text-left text-xs font-bold text-slate-600 dark:text-ink-black-100">Rol</th>
+                    <th className="w-[120px] text-left text-xs font-bold text-slate-600 dark:text-ink-black-100">Estado</th>
+                    <th className="w-[300px] text-right text-xs font-bold text-slate-600 dark:text-ink-black-100">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {usuariosFiltrados.map((usuario) => (
                   <tr key={usuario.id} className="ccr-table-row bg-white dark:bg-[#151515]">
                     <td className="font-bold text-slate-900 dark:text-white">{usuario.nombre}</td>
-                    <td className="font-mono text-xs text-slate-600 dark:text-[#b5d8e3]">
+                    <td className="font-mono text-xs text-slate-600 dark:text-ink-black-200">
                       {formatearRut(usuario.rut)}
                     </td>
                     <td>
@@ -294,8 +288,8 @@ export default function UsuariosPage() {
                       <span
                         className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-bold ${
                           usuario.is_active
-                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                            : "border-slate-100 bg-slate-50 text-slate-500"
+                            ? "border-green-100 bg-green-50 text-green-700 dark:border-green-400/30 dark:bg-green-400/10 dark:text-green-100"
+                            : "border-slate-100 bg-slate-50 text-slate-500 dark:border-slate-400/25 dark:bg-slate-400/10 dark:text-slate-200"
                         }`}
                       >
                         {usuario.is_active ? "Activo" : "Inactivo"}
@@ -306,24 +300,24 @@ export default function UsuariosPage() {
                         <button
                           type="button"
                           onClick={() => setModal(usuario)}
-                          className="inline-flex items-center gap-1 rounded-md bg-[#335FDB] px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#284FC0]"
+                          className="inline-flex items-center gap-1 rounded-md border border-transparent !bg-blue-500 px-2.5 py-1.5 text-xs font-bold !text-white transition hover:!bg-blue-700"
                         >
                           <FiEdit2 size={13} />
                           Editar
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleResetPassword(usuario)}
+                          onClick={() => setResetCandidate(usuario)}
                           disabled={resetLoadingId === usuario.id}
-                          className="inline-flex items-center gap-1 rounded-md border border-blue-100 bg-white px-2.5 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-md border !border-amber-500 !bg-amber-500 px-2.5 py-1.5 text-xs font-bold !text-white transition hover:!border-amber-600 hover:!bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <FiKey size={13} />
                           {resetLoadingId === usuario.id ? "Reseteando" : "Reset clave"}
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleEliminar(usuario.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-red-100 bg-white px-2.5 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-50"
+                          onClick={() => setDeleteTarget(usuario)}
+                          className="inline-flex items-center gap-1 rounded-md border !border-red-600 !bg-red-600 px-2.5 py-1.5 text-xs font-bold !text-white transition hover:!border-red-700 hover:!bg-red-700"
                         >
                           <FiTrash2 size={13} />
                           Eliminar
@@ -336,11 +330,11 @@ export default function UsuariosPage() {
             </table>
             </div>
 
-            <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
               <p>
                 {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en la tabla
               </p>
-              <p className="text-gray-400">
+              <p className="text-gray-400 dark:text-ink-black-400">
                 Mostrando {usuariosFiltrados.length} de {usuarios.length}
               </p>
             </div>
@@ -352,9 +346,68 @@ export default function UsuariosPage() {
         <UsuarioModal
           usuario={modal === "crear" ? null : modal}
           onClose={() => setModal(null)}
-          onGuardado={cargar}
+          onGuardado={() => void mutate()}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={Boolean(resetCandidate)}
+        onCancel={() => {
+          if (resetLoadingId === null) setResetCandidate(null);
+        }}
+        onConfirm={() => void confirmarResetPassword()}
+        title="Resetear clave"
+        message={
+          resetCandidate
+            ? `Se generará una clave temporal para ${resetCandidate.nombre} (${formatearRut(resetCandidate.rut)}). Deberá cambiarla en su próximo ingreso.`
+            : ""
+        }
+        confirmLabel="Resetear clave"
+        cancelLabel="Cancelar"
+        variant="warning"
+        loading={resetLoadingId !== null}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(claveTemporal)}
+        onCancel={() => setClaveTemporal(null)}
+        onConfirm={() => {
+          if (claveTemporal) {
+            void navigator.clipboard
+              ?.writeText(claveTemporal.clave)
+              .then(() => toast.success("Clave copiada al portapapeles."))
+              .catch(() => toast.error("No se pudo copiar. Anótela manualmente."));
+          }
+          setClaveTemporal(null);
+        }}
+        title="Clave temporal generada"
+        message={
+          claveTemporal
+            ? `Clave temporal de ${claveTemporal.nombre}: ${claveTemporal.clave}\n\nEntréguela al usuario. No se volverá a mostrar y deberá cambiarla al ingresar.`
+            : ""
+        }
+        confirmLabel="Copiar y cerrar"
+        cancelLabel="Cerrar"
+        variant="info"
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        onCancel={() => {
+          if (!deleteLoading) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmarEliminar()}
+        title="Eliminar usuario"
+        message={
+          deleteTarget
+            ? `¿Seguro que deseas eliminar a ${deleteTarget.nombre} (${formatearRut(deleteTarget.rut)})? Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={deleteLoading}
+      />
     </div>
   );
 }
@@ -371,10 +424,10 @@ function UsuarioStat({
   tone: "blue" | "green" | "slate" | "amber";
 }) {
   const tones = {
-    blue: "border-blue-100 bg-blue-50 text-blue-700",
-    green: "border-emerald-100 bg-emerald-50 text-emerald-700",
-    slate: "border-slate-100 bg-slate-50 text-slate-700",
-    amber: "border-amber-100 bg-amber-50 text-amber-700",
+    blue: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
+    green: "border-green-100 bg-green-50 text-green-700 dark:border-green-400/30 dark:bg-green-400/10 dark:text-green-100",
+    slate: "border-slate-100 bg-slate-50 text-slate-700 dark:border-slate-400/25 dark:bg-slate-400/10 dark:text-slate-100",
+    amber: "border-amber-100 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100",
   };
 
   return (
@@ -518,32 +571,32 @@ function UsuarioModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 py-6 backdrop-blur-sm dark:bg-black/70"
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-[#2a2a2a] dark:bg-[#111111]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-[#2a2a2a]">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700 dark:text-blue-300">
               Usuarios
             </p>
-            <h2 className="mt-1 text-xl font-black text-slate-950">
+            <h2 className="mt-1 text-xl font-black text-slate-950 dark:text-white">
               {editando ? "Editar usuario" : "Crear usuario"}
             </h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
+            <p className="mt-1 text-sm font-medium text-slate-500 dark:text-ink-black-200">
               Gestiona acceso interno a ListaEsperaCCR.
             </p>
             {subtituloDetalle && (
-              <p className="mt-1 text-xs font-semibold text-slate-400">{subtituloDetalle}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">{subtituloDetalle}</p>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200 dark:hover:bg-[#202020] dark:hover:text-white"
             aria-label="Cerrar"
           >
             <FiX size={16} />
@@ -553,7 +606,7 @@ function UsuarioModal({
         <form onSubmit={handleSubmit} className="flex max-h-[calc(92vh-102px)] flex-col">
           <div className="overflow-y-auto px-6 py-5">
             {error && (
-              <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              <p className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-100">
                 {error}
               </p>
             )}
@@ -561,8 +614,8 @@ function UsuarioModal({
             <div className="grid gap-5 lg:grid-cols-2">
               <section className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">Datos de acceso</h3>
-                  <p className="mt-1 text-xs font-medium text-slate-500">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Datos de acceso</h3>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-ink-black-200">
                     Identificación y credenciales del usuario.
                   </p>
                 </div>
@@ -615,18 +668,18 @@ function UsuarioModal({
 
               <section className="space-y-4">
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">Perfil y estado</h3>
-                  <p className="mt-1 text-xs font-medium text-slate-500">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">Perfil y estado</h3>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-ink-black-200">
                     Rol operativo y disponibilidad de la cuenta.
                   </p>
                 </div>
 
                 {rolHeredado && (
-                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3">
-                    <p className="text-xs font-black text-amber-900">
+                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 dark:border-amber-400/30 dark:bg-amber-400/10">
+                    <p className="text-xs font-black text-amber-900 dark:text-amber-100">
                       Administrativo/a (rol heredado)
                     </p>
-                    <p className="mt-1 text-xs font-semibold text-amber-800">
+                    <p className="mt-1 text-xs font-semibold text-amber-800 dark:text-amber-200">
                       Este rol existe por compatibilidad. Para nuevos usuarios use Kinesiólogo/a o
                       Administrador/a.
                     </p>
@@ -653,11 +706,11 @@ function UsuarioModal({
                 </FormField>
 
                 {editando && (
-                  <div className="rounded-lg border border-slate-200 px-3 py-3">
+                  <div className="rounded-lg border border-slate-200 px-3 py-3 dark:border-[#2a2a2a] dark:bg-[#151515]">
                     <div className="flex items-center justify-between gap-4">
                       <div>
-                        <p className="text-xs font-black text-slate-900">Estado activo</p>
-                        <p className="mt-1 text-xs font-medium text-slate-500">
+                        <p className="text-xs font-black text-slate-900 dark:text-white">Estado activo</p>
+                        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-ink-black-200">
                           Controla si la cuenta puede iniciar sesión.
                         </p>
                       </div>
@@ -668,7 +721,7 @@ function UsuarioModal({
                         aria-label="Cambiar estado activo"
                         onClick={() => set("is_active", !form.is_active)}
                         className={`relative h-6 w-11 rounded-full transition ${
-                          form.is_active ? "bg-[#335FDB]" : "bg-slate-300"
+                          form.is_active ? "bg-blue-500" : "bg-slate-300 dark:bg-slate-600"
                         }`}
                       >
                         <span
@@ -678,7 +731,7 @@ function UsuarioModal({
                         />
                       </button>
                     </div>
-                    <p className="mt-3 inline-flex rounded-full border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-600">
+                    <p className="mt-3 inline-flex rounded-full border border-slate-100 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-600 dark:border-slate-400/25 dark:bg-slate-400/10 dark:text-slate-100">
                       {form.is_active ? "Activo" : "Inactivo"}
                     </p>
                   </div>
@@ -687,18 +740,18 @@ function UsuarioModal({
             </div>
           </div>
 
-          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#181818] sm:flex-row sm:justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-50 dark:hover:bg-[#202020]"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Guardando..." : editando ? "Guardar cambios" : "Crear usuario"}
             </button>
@@ -720,9 +773,9 @@ function FormField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-bold text-slate-600">{label}</span>
+      <span className="mb-1 block text-xs font-bold text-slate-600 dark:text-ink-black-50">{label}</span>
       {children}
-      {error && <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span>}
+      {error && <span className="mt-1 block text-xs font-semibold text-red-600 dark:text-red-300">{error}</span>}
     </label>
   );
 }

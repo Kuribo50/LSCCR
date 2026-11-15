@@ -133,7 +133,7 @@ class UsuarioAdminTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_puede_resetear_password_con_ultimos_4_digitos_del_rut(self):
+    def test_admin_puede_resetear_password_con_clave_temporal_aleatoria(self):
         usuario = Usuario.objects.create_user(
             rut="12.345.678-K",
             password="testpass123",
@@ -145,7 +145,11 @@ class UsuarioAdminTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         usuario.refresh_from_db()
-        self.assertTrue(usuario.check_password("5678"))
+        nueva = response.data["nueva_password"]
+        self.assertEqual(len(nueva), 10)
+        self.assertNotEqual(nueva, "5678")
+        self.assertTrue(usuario.check_password(nueva))
+        self.assertFalse(usuario.check_password("5678"))
         self.assertTrue(usuario.requiere_cambio_password)
 
     def test_usuario_no_admin_no_puede_resetear_password(self):

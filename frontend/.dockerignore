@@ -16,3 +16,11 @@ pnpm-debug.log*
 *.log
 *.tmp
 *.bak
+
+# Nunca publicar planillas de pacientes, documentos ni ejecutables desde public/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.exe
+~$*

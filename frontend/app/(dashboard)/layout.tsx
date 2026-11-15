@@ -26,7 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:!bg-[#151515]">
-        <div className="animate-pulse rounded-2xl border border-gray-200 bg-white px-6 py-4 text-sm font-medium text-gray-700 shadow-sm dark:!border-[#262626] dark:!bg-[#0f0f10] dark:!text-[#ecf5f8]">
+        <div className="animate-pulse rounded-2xl border border-gray-200 bg-white px-6 py-4 text-sm font-medium text-gray-700 shadow-sm dark:!border-[#262626] dark:!bg-[#0f0f10] dark:!text-ink-black-50">
           Cargando entorno...
         </div>
       </div>
@@ -36,7 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null
 
   return (
-    <div className="ccr-dashboard-shell flex min-h-screen bg-slate-100 dark:!bg-[#151515]">
+    <div className="ccr-dashboard-shell flex min-h-screen bg-[color:var(--bg-app)]">
       <Sidebar
         user={user}
         mobileOpen={mobileSidebarOpen}
@@ -50,9 +50,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+      {/* Backend bloquea la navegacion cuando admin exige cambio de clave. */}
       {user.requiere_cambio_password && (
-        // Cuando admin resetea clave, backend marca este flag y bloqueamos la
-        // navegacion hasta que el usuario defina una clave propia.
         <CambioPasswordObligatorio onLogout={logout} onPasswordChanged={refreshUser} />
       )}
     </div>
@@ -157,7 +156,7 @@ function CambioPasswordObligatorio({
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? 'Guardando...' : 'Actualizar contraseña'}
             </button>

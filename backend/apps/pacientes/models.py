@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from .utils import normalizar_rut
+
 
 class Paciente(models.Model):
     """Ficha operativa principal de una derivacion CCR.
@@ -109,7 +111,7 @@ class Paciente(models.Model):
     def save(self, *args, **kwargs):
         # Normalizacion defensiva para que busquedas por RUT y sectores sean
         # consistentes sin importar si el dato vino desde importacion o formulario.
-        self.rut = self.rut.replace(".", "").replace("-", "").upper().strip()
+        self.rut = normalizar_rut(self.rut)
         self.sector_oficial = " ".join((self.sector_oficial or "").split()).upper()
         self.sector_cesfam = " ".join((self.sector_cesfam or "").split()).upper()
         self.mayor_60 = self.edad >= 60
@@ -185,8 +187,6 @@ class LlamadoPaciente(models.Model):
 
 
 class InasistenciaPaciente(models.Model):
-    """Inasistencia clinico-operativa de pacientes ingresados."""
-
     paciente = models.ForeignKey(
         Paciente, related_name="inasistencias", on_delete=models.CASCADE
     )
@@ -238,8 +238,6 @@ class RegistroAgendaPaciente(models.Model):
 
 
 class DiagnosticoCatalogo(models.Model):
-    """Catalogo liviano usado para sugerir categorias por diagnostico."""
-
     categoria = models.CharField(max_length=20, choices=Paciente.Categoria.choices)
     diagnostico = models.CharField(max_length=255, unique=True)
 
@@ -248,3 +246,72 @@ class DiagnosticoCatalogo(models.Model):
 
     def __str__(self):
         return f"{self.categoria} - {self.diagnostico}"
+
+
+class ActividadGrupal(models.Model):
+    """Actividad o sesion grupal en una fecha: varios pacientes asisten juntos."""
+
+    class Estado(models.TextChoices):
+        PROGRAMADA = "PROGRAMADA", "Programada"
+        REALIZADA = "REALIZADA", "Realizada"
+        CANCELADA = "CANCELADA", "Cancelada"
+
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField(blank=True, default="")
+    lugar = models.CharField(max_length=150, blank=True, default="")
+    fecha_hora = models.DateTimeField()
+    duracion_minutos = models.PositiveSmallIntegerField(default=60)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PROGRAMADA)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="actividades_grupales",
+        on_delete=models.SET_NULL,
+    )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="actividades_grupales_creadas",
+        on_delete=models.SET_NULL,
+    )
+    pacientes = models.ManyToManyField(
+        Paciente, through="ParticipanteActividad", related_name="actividades_grupales"
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["fecha_hora", "id"]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.fecha_hora:%Y-%m-%d %H:%M})"
+
+
+class ParticipanteActividad(models.Model):
+    class Asistencia(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        ASISTIO = "ASISTIO", "Asistió"
+        NO_ASISTIO = "NO_ASISTIO", "No asistió"
+
+    actividad = models.ForeignKey(
+        ActividadGrupal, related_name="participantes", on_delete=models.CASCADE
+    )
+    paciente = models.ForeignKey(
+        Paciente, related_name="participaciones_grupales", on_delete=models.CASCADE
+    )
+    asistencia = models.CharField(
+        max_length=20, choices=Asistencia.choices, default=Asistencia.PENDIENTE
+    )
+
+    class Meta:
+        ordering = ["paciente__nombre"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["actividad", "paciente"], name="participante_unico_por_actividad"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.actividad_id}: {self.paciente_id}"

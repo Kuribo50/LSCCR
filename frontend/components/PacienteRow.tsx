@@ -1,5 +1,6 @@
 "use client";
 import { formatearRut } from "@/lib/rut";
+import { calcularDiasDesde, toCapitalizedWords } from "@/lib/utils";
 
 import type { Paciente, Usuario } from "@/lib/types";
 import {
@@ -23,30 +24,6 @@ interface Props {
   showProximaAtencion?: boolean;
 }
 
-function calcularDiasDesde(fecha: string | null | undefined) {
-  if (!fecha) return null;
-  const inicio = new Date(`${fecha}T00:00:00`);
-  if (Number.isNaN(inicio.getTime())) return null;
-
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const diffMs = hoy.getTime() - inicio.getTime();
-  if (diffMs < 0) return 0;
-  return Math.floor(diffMs / 86400000);
-}
-
-function toCapitalizedWords(value: string) {
-  const normalized = value
-    .trim()
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase("es-CL");
-  return normalized.replace(/\p{L}+/gu, (word) => {
-    const [first = "", ...rest] = Array.from(word);
-    return `${first.toLocaleUpperCase("es-CL")}${rest.join("")}`;
-  });
-}
-
 export default function PacienteRow({
   paciente,
   usuario,
@@ -67,11 +44,13 @@ export default function PacienteRow({
 
   const kineColor = getKineColor(paciente.kine_asignado_nombre);
   const responsableNombre = paciente.responsable_nombre ?? paciente.kine_asignado_nombre;
-  const diasDesdeIngreso =
-    calcularDiasDesde(paciente.fecha_ingreso ?? paciente.fecha_cambio_estado) ??
-    paciente.dias_en_lista;
-  const diasDesdeLlamados =
-    calcularDiasDesde(paciente.fecha_cambio_estado) ?? paciente.dias_en_lista;
+  const fechaIngreso = paciente.fecha_ingreso ?? paciente.fecha_cambio_estado;
+  const diasDesdeIngreso = fechaIngreso
+    ? calcularDiasDesde(fechaIngreso)
+    : paciente.dias_en_lista;
+  const diasDesdeLlamados = paciente.fecha_cambio_estado
+    ? calcularDiasDesde(paciente.fecha_cambio_estado)
+    : paciente.dias_en_lista;
   const diasMostrados =
     daysMode === "ingreso"
       ? paciente.estado === "INGRESADO"
@@ -100,33 +79,42 @@ export default function PacienteRow({
 
   return (
     <tr
-      className="cursor-pointer border-b border-slate-100 odd:bg-white even:bg-[#FCFCFD] transition-colors hover:bg-slate-50 dark:border-[#262626] dark:odd:bg-[#151515] dark:even:bg-[#0f0f10] dark:hover:bg-[#202020]"
+      className="cursor-pointer border-b border-slate-100 odd:bg-white even:bg-[#FCFCFD] transition-colors hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-[#262626] dark:odd:bg-[#151515] dark:even:bg-[#0f0f10] dark:hover:bg-[#202020]"
+      tabIndex={0}
+      role="row"
+      aria-label={`Paciente ${paciente.nombre}, RUT ${paciente.rut}`}
       onClick={() => onVerFicha(paciente)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onVerFicha(paciente);
+        }
+      }}
     >
-      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 font-semibold text-slate-800 dark:border-[#262626] dark:text-[#ecf5f8]">
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 font-semibold text-slate-800 dark:border-[#262626] dark:text-ink-black-50">
         <div className="truncate">{toCapitalizedWords(paciente.nombre)}</div>
       </td>
-      <td className="border-r border-slate-100 px-4 py-3 font-mono text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+      <td className="border-r border-slate-100 px-4 py-3 font-mono text-slate-600 dark:border-[#262626] dark:text-ink-black-200">
         {formatearRut(paciente.rut)}
       </td>
-      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">{paciente.edad}</td>
-      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-ink-black-200">{paciente.edad}</td>
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-ink-black-200">
         <div className="truncate" title={paciente.sector_cesfam || "-"}>
           {paciente.sector_cesfam || "-"}
         </div>
       </td>
-      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+      <td className="max-w-[170px] border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-ink-black-200">
         <div className="truncate" title={paciente.sector_oficial || "-"}>
           {paciente.sector_oficial || "-"}
         </div>
       </td>
-      <td className="max-w-[220px] border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+      <td className="max-w-[220px] border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
         <div className="truncate">{toCapitalizedWords(paciente.diagnostico)}</div>
       </td>
       <td className="border-r border-slate-100 px-4 py-3 dark:border-[#262626]">
         <BadgePrioridad prioridad={paciente.prioridad} />
       </td>
-      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+      <td className="border-r border-slate-100 px-4 py-3 text-slate-600 dark:border-[#262626] dark:text-ink-black-200">
         {toCapitalizedWords(CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria)}
       </td>
       <td className="border-r border-slate-100 px-4 py-3 dark:border-[#262626]">
@@ -137,8 +125,8 @@ export default function PacienteRow({
               backgroundColor: paciente.kine_asignado ? kineColor : "#9CA3AF",
             }}
           />
-          <span className="max-w-[110px] truncate text-slate-700 dark:text-[#b5d8e3]">
-            {toCapitalizedWords(responsableNombre ?? "Sin asignar")}
+          <span className="max-w-[110px] truncate text-slate-700 dark:text-ink-black-200">
+            {responsableNombre ? toCapitalizedWords(responsableNombre) : "Pendiente"}
           </span>
         </div>
       </td>
@@ -146,7 +134,7 @@ export default function PacienteRow({
         <BadgeEstado estado={paciente.estado} />
       </td>
       {showProximaAtencion && (
-        <td className="whitespace-nowrap border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+        <td className="whitespace-nowrap border-r border-slate-100 px-4 py-3 text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
           {proximaAtencionValida ? (
             <div className="ccr-appointment-soft inline-flex min-w-[118px] flex-col items-start rounded-md px-2.5 py-1.5 leading-tight">
               <p className="font-bold">
@@ -160,7 +148,7 @@ export default function PacienteRow({
               </p>
             </div>
           ) : (
-            <span className="text-slate-500 dark:text-[#6ab0c8]">Sin programar</span>
+            <span className="text-slate-500 dark:text-ink-black-400">Sin programar</span>
           )}
         </td>
       )}
@@ -176,7 +164,7 @@ export default function PacienteRow({
       >
         <BadgeDias days={diasMostrados} />
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right dark:text-[#daebf1]">
+      <td className="whitespace-nowrap px-4 py-3 text-right dark:text-ink-black-100">
         <div className="inline-flex gap-2">
           {puedeAsignarse && (
             <button

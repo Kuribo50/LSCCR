@@ -1,3 +1,5 @@
+import unicodedata
+
 from .models import Paciente
 
 
@@ -69,7 +71,6 @@ TRANSICIONES_VALIDAS: dict[str, set[str]] = {
 
 
 def validar_transicion_estado(estado_actual: str, estado_nuevo: str) -> bool:
-    """Valida cambios de estado sin tocar base de datos."""
     if estado_actual == estado_nuevo:
         return True
     permitidos = TRANSICIONES_VALIDAS.get(estado_actual, set())
@@ -77,7 +78,6 @@ def validar_transicion_estado(estado_actual: str, estado_nuevo: str) -> bool:
 
 
 def estado_requiere_nota(estado: str) -> bool:
-    """Indica si el cambio debe traer observacion obligatoria."""
     return estado in ESTADOS_REQUIEREN_NOTA
 
 
@@ -90,15 +90,21 @@ def categoria_por_diagnostico(diagnostico: str, edad: int) -> str:
     if edad >= 65:
         return Paciente.Categoria.MAS65
 
-    texto = (diagnostico or "").lower()
+    # Sin tildes: la planilla CCR mezcla "TRAUMÁTICO"/"TRAUMATICO", "TÉCNICA"/"TECNICA".
+    texto = unicodedata.normalize("NFKD", diagnostico or "").encode("ascii", "ignore").decode().lower()
+    # El orden importa: se devuelve la primera regla que calza. "no traum" va
+    # antes que "traum" para separar SDNT de SDT.
     reglas = {
-        Paciente.Categoria.OA_MENOS65: ["osteoart", "gonart", "coxart", "oa "],
+        Paciente.Categoria.OA_MENOS65: ["osteoart", "gonart", "coxart", "artrosis", "oa "],
         Paciente.Categoria.HOMBROS: ["hombro", "manguito", "supraespinoso"],
         Paciente.Categoria.LUMBAGOS: ["lumb", "cervical", "dorsal", "columna"],
-        Paciente.Categoria.SDNT: ["tunel carpiano", "nervio", "radicul"],
-        Paciente.Categoria.SDT: ["tendin", "tenosin", "epicondil", "fascitis"],
-        Paciente.Categoria.OTROS_NEUROS: ["acv", "neurol", "parkinson", "esclerosis"],
-        Paciente.Categoria.AATT: ["accidente trabajo", "aatt", "laboral"],
+        Paciente.Categoria.SDNT: ["no traum", "tunel carpiano", "nervio", "radicul"],
+        Paciente.Categoria.SDT: ["traum", "tendin", "tenosin", "epicondil", "fascitis"],
+        Paciente.Categoria.OTROS_NEUROS: [
+            "acv", "neurol", "parkinson", "esclerosis", "neuromusc", "neuro prioritario",
+        ],
+        # En la planilla CCR la hoja "AATT" agrupa las ayudas tecnicas.
+        Paciente.Categoria.AATT: ["accidente trabajo", "aatt", "laboral", "ayuda tecnica"],
         Paciente.Categoria.DUPLA: ["dupla", "salud mental", "psicosocial"],
     }
     for categoria, keywords in reglas.items():
@@ -108,7 +114,6 @@ def categoria_por_diagnostico(diagnostico: str, edad: int) -> str:
 
 
 def prioridad_normalizada(valor: str) -> str:
-    """Normaliza variantes frecuentes de prioridad escritas en planillas."""
     limpio = (valor or "").upper().strip()
     mapping = {
         "ALTA GES": Paciente.Prioridad.ALTA,

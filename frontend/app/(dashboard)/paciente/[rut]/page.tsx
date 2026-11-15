@@ -1,39 +1,61 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { FiArrowLeft, FiEdit3, FiPhone, FiRefreshCw } from 'react-icons/fi'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
-import type { PerfilPaciente } from '@/lib/types'
+import type { Estado, Paciente, PacienteConMovimientos, PerfilPaciente } from '@/lib/types'
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS, getKineRowBackground } from '@/lib/types'
 import { formatearRut } from '@/lib/rut'
+import EditarPacienteModal from '@/components/EditarPacienteModal'
+import CambiarEstadoModal from '@/components/CambiarEstadoModal'
+import RegistrarContactoModal from '@/components/RegistrarContactoModal'
 
 export default function PerfilPacientePage({ params }: { params: Promise<{ rut: string }> }) {
   const { rut } = use(params)
   const { user } = useAuth()
+  const router = useRouter()
   const [perfil, setPerfil] = useState<PerfilPaciente | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    async function loadPerfil() {
-      try {
-        setLoading(true)
-        setError('')
-        const data = await api.get<PerfilPaciente>(`/pacientes/perfil/${rut}/`)
-        setPerfil(data)
-      } catch (e: unknown) {
-        if (e && typeof e === 'object' && 'detail' in e) {
-          setError((e as { detail: string }).detail)
-        } else {
-          setError('Ocurrió un error al cargar el paciente.')
-        }
-      } finally {
-        setLoading(false)
+  // Modal state — tracks which derivacion (paciente record) is being acted on
+  const [editarPaciente, setEditarPaciente] = useState<PacienteConMovimientos | null>(null)
+  const [cambiarEstadoPaciente, setCambiarEstadoPaciente] = useState<PacienteConMovimientos | null>(null)
+  const [registrarContactoPaciente, setRegistrarContactoPaciente] = useState<PacienteConMovimientos | null>(null)
+
+  const loadPerfil = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError('')
+      const data = await api.get<PerfilPaciente>(`/pacientes/perfil/${rut}/`)
+      setPerfil(data)
+    } catch (e: unknown) {
+      if (e && typeof e === 'object' && 'detail' in e) {
+        setError((e as { detail: string }).detail)
+      } else {
+        setError('Ocurrió un error al cargar el paciente.')
       }
+    } finally {
+      setLoading(false)
     }
-    void loadPerfil()
   }, [rut])
+
+  useEffect(() => {
+    void loadPerfil()
+  }, [loadPerfil])
+
+  async function handleCambiarEstado(estado: Estado, notas: string) {
+    if (!cambiarEstadoPaciente) return
+    await api.post<Paciente>(
+      `/pacientes/${cambiarEstadoPaciente.id}/cambiar-estado/`,
+      { estado, notas },
+    )
+    // Refresh the full profile to pick up the new state across all derivaciones
+    void loadPerfil()
+  }
 
   if (!user) return null
 
@@ -49,7 +71,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
     return (
       <div className="flex flex-col items-center justify-center space-y-4 pt-12">
         <p className="text-sm font-semibold text-red-600">{error || 'Paciente no encontrado.'}</p>
-        <Link href="/lista-espera" className="text-sm text-[#2694d9] hover:underline">
+        <Link href="/lista-espera" className="text-sm text-cornflower-ocean-500 hover:underline">
           Volver a Lista de Espera
         </Link>
       </div>
@@ -58,8 +80,19 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      {/* Encabezado con datos principales */}
-      <div className="rounded-[10px] bg-white p-6" style={{ border: '0.5px solid #a8d4f0' }}>
+      {/* Top action bar */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+        >
+          <FiArrowLeft size={14} />
+          Volver
+        </button>
+      </div>
+
+      <div className="rounded-[10px] bg-white p-6 border border-blue-200">
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">
@@ -76,7 +109,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
           </div>
         </div>
         {perfil.mayor_60 && (
-          <span className="mt-4 inline-block rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: '#F0FDF4', color: '#1B5E20' }}>
+          <span className="mt-4 inline-block rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-800">
             +60 Años
           </span>
         )}
@@ -86,15 +119,18 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
         <h2 className="text-lg font-bold text-gray-800">
           Historial de Derivaciones ({perfil.derivaciones.length})
         </h2>
-        
-        {perfil.derivaciones.map((derivacion) => (
-          <div 
-            key={derivacion.id} 
-            className="overflow-hidden rounded-[10px] bg-white"
-            style={{ border: '1px solid #E6EEE6' }}
+
+        {perfil.derivaciones.map((derivacion) => {
+          const puedeRegistrarLlamado =
+            ['PENDIENTE', 'RESCATE'].includes(derivacion.estado) &&
+            derivacion.kine_asignado !== null
+
+          return (
+          <div
+            key={derivacion.id}
+            className="overflow-hidden rounded-[10px] bg-white border border-gray-200"
           >
-            {/* Resumen de la derivacion */}
-            <div 
+            <div
               className="p-5"
               style={{ backgroundColor: getKineRowBackground(derivacion.kine_asignado_nombre) }}
             >
@@ -112,32 +148,62 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
                     {ESTADO_LABELS[derivacion.estado]}
                   </span>
                   <span className={`rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide border shadow-sm ${
-                    derivacion.prioridad === 'ALTA' 
-                      ? 'bg-red-50 text-red-700 border-red-200' 
-                      : derivacion.prioridad === 'MEDIANA' 
-                      ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                    derivacion.prioridad === 'ALTA'
+                      ? 'bg-red-50 text-red-700 border-red-200'
+                      : derivacion.prioridad === 'MEDIANA'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
                       : 'bg-green-50 text-green-700 border-green-200'
                   }`}>
                     {PRIORIDAD_LABELS[derivacion.prioridad]}
                   </span>
                 </div>
               </div>
-              
+
+              {/* Action buttons per derivation */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditarPaciente(derivacion)}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+                >
+                  <FiEdit3 size={13} />
+                  Editar paciente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCambiarEstadoPaciente(derivacion)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                >
+                  <FiRefreshCw size={13} />
+                  Cambiar estado
+                </button>
+                {puedeRegistrarLlamado && (
+                  <button
+                    type="button"
+                    onClick={() => setRegistrarContactoPaciente(derivacion)}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                  >
+                    <FiPhone size={13} />
+                    Registrar llamado
+                  </button>
+                )}
+              </div>
+
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-700">
                  <div>
-                  <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Técnico</p>
+                  <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Técnico</p>
                   <p>{CATEGORIA_LABELS[derivacion.categoria]}</p>
                  </div>
                  <div>
-                   <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Médico</p>
+                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Médico</p>
                    <p>{derivacion.diagnostico}</p>
                  </div>
                  <div>
-                   <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Prof. Derivado</p>
+                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Prof. Derivado</p>
                    <p>{derivacion.profesional}</p>
                  </div>
                  <div>
-                   <p className="text-[10px] uppercase text-gray-500 font-semibold mb-0.5">Responsable CCR</p>
+                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Responsable CCR</p>
                    <p className="font-medium">{derivacion.responsable_nombre || derivacion.kine_asignado_nombre || 'Sin asignar'}</p>
                  </div>
               </div>
@@ -150,23 +216,22 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
               )}
             </div>
 
-            {/* Movimientos y actividad de esta derivacion */}
             <div className="bg-gray-50 p-5 border-t border-[#E6EEE6]">
               <h4 className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-3">
                 Registro de Actividad y Días de Asistencia
               </h4>
-              
+
               {derivacion.movimientos.length === 0 ? (
                 <p className="text-xs text-gray-400">No hay movimientos registrados para esta derivación.</p>
               ) : (
                 <div className="relative pl-4 space-y-4 before:absolute before:left-1.5 before:top-2 before:-bottom-2 before:w-[2px] before:bg-gray-200">
                   {derivacion.movimientos.map((mov) => (
                     <div key={mov.id} className="relative text-sm">
-                      <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-[#2694d9]" />
+                      <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-cornflower-ocean-500" />
                       <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-semibold text-gray-800 text-xs">
-                            {mov.estado_anterior 
+                            {mov.estado_anterior
                               ? `${ESTADO_LABELS[mov.estado_anterior as keyof typeof ESTADO_LABELS] || mov.estado_anterior} → ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
                               : `Registrado en ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
                             }
@@ -190,8 +255,45 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
               )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
+
+      {/* Modals */}
+      {editarPaciente && (
+        <EditarPacienteModal
+          paciente={editarPaciente}
+          mode="full"
+          onClose={() => setEditarPaciente(null)}
+          onGuardado={() => {
+            setEditarPaciente(null)
+            void loadPerfil()
+          }}
+        />
+      )}
+
+      {cambiarEstadoPaciente && user && (
+        <CambiarEstadoModal
+          paciente={cambiarEstadoPaciente}
+          rol={user.rol}
+          onClose={() => setCambiarEstadoPaciente(null)}
+          onConfirm={async (estado, notas) => {
+            await handleCambiarEstado(estado, notas)
+            setCambiarEstadoPaciente(null)
+          }}
+        />
+      )}
+
+      {registrarContactoPaciente && (
+        <RegistrarContactoModal
+          paciente={registrarContactoPaciente}
+          onClose={() => setRegistrarContactoPaciente(null)}
+          onSuccess={() => {
+            setRegistrarContactoPaciente(null)
+            void loadPerfil()
+          }}
+        />
+      )}
     </div>
   )
 }

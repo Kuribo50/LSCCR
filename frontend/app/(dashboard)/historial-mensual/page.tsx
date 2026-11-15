@@ -314,7 +314,7 @@ export default function HistorialMensualPage() {
   if (!user || !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) return null;
 
   return (
-    <div className="space-y-5">
+    <div className="ccr-page-fill space-y-5">
       <div>
         <h1 className="text-xl font-bold text-gray-800">
           Historial de cortes mensuales
@@ -333,10 +333,10 @@ export default function HistorialMensualPage() {
 
       {resultadoEliminacion && (
         <div
-          className="rounded-[10px] bg-[#e9f4fb] p-4"
+          className="rounded-[10px] bg-cornflower-ocean-50 p-4"
           style={{ border: "0.5px solid #a8d4f0" }}
         >
-          <p className="text-sm font-semibold text-[#335fdb]">
+          <p className="text-sm font-semibold text-blue-500">
             Periodo eliminado correctamente
           </p>
           <p className="mt-1 text-xs text-[#355B43]">
@@ -364,7 +364,7 @@ export default function HistorialMensualPage() {
             <h2 className="text-base font-bold text-gray-900 dark:text-white">
               Cortes registrados
             </h2>
-            <p className="text-xs text-gray-500 dark:text-[#b5d8e3]">
+            <p className="text-xs text-gray-500 dark:text-ink-black-200">
               Vista acumulada por mes con importados separados.
             </p>
           </div>
@@ -389,12 +389,12 @@ export default function HistorialMensualPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar por periodo, año, estado o usuario"
-            className="h-10 rounded-xl border border-[#d9e1ea] bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-[#335fdb] focus:ring-2 focus:ring-[#335fdb]/15 dark:border-[#262626] dark:bg-[#151515] dark:text-white"
+            className="h-10 rounded-xl border border-[#d9e1ea] bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-[#262626] dark:bg-[#151515] dark:text-white"
           />
           <button
             type="button"
             onClick={limpiarFiltros}
-            className="h-10 rounded-xl border border-[#cbd5e1] px-4 text-xs font-bold text-[#335fdb] hover:bg-[#eef3ff] disabled:opacity-50"
+            className="h-10 rounded-xl border border-[#cbd5e1] px-4 text-xs font-bold text-blue-500 hover:bg-blue-50 disabled:opacity-50"
             disabled={activeFilterCount === 0}
           >
             Limpiar filtros
@@ -402,7 +402,7 @@ export default function HistorialMensualPage() {
           <button
             type="button"
             onClick={() => setFiltrosAbiertos((prev) => !prev)}
-            className="h-10 rounded-xl border border-[#cbd5e1] px-4 text-xs font-bold text-[#335fdb] hover:bg-[#eef3ff]"
+            className="h-10 rounded-xl border border-[#cbd5e1] px-4 text-xs font-bold text-blue-500 hover:bg-blue-50"
           >
             {filtrosAbiertos ? "Ocultar filtros" : "Filtros"}
           </button>
@@ -410,12 +410,12 @@ export default function HistorialMensualPage() {
 
         {filtrosAbiertos && (
           <div className="mt-3 grid grid-cols-1 gap-2 rounded-xl border border-[#d9e1ea] bg-[#fbfdff] p-3 sm:grid-cols-2 dark:border-[#262626] dark:bg-[#151515]">
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-[#b5d8e3]">
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
               Estado
               <select
                 value={filtroEstado}
                 onChange={(event) => setFiltroEstado(event.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-[#d9e1ea] bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-[#335fdb] focus:ring-2 focus:ring-[#335fdb]/15 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-white"
+                className="mt-1 h-9 w-full rounded-lg border border-[#d9e1ea] bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-white"
               >
                 <option value="">Todos</option>
                 {estadoOptions.map(([estado, label]) => (
@@ -426,12 +426,12 @@ export default function HistorialMensualPage() {
               </select>
             </label>
 
-            <label className="text-[11px] font-semibold text-slate-500 dark:text-[#b5d8e3]">
+            <label className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
               Año
               <select
                 value={filtroAnio}
                 onChange={(event) => setFiltroAnio(event.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-[#d9e1ea] bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-[#335fdb] focus:ring-2 focus:ring-[#335fdb]/15 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-white"
+                className="mt-1 h-9 w-full rounded-lg border border-[#d9e1ea] bg-white px-3 text-xs font-medium text-gray-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-white"
               >
                 <option value="">Todos</option>
                 {anioOptions.map((anio) => (
@@ -446,43 +446,43 @@ export default function HistorialMensualPage() {
       </section>
 
       {loading ? (
-        <div className="ccr-panel ccr-data-table ccr-operational-table rounded-lg bg-white p-3 dark:bg-[#0f0f10]">
+        <div className="ccr-fill ccr-panel ccr-data-table ccr-operational-table rounded-lg bg-white p-3 dark:bg-[#0f0f10]">
           <TableSkeleton rows={6} />
         </div>
       ) : (
-        <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
-          <div className="ccr-table-scroll min-h-[420px] max-h-[clamp(420px,calc(100dvh-335px),900px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
+        <section className="ccr-fill ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+          <div className="ccr-table-scroll overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
             <table className="w-full min-w-[1320px] table-fixed text-[13px]">
               <thead className="sticky top-0 z-10">
                 <tr className="ccr-table-head border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]">
-                  <th className="w-[180px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[180px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Periodo
                   </th>
-                  <th className="w-[120px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[120px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Estado
                   </th>
-                  <th className="w-[90px] text-center font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[90px] text-center font-semibold text-gray-700 dark:text-ink-black-100">
                     Cortes
                   </th>
-                  <th className="w-[150px] text-right font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[150px] text-right font-semibold text-gray-700 dark:text-ink-black-100">
                     Total acumulado
                   </th>
-                  <th className="w-[130px] text-right font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[130px] text-right font-semibold text-gray-700 dark:text-ink-black-100">
                     Total periodo
                   </th>
-                  <th className="w-[130px] text-right font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[130px] text-right font-semibold text-gray-700 dark:text-ink-black-100">
                     Importados
                   </th>
-                  <th className="w-[220px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[220px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Incidencias
                   </th>
-                  <th className="w-[170px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[170px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Última subida
                   </th>
-                  <th className="w-[180px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[180px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Usuarios
                   </th>
-                  <th className="w-[140px] text-left font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <th className="w-[140px] text-left font-semibold text-gray-700 dark:text-ink-black-100">
                     Acciones
                   </th>
                 </tr>
@@ -490,7 +490,7 @@ export default function HistorialMensualPage() {
               <tbody>
                 {gruposFiltrados.length === 0 ? (
                   <tr className="bg-white dark:bg-[#151515]">
-                    <td colSpan={10} className="h-[260px] text-center text-sm text-gray-400 dark:text-[#b5d8e3]">
+                    <td colSpan={10} className="h-[260px] text-center text-sm text-gray-400 dark:text-ink-black-200">
                       No hay importaciones registradas con los filtros seleccionados.
                     </td>
                   </tr>
@@ -540,13 +540,13 @@ export default function HistorialMensualPage() {
                   <td className="text-right align-middle text-gray-900 dark:text-white">
                     <span className="font-bold">{totalAcumulado.toLocaleString("es-CL")}</span>
                   </td>
-                  <td className="text-right align-middle font-semibold text-gray-700 dark:text-[#daebf1]">
+                  <td className="text-right align-middle font-semibold text-gray-700 dark:text-ink-black-100">
                     {totalPeriodo.toLocaleString("es-CL")}
                   </td>
-                  <td className="text-right align-middle font-semibold text-[#335fdb]">
+                  <td className="text-right align-middle font-semibold text-blue-500">
                     {registrosMes.toLocaleString("es-CL")}
                   </td>
-                  <td className="align-middle text-gray-600 dark:text-[#b5d8e3]">
+                  <td className="align-middle text-gray-600 dark:text-ink-black-200">
                     <div className="truncate">
                       {recurrentesMes} recurrentes · {erroresMes} errores · {pendientesRevision} pendientes
                     </div>
@@ -554,7 +554,7 @@ export default function HistorialMensualPage() {
                   <td className="whitespace-nowrap align-middle font-medium text-gray-700 dark:text-white">
                     {new Date(activo.fecha_subida).toLocaleString("es-CL")}
                   </td>
-                  <td className="align-middle text-gray-600 dark:text-[#b5d8e3]">
+                  <td className="align-middle text-gray-600 dark:text-ink-black-200">
                     <div className="truncate">
                       {grupo.usuarios.length > 0 ? grupo.usuarios.join(", ") : "No disponible"}
                     </div>
@@ -593,7 +593,7 @@ export default function HistorialMensualPage() {
                             key={item.id}
                             className="rounded-lg border border-[#d9e1ea] bg-[#FAFCFA] p-2 dark:border-[#2f3440] dark:bg-[#151515]"
                           >
-                            <div className="grid gap-2 text-[11px] text-gray-600 dark:text-[#b5d8e3] lg:grid-cols-[190px_1fr]">
+                            <div className="grid gap-2 text-[11px] text-gray-600 dark:text-ink-black-200 lg:grid-cols-[190px_1fr]">
                               <div>
                                 <p className="font-bold text-gray-800 dark:text-white">
                                   {new Date(item.fecha_subida).toLocaleString("es-CL")}
@@ -619,7 +619,7 @@ export default function HistorialMensualPage() {
                                 ))}
                               </div>
                             ) : (
-                              <p className="mt-2 text-[11px] text-gray-500 dark:text-[#b5d8e3]">
+                              <p className="mt-2 text-[11px] text-gray-500 dark:text-ink-black-200">
                                 Sin errores registrados.
                               </p>
                             )}
@@ -636,7 +636,7 @@ export default function HistorialMensualPage() {
             </table>
           </div>
 
-          <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
             <p>{gruposFiltrados.length} corte{gruposFiltrados.length !== 1 ? "s" : ""} mensual{gruposFiltrados.length !== 1 ? "es" : ""}</p>
             <p className="text-gray-400">Mostrando {gruposFiltrados.length} de {gruposEnriquecidos.length}</p>
           </div>

@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { FiSearch, FiUser, FiX } from "react-icons/fi";
+import {
+  FiArrowRight,
+  FiBriefcase,
+  FiClipboard,
+  FiMapPin,
+  FiSearch,
+  FiUser,
+  FiX,
+} from "react-icons/fi";
 import { api } from "@/lib/api";
+import { unwrapResults } from "@/lib/swr";
 import { useAuth } from "@/lib/auth-context";
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import type { Estado, Paciente, Usuario } from "@/lib/types";
+import type { Estado, Paciente, PaginatedResponse, Usuario } from "@/lib/types";
 import { formatearRut, limpiarRut } from "@/lib/rut";
+import { classes, normalizeSearchText } from "@/lib/utils";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 12;
@@ -33,20 +43,8 @@ type SearchGroup = {
   items: Paciente[];
 };
 
-function classes(...values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
-}
-
 function pareceRut(value: string) {
   return /^[0-9.\-\skK]+$/.test(value) && /\d/.test(value);
-}
-
-function normalizarTexto(value: string) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
 }
 
 function terminoParaApi(value: string) {
@@ -75,12 +73,12 @@ function pacienteSearchIndex(paciente: Paciente) {
     PRIORIDAD_LABELS[paciente.prioridad] ?? paciente.prioridad,
     CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria,
   ]
-    .map((value) => normalizarTexto(String(value ?? "")))
+    .map((value) => normalizeSearchText(String(value ?? "")))
     .join(" ");
 }
 
 function coincideBusquedaAmplia(paciente: Paciente, term: string) {
-  const texto = normalizarTexto(term);
+  const texto = normalizeSearchText(term);
   const rut = limpiarRut(term);
   return (
     (texto.length >= MIN_SEARCH_LENGTH && pacienteSearchIndex(paciente).includes(texto)) ||
@@ -89,7 +87,12 @@ function coincideBusquedaAmplia(paciente: Paciente, term: string) {
 }
 
 function responsablePaciente(paciente: Paciente) {
-  return paciente.kine_asignado_nombre || paciente.responsable_nombre || "Sin responsable";
+  return paciente.kine_asignado_nombre || paciente.responsable_nombre || "";
+}
+
+function kineAsignadoLabel(paciente: Paciente) {
+  const responsable = responsablePaciente(paciente);
+  return responsable ? `Kine asignado: ${responsable}` : "Kine asignado: pendiente";
 }
 
 function seccionPaciente(paciente: Paciente): SearchSectionId | null {
@@ -214,6 +217,9 @@ export default function PacienteSearchBox({
     }));
   }, [suggestionGroups]);
   const panelOpen = focused;
+  const viewAllHref = canSearch
+    ? `/pacientes?search=${encodeURIComponent(query.trim())}`
+    : "/pacientes";
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -257,12 +263,12 @@ export default function PacienteSearchBox({
 
     const timeout = window.setTimeout(async () => {
       try {
-        const data = await api.get<Paciente[]>(
+        const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>(
           `/pacientes/?search=${encodeURIComponent(searchTerm)}`,
         );
         if (requestIdRef.current !== requestId) return;
         const vistos = new Set<number>();
-        const unicos = data.filter((paciente) => {
+        const unicos = unwrapResults(data).filter((paciente) => {
           if (!coincideBusquedaAmplia(paciente, searchTerm)) return false;
           if (vistos.has(paciente.id)) return false;
           vistos.add(paciente.id);
@@ -310,12 +316,17 @@ export default function PacienteSearchBox({
     onSelect(paciente);
   }
 
-  function viewAllResults() {
-    if (!canSearch || !onViewAll) return;
+  function viewAllResults(event?: React.MouseEvent<HTMLAnchorElement>) {
+    if (!canSearch) return;
+    event?.preventDefault();
     const term = query.trim();
-    clearSearch();
+    const href = `/pacientes?search=${encodeURIComponent(term)}`;
     setFocused(false);
-    onViewAll(term);
+    clearSearch();
+    onViewAll?.(term);
+    window.setTimeout(() => {
+      window.location.assign(href);
+    }, 0);
   }
 
   function clearHistory() {
@@ -327,6 +338,12 @@ export default function PacienteSearchBox({
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       setFocused(false);
+      return;
+    }
+
+    if (event.key === "Enter" && canSearch && highlightedIndex < 0) {
+      event.preventDefault();
+      viewAllResults();
       return;
     }
 
@@ -354,6 +371,8 @@ export default function PacienteSearchBox({
     const active = highlightedIndex === index;
     const sectorCesfam = paciente.sector_cesfam?.trim();
     const sectorOficial = paciente.sector_oficial?.trim();
+    const prioridadLabel = PRIORIDAD_LABELS[paciente.prioridad] ?? paciente.prioridad;
+    const estadoLabel = ESTADO_LABELS[paciente.estado] ?? paciente.estado;
 
     return (
       <li key={paciente.id}>
@@ -365,42 +384,54 @@ export default function PacienteSearchBox({
           onMouseEnter={() => setHighlightedIndex(index)}
           onClick={() => selectPaciente(paciente)}
           className={classes(
-            "flex w-full items-start gap-2 px-3 py-2 text-left transition",
-            active ? "bg-blue-50" : "bg-white hover:bg-slate-50",
+            "group flex w-full items-start gap-3 border-l-2 px-3 py-3 text-left transition",
+            active
+              ? "border-blue-500 bg-blue-50"
+              : "border-transparent bg-white hover:border-blue-200 hover:bg-slate-50",
           )}
         >
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-700">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-700 shadow-sm transition group-hover:border-blue-200">
             <FiUser size={14} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-black text-slate-950">
-              {paciente.nombre}
-            </span>
-            <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">
-              RUT {formatearRut(paciente.rut)}
+            <span className="flex min-w-0 items-start justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-black text-slate-950">
+                  {paciente.nombre}
+                </span>
+                <span className="mt-0.5 block truncate font-mono text-[11px] font-semibold text-slate-500">
+                  {formatearRut(paciente.rut)}
+                </span>
+              </span>
+              <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+                {prioridadLabel}
+              </span>
             </span>
             <span
-              className="mt-0.5 block truncate text-[11px] font-medium text-slate-500"
+              className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold text-slate-600"
               title={paciente.diagnostico}
             >
-              {paciente.diagnostico}
+              <FiClipboard className="shrink-0 text-slate-400" size={12} />
+              <span className="truncate">{paciente.diagnostico}</span>
             </span>
             <span className="mt-1 flex flex-wrap gap-1.5">
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                {ESTADO_LABELS[paciente.estado] ?? paciente.estado}
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                <FiBriefcase size={10} />
+                {estadoLabel}
               </span>
               {sectorCesfam && (
-                <span className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                  Sector CESFAM: {sectorCesfam}
+                <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                  <FiMapPin size={10} />
+                  CESFAM {sectorCesfam}
                 </span>
               )}
               {sectorOficial && (
                 <span className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                  Sector oficial: {sectorOficial}
+                  Oficial {sectorOficial}
                 </span>
               )}
               <span className="max-w-full truncate rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                {responsablePaciente(paciente)}
+                {kineAsignadoLabel(paciente)}
               </span>
             </span>
           </span>
@@ -413,7 +444,7 @@ export default function PacienteSearchBox({
     <div ref={rootRef} className={classes("relative", className)}>
       <div className="group relative">
         <FiSearch
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-[#335fdb]"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-blue-500"
           size={15}
         />
         <input
@@ -435,7 +466,7 @@ export default function PacienteSearchBox({
           onFocus={() => setFocused(true)}
           onKeyDown={handleKeyDown}
           className={classes(
-            "w-full border border-zinc-200 bg-white pl-9 text-zinc-950 outline-none transition-all placeholder:text-zinc-500 focus:border-[#335fdb] focus:bg-white focus:ring-2 focus:ring-blue-100",
+            "w-full border border-zinc-200 bg-white pl-9 text-zinc-950 outline-none transition-all placeholder:text-zinc-500 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100",
             size === "overlay"
               ? "rounded-2xl py-4 pr-12 text-base shadow-[0_14px_36px_-28px_rgba(51,95,219,0.75)]"
               : "rounded-lg",
@@ -463,7 +494,7 @@ export default function PacienteSearchBox({
           <div
             aria-label="Buscando pacientes"
             className={classes(
-              "absolute right-3 top-1/2 -translate-y-1/2 rounded-full border-2 border-[#335fdb] border-t-transparent motion-safe:animate-spin",
+              "absolute right-3 top-1/2 -translate-y-1/2 rounded-full border-2 border-blue-500 border-t-transparent motion-safe:animate-spin",
               size === "overlay" ? "h-5 w-5" : "h-3.5 w-3.5",
             )}
           />
@@ -490,7 +521,7 @@ export default function PacienteSearchBox({
             <button
               type="button"
               onClick={clearHistory}
-              className="text-[10px] font-bold text-blue-700 transition hover:text-[#284FC0] focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="text-[10px] font-bold text-blue-700 transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
             >
               Borrar historial
             </button>
@@ -534,13 +565,14 @@ export default function PacienteSearchBox({
 
         {!showHistory && canSearch && onViewAll && (
           <div className="border-t border-slate-100 p-2">
-            <button
-              type="button"
+            <a
+              href={viewAllHref}
               onClick={viewAllResults}
-              className="flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2.5 text-xs font-black text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
             >
-              Ver todo
-            </button>
+              Ver listado completo
+              <FiArrowRight size={14} />
+            </a>
           </div>
         )}
       </div>

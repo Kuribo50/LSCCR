@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation'
 import { FiMenu, FiLogOut, FiMoon, FiSun, FiUser } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
 import type { Usuario } from '@/lib/types'
-
-const ROL_LABELS: Record<string, string> = {
-  KINE: 'Kinesiólogo/a',
-  ADMINISTRATIVO: 'Administrativo/a',
-  ADMIN: 'Administrador/a',
-}
+import { ROL_LABELS } from '@/lib/types'
 
 export default function Navbar({
   user,
@@ -27,15 +22,16 @@ export default function Navbar({
     const fromDataset = root.getAttribute('data-theme')
     return fromDataset === 'dark' || root.classList.contains('dark')
   })
-  const fechaActual = useMemo(
-    () =>
-      new Intl.DateTimeFormat('es-CL', {
-        weekday: 'long',
-        day: '2-digit',
-        month: 'long',
-      }).format(new Date()),
-    [],
-  )
+  // "viernes, 13 de noviembre" -> "Viernes, 13 de noviembre" (solo la inicial).
+  const fechaActual = useMemo(() => {
+    const texto = new Intl.DateTimeFormat('es-CL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date())
+    return texto.charAt(0).toUpperCase() + texto.slice(1)
+  }, [])
 
   async function handleLogout() {
     await logout()
@@ -52,58 +48,60 @@ export default function Navbar({
     localStorage.setItem('ccr-theme', theme)
   }
 
+  const iniciales = user.nombre
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((parte) => parte[0]?.toUpperCase())
+    .join('')
+
+  const botonIcono =
+    'inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 outline-none transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-950/20 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200 dark:hover:bg-ink-black-700'
+
   return (
-    <header className="ccr-navbar sticky top-0 z-30 flex h-16 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm transition-colors dark:!border-[#262626] dark:!bg-[#111111] sm:px-6 lg:px-8">
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          onClick={onOpenSidebar}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 hover:shadow-md dark:!border-[#262626] dark:!bg-[#202020] dark:!text-[#ecf5f8] dark:hover:!bg-[#262626] lg:hidden"
-          aria-label="Abrir menú lateral"
-        >
-          <FiMenu size={20} />
+    <header className="ccr-navbar sticky top-0 z-30 flex h-16 flex-shrink-0 items-center justify-between bg-[color:var(--bg-navbar)] px-4 sm:px-6 lg:px-8">
+      <div className="flex min-w-0 items-center gap-3">
+        <button type="button" onClick={onOpenSidebar} className={`${botonIcono} lg:hidden`} aria-label="Abrir menú lateral">
+          <FiMenu size={17} />
         </button>
-        <div className="hidden sm:block">
-          <p className="text-sm font-extrabold tracking-tight text-gray-800 dark:!text-white">CCR Sistema de Gestión</p>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-400 opacity-70 dark:!text-[#b5d8e3]">
-            {fechaActual}
-          </p>
+        <div className="hidden min-w-0 sm:block">
+          <p className="truncate text-sm font-bold text-slate-950 dark:text-white">Centro Comunitario de Rehabilitación</p>
+          <p className="text-xs font-medium text-slate-500 dark:text-ink-black-300">{fechaActual}</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-6">
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={handleToggleTheme}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-slate-700 transition hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-yellow-300 dark:hover:!bg-[#262626]"
+          className={botonIcono}
           aria-label={isDark ? 'Activar modo claro' : 'Activar modo oscuro'}
           title={isDark ? 'Modo claro' : 'Modo oscuro'}
         >
-          {isDark ? <FiSun size={18} /> : <FiMoon size={18} />}
+          {isDark ? <FiSun size={16} /> : <FiMoon size={16} />}
         </button>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-1.5 transition-all hover:bg-gray-100 dark:!border-[#262626] dark:!bg-[#202020] dark:hover:!bg-[#262626]">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm dark:!border-[#262626] dark:!bg-[#262626] dark:!text-[#ecf5f8]">
-            <FiUser size={16} />
-          </div>
-          <div className="hidden md:block text-right">
-            <p className="text-xs font-bold leading-none text-gray-800 dark:!text-white">{user.nombre}</p>
-            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mt-0.5 dark:!text-[#8fc4d6]">
-              {ROL_LABELS[user.rol] ?? user.rol}
-            </p>
+        <div className="flex h-9 items-center gap-2.5 rounded-lg border border-slate-200 bg-white pl-1 pr-1 dark:border-ink-black-600 dark:bg-ink-black-800 md:pr-3">
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-500 text-[11px] font-bold text-white dark:bg-blue-500 dark:text-white"
+          >
+            {iniciales || <FiUser size={13} />}
+          </span>
+          <div className="hidden leading-tight md:block">
+            <p className="text-xs font-bold text-slate-950 dark:text-white">{user.nombre}</p>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-ink-black-300">{ROL_LABELS[user.rol] ?? user.rol}</p>
           </div>
         </div>
-
-        <div className="mx-1 hidden h-8 w-px bg-gray-200 dark:!bg-[#262626] sm:block" />
 
         <button
           type="button"
           onClick={handleLogout}
           aria-label="Cerrar sesión"
-          className="ccr-logout-button group flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all hover:shadow-sm"
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-600/30 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200 dark:hover:bg-red-950/40 dark:hover:text-red-300"
         >
+          <FiLogOut size={14} />
           <span className="hidden sm:inline">Cerrar sesión</span>
-          <FiLogOut size={16} className="transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
     </header>

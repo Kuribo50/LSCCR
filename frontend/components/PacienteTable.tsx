@@ -51,51 +51,52 @@ export default function PacienteTable({
           {error}
         </p>
       )}
-      <div className="ccr-panel ccr-data-table overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
-        <div className="max-h-[clamp(300px,calc(100dvh-340px),820px)] min-h-[300px] overflow-auto">
+      <div className="ccr-fill ccr-panel ccr-data-table overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+        <div className="ccr-fill-grow relative flex flex-col">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full min-w-[1500px] text-xs">
             <thead className="sticky top-0 z-10">
               <tr className="ccr-table-head border-b border-slate-200 bg-slate-50 dark:border-[#262626] dark:bg-[#202020]">
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Nombre
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   RUT
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Edad
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Sector CESFAM
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Sector oficial
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Diagnóstico
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Prioridad
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Categoría
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
-                  Responsable CCR
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
+                  Kine asignado
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Estado
                 </th>
                 {showProximaAtencion && (
-                  <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                     Próxima atención
                   </th>
                 )}
-                <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-[#daebf1]">
+                <th className="whitespace-nowrap border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   <button
                     type="button"
                     onClick={onToggleDiasOrder}
-                    className="inline-flex items-center gap-1 text-slate-700 transition hover:text-blue-700 dark:text-[#daebf1] dark:hover:text-blue-300"
+                    className="inline-flex items-center gap-1 text-slate-700 transition hover:text-blue-700 dark:text-ink-black-100 dark:hover:text-blue-300"
                   >
                     {daysMode === "ingreso"
                       ? "Días desde el ingreso"
@@ -105,7 +106,7 @@ export default function PacienteTable({
                     <span className="text-[10px]">{orderingLabel}</span>
                   </button>
                 </th>
-                <th className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-[#daebf1]">
+                <th className="px-4 py-3 text-right font-semibold text-slate-700 dark:text-ink-black-100">
                   Acciones
                 </th>
               </tr>
@@ -157,12 +158,14 @@ export default function PacienteTable({
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-1 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-medium text-slate-600 dark:border-[#262626] dark:bg-[#202020] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+        <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-white to-transparent opacity-50 dark:from-gray-900" />
+        </div>
+        <div className="flex flex-col gap-1 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-medium text-slate-600 dark:border-[#262626] dark:bg-[#202020] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
           <p>
             {pacientes.length} paciente{pacientes.length !== 1 ? "s" : ""} en la
             tabla
           </p>
-          <p className="text-slate-500 dark:text-[#6ab0c8]">Vista actualizada</p>
+          <p className="text-slate-500 dark:text-ink-black-400">Vista actualizada</p>
         </div>
       </div>
 
@@ -197,7 +200,6 @@ export default function PacienteTable({
                   await api.delete(
                     `/pacientes/${programando.id}/programar-atencion/`,
                   );
-                  onRefresh();
                   onRefresh();
                   const actualizado = await api.get<Paciente>(
                     `/pacientes/${programando.id}/`,

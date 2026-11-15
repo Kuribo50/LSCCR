@@ -66,14 +66,14 @@ const ICON_MAP: Record<ToastType, typeof FiCheckCircle> = {
 };
 
 const COLOR_MAP: Record<ToastType, string> = {
-  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  success: "border-green-200 bg-green-50 text-green-800",
   error: "border-red-200 bg-red-50 text-red-800",
   warning: "border-amber-200 bg-amber-50 text-amber-800",
   info: "border-sky-200 bg-sky-50 text-sky-800",
 };
 
 const ICON_COLOR_MAP: Record<ToastType, string> = {
-  success: "text-emerald-500",
+  success: "text-green-500",
   error: "text-red-500",
   warning: "text-amber-500",
   info: "text-sky-500",
@@ -87,7 +87,7 @@ const DEFAULT_TITLES: Record<ToastType, string> = {
 };
 
 const PROGRESS_MAP: Record<ToastType, string> = {
-  success: "bg-emerald-400",
+  success: "bg-green-400",
   error: "bg-red-400",
   warning: "bg-amber-400",
   info: "bg-sky-400",

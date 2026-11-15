@@ -1,18 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/lib/errors'
 import { useToast } from '@/lib/toast-context'
-import type { Rol, Usuario } from '@/lib/types'
+import { useAPI, unwrapResults } from '@/lib/swr'
+import type { PaginatedResponse, Rol, Usuario } from '@/lib/types'
+import { ROL_LABELS } from '@/lib/types'
 import { formatearRut } from '@/lib/rut'
-
-const ROL_LABELS: Record<Rol, string> = {
-  KINE: 'Kinesiólogo/a',
-  ADMINISTRATIVO: 'Administrativo/a',
-  ADMIN: 'Administrador/a',
-}
 
 const ROL_ICONS: Record<Rol, string> = {
   KINE: '🩺',
@@ -29,9 +26,6 @@ const ROL_COLORS: Record<Rol, { bg: string; text: string; border: string }> = {
 export default function PerfilPage() {
   const { user, logout } = useAuth()
   const { error: toastError, success: toastSuccess, warning: toastWarning } = useToast()
-  const [todosUsuarios, setTodosUsuarios] = useState<Usuario[]>([])
-  const [loading, setLoading] = useState(false)
-  const [contadores, setContadores] = useState<{total: number; mios: number; egresos: number} | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -39,28 +33,29 @@ export default function PerfilPage() {
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState('')
 
-  const cargarContadores = useCallback(async () => {
-    if (!user) return
-    setLoading(true)
-    try {
-      const [lista, mios, egresos] = await Promise.all([
-        api.get<unknown[]>('/pacientes/?sin_asignar=1'),
-        api.get<unknown[]>(`/pacientes/?kine=${user.id}`),
-        api.get<unknown[]>('/pacientes/?is_egreso=1'),
-      ])
-      setContadores({ total: lista.length, mios: mios.length, egresos: egresos.length })
-      if (user.rol === 'ADMIN') {
-        const usuarios = await api.get<Usuario[]>('/usuarios/')
-        setTodosUsuarios(usuarios)
-      }
-    } catch {
-      setContadores(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+  // SWR: contadores de pacientes para la seccion de actividad.
+  const { data: swrLista, isLoading: loadingLista } = useAPI<unknown[] | PaginatedResponse<unknown>>(
+    user ? '/pacientes/?sin_asignar=1' : null,
+  )
+  const { data: swrMios, isLoading: loadingMios } = useAPI<unknown[] | PaginatedResponse<unknown>>(
+    user ? `/pacientes/?kine=${user.id}` : null,
+  )
+  const { data: swrEgresos, isLoading: loadingEgresos } = useAPI<unknown[] | PaginatedResponse<unknown>>(
+    user ? '/pacientes/?is_egreso=1' : null,
+  )
+  const { data: swrUsuarios } = useAPI<Usuario[] | PaginatedResponse<Usuario>>(
+    user?.rol === 'ADMIN' ? '/usuarios/' : null,
+  )
 
-  useEffect(() => { cargarContadores() }, [cargarContadores])
+  const loading = loadingLista || loadingMios || loadingEgresos
+  const contadores = swrLista && swrMios && swrEgresos
+    ? {
+        total: unwrapResults(swrLista as unknown[] | PaginatedResponse<unknown>).length,
+        mios: unwrapResults(swrMios as unknown[] | PaginatedResponse<unknown>).length,
+        egresos: unwrapResults(swrEgresos as unknown[] | PaginatedResponse<unknown>).length,
+      }
+    : null
+  const todosUsuarios = unwrapResults(swrUsuarios)
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -111,15 +106,14 @@ export default function PerfilPage() {
   const colors = ROL_COLORS[user.rol]
   const kinesActivos = todosUsuarios.filter(u => u.rol === 'KINE' && u.is_active).length
   const adminActivos = todosUsuarios.filter(u => u.rol === 'ADMIN' && u.is_active).length
-  const adminstrativosActivos = todosUsuarios.filter(u => u.rol === 'ADMINISTRATIVO' && u.is_active).length
+  const administrativosActivos = todosUsuarios.filter(u => u.rol === 'ADMINISTRATIVO' && u.is_active).length
 
   return (
     <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-bold text-gray-900">Mi Perfil</h1>
 
-      {/* Tarjeta principal del perfil */}
-      <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid #E6EEE6' }}>
-        <div className="h-24" style={{ background: 'linear-gradient(135deg, #335fdb 0%, #2694d9 100%)' }} />
+      <div className="rounded-2xl overflow-hidden border border-gray-200">
+        <div className="h-24 bg-gradient-to-br from-blue-500 to-cornflower-ocean-500" />
         <div className="bg-white px-6 pb-6">
           <div className="-mt-10 flex items-end justify-between gap-4 mb-6">
             <div className="w-20 h-20 rounded-2xl border-4 border-white shadow-lg flex items-center justify-center text-3xl"
@@ -128,7 +122,7 @@ export default function PerfilPage() {
             </div>
             <button
               onClick={() => logout()}
-              className="mb-2 text-xs text-gray-400 hover:text-red-500 rounded-lg border border-gray-200 px-3 py-1.5 transition hover:bg-red-50 hover:border-red-200">
+              className="mb-2 text-xs text-gray-500 hover:text-red-500 rounded-lg border border-gray-200 px-3 py-1.5 transition hover:bg-red-50 hover:border-red-200">
               Cerrar sesión
             </button>
           </div>
@@ -143,13 +137,13 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-2 gap-4 pt-5 border-t border-gray-100">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-5 border-t border-gray-100">
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">RUT</p>
+              <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">RUT</p>
               <p className="font-mono text-gray-700 font-semibold mt-0.5">{formatearRut(user.rut)}</p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold">Registrado</p>
+              <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">Registrado</p>
               <p className="text-gray-700 font-semibold mt-0.5">
                 {new Date(user.date_joined).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}
               </p>
@@ -158,11 +152,10 @@ export default function PerfilPage() {
         </div>
       </div>
 
-      {/* Indicadores segun rol */}
       {contadores && !loading && (
-        <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
+        <div className="rounded-2xl bg-white p-6 border border-gray-200">
           <h3 className="text-sm font-bold text-gray-700 mb-4">Mi actividad en el sistema</h3>
-          <div className={`grid gap-4 ${user.rol === 'KINE' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          <div className={`grid gap-4 ${user.rol === 'KINE' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
             {user.rol === 'KINE' && <>
               <Stat label="Mis pacientes activos" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
               <Stat label="Lista de espera global" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
@@ -179,16 +172,15 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {/* Panel admin: resumen de usuarios */}
       {user.rol === 'ADMIN' && todosUsuarios.length > 0 && (
-        <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
+        <div className="rounded-2xl bg-white p-6 border border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-gray-700">Resumen del equipo</h3>
-            <a href="/usuarios" className="text-xs font-semibold text-[#335fdb] hover:underline">Gestionar usuarios →</a>
+            <Link href="/usuarios" className="text-xs font-semibold text-blue-500 hover:underline">Gestionar usuarios →</Link>
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Stat label="Responsables CCR activos" value={kinesActivos} color="#065F46" bg="#ECFDF5" />
-            <Stat label="Administrativos" value={adminstrativosActivos} color="#335fdb" bg="#ecf5f8" />
+            <Stat label="Administrativos" value={administrativosActivos} color="#335fdb" bg="#ecf5f8" />
             <Stat label="Administradores" value={adminActivos} color="#5B21B6" bg="#F5F3FF" />
           </div>
           <div className="space-y-2">
@@ -196,7 +188,7 @@ export default function PerfilPage() {
               <div key={u.id} className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-2.5 border border-gray-100">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{u.nombre}</p>
-                  <p className="text-[11px] text-gray-400 font-mono">{formatearRut(u.rut)}</p>
+                  <p className="text-[11px] text-gray-500 font-mono">{formatearRut(u.rut)}</p>
                 </div>
                 <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
                   style={{ backgroundColor: ROL_COLORS[u.rol].bg, color: ROL_COLORS[u.rol].text, border: `1px solid ${ROL_COLORS[u.rol].border}` }}>
@@ -205,34 +197,33 @@ export default function PerfilPage() {
               </div>
             ))}
             {todosUsuarios.length > 5 && (
-              <p className="text-xs text-center text-gray-400 pt-1">+ {todosUsuarios.length - 5} usuarios más en el sistema</p>
+              <p className="text-xs text-center text-gray-500 pt-1">+ {todosUsuarios.length - 5} usuarios más en el sistema</p>
             )}
           </div>
         </div>
       )}
 
-      {/* Administrativo: accesos rapidos */}
       {user.rol === 'ADMINISTRATIVO' && (
-        <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
+        <div className="rounded-2xl bg-white p-6 border border-gray-200">
           <h3 className="text-sm font-bold text-gray-700 mb-4">Accesos rápidos</h3>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: 'Importar derivaciones', href: '/importar', icon: '📁' },
               { label: 'Historial mensual', href: '/historial-mensual', icon: '📅' },
               { label: 'Cola de llamados', href: '/llamados', icon: '📞' },
               { label: 'Estadísticas', href: '/analisis/estadisticas', icon: '📊' },
             ].map(link => (
-              <a key={link.href} href={link.href}
-                className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 hover:bg-[#ecf5f8] hover:border-[#C8E6C9] transition">
+              <Link key={link.href} href={link.href}
+                className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 hover:bg-ink-black-50 hover:border-[#C8E6C9] transition">
                 <span className="text-xl">{link.icon}</span>
                 <span className="text-sm font-semibold text-gray-700">{link.label}</span>
-              </a>
+              </Link>
             ))}
           </div>
         </div>
       )}
 
-      <div className="rounded-2xl bg-white p-6" style={{ border: '1px solid #E6EEE6' }}>
+      <div className="rounded-2xl bg-white p-6 border border-gray-200">
         <h3 className="text-sm font-bold text-gray-700 mb-4">Cambiar contraseña</h3>
         <form onSubmit={handleChangePassword} className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="md:col-span-2">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
+import { Modal, ModalOverlay, Dialog } from "react-aria-components";
 import {
   FiAlertTriangle,
   FiCheckCircle,
@@ -9,6 +10,7 @@ import {
   FiClock,
   FiEdit2,
   FiEye,
+  FiFilter,
   FiMessageSquare,
   FiMapPin,
   FiPhone,
@@ -26,11 +28,19 @@ import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { formatearRut } from "@/lib/rut";
 import { useToast } from "@/lib/toast-context";
-import type { Paciente } from "@/lib/types";
+import { unwrapResults } from "@/lib/swr";
+import type { Paciente, PaginatedResponse } from "@/lib/types";
 import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
+import dynamic from "next/dynamic";
 import BadgeEstado from "@/components/BadgeEstado";
-import EditarPacienteModal from "@/components/EditarPacienteModal";
-import FichaPaciente from "@/components/FichaPaciente";
+
+// Heavy modals / slide-overs not needed on initial render — lazy-loaded.
+const EditarPacienteModal = dynamic(() => import("@/components/EditarPacienteModal"), {
+  ssr: false,
+});
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), {
+  ssr: false,
+});
 
 // =============================================================================
 // Helpers de busqueda, fechas y orden de contactabilidad
@@ -102,6 +112,10 @@ function sectorLabel(value: string | null | undefined) {
   return value?.trim() || "-";
 }
 
+function phoneLabel(value: string | null | undefined) {
+  return value?.trim() || "Sin teléfono";
+}
+
 function accionSugerida(paciente: Paciente) {
   // Refleja la regla backend: primer no contesta pasa a RESCATE; segundo no
   // contesta desde RESCATE permite egreso administrativo con observacion.
@@ -165,7 +179,6 @@ export default function LlamadosPage() {
   const timeoutRegistroRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRegistroRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Filtros locales del módulo de cola de llamados.
   const [searchQuery, setSearchQuery] = useState("");
   const [prioridadFilter, setPrioridadFilter] = useState("TODAS");
   const [estadoFilter, setEstadoFilter] = useState("TODOS");
@@ -175,11 +188,14 @@ export default function LlamadosPage() {
     setLoading(true);
     setError("");
     try {
+      // KINE recibe solo su cartera desde el backend (evita traer la cola global
+      // topada en 50 y filtrarla despues en cliente, que dejaba fuera a sus pacientes).
+      const scope = user?.rol === "KINE" ? "&solo_mios=1" : "";
       const [pendientes, rescate] = await Promise.all([
-        api.get<Paciente[]>(`/pacientes/?estado=PENDIENTE`),
-        api.get<Paciente[]>(`/pacientes/?estado=RESCATE`),
+        api.get<Paciente[] | PaginatedResponse<Paciente>>(`/pacientes/?estado=PENDIENTE${scope}`),
+        api.get<Paciente[] | PaginatedResponse<Paciente>>(`/pacientes/?estado=RESCATE${scope}`),
       ]);
-      const todos = [...pendientes, ...rescate].filter((p) => {
+      const todos = [...unwrapResults(pendientes), ...unwrapResults(rescate)].filter((p) => {
         // Lista de llamados solo incluye pacientes con responsable. KINE ve su
         // cartera; administrativos/admin ven la cola completa asignada.
         if (p.kine_asignado === null) return false;
@@ -202,7 +218,6 @@ export default function LlamadosPage() {
     void cargar();
   }, [cargar]);
 
-  // Lista visible después de aplicar filtros locales.
   const pacientesFiltrados = useMemo(() => {
     return pacientes.filter((p) => {
       if (searchQuery) {
@@ -225,17 +240,15 @@ export default function LlamadosPage() {
         const matchesRut = Boolean(queryRut) && normalizeRut(p.rut).includes(queryRut);
         if (!matchesText && !matchesRut) return false;
       }
-      
-      // Filtro por Prioridad
+
       if (prioridadFilter !== "TODAS" && p.prioridad !== prioridadFilter) {
         return false;
       }
 
-      // Filtro por Estado
       if (estadoFilter !== "TODOS" && p.estado !== estadoFilter) {
         return false;
       }
-      
+
       return true;
     });
   }, [pacientes, searchQuery, prioridadFilter, estadoFilter]);
@@ -267,6 +280,7 @@ export default function LlamadosPage() {
     setSearchQuery("");
     setPrioridadFilter("TODAS");
     setEstadoFilter("TODOS");
+    setOrdering("-dias");
   }
 
   function aplicarPacienteContactabilidad(actualizado: Paciente) {
@@ -529,59 +543,82 @@ export default function LlamadosPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-            <div className="grid grid-cols-1 gap-2 xl:grid-cols-[minmax(260px,1fr)_170px_170px_auto_auto]">
-              <div className="relative">
-                <FiSearch
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
-                  size={14}
-                />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.preventDefault();
-                  }}
-                  placeholder="Buscar por nombre, RUT, sector o diagnóstico"
-                  className="ccr-control-input h-9 w-full px-9 text-xs"
-                  aria-label="Buscar pacientes"
-                />
-              </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#2a2a2a] dark:bg-[#111111]">
+            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700 dark:text-ink-black-300">
+                <FiFilter size={13} />
+                Filtros y orden
+              </p>
+              <span className="text-[11px] font-bold text-slate-500 dark:text-ink-black-200">
+                {pacientesFiltrados.length} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_170px_180px_190px_auto]">
+              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
+                Buscar
+                <span className="relative mt-1 block">
+                  <FiSearch
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
+                    size={14}
+                  />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.preventDefault();
+                    }}
+                    placeholder="Nombre, RUT, sector o diagnóstico"
+                    className="ccr-control-input h-9 w-full px-9 text-xs"
+                    aria-label="Buscar pacientes"
+                  />
+                </span>
+              </label>
 
-              <select
-                className="ccr-control-input h-9 px-3 text-xs"
-                value={estadoFilter}
-                onChange={(event) => setEstadoFilter(event.target.value)}
-              >
-                <option value="TODOS">Todos los estados</option>
-                <option value="PENDIENTE">Pendientes</option>
-                <option value="RESCATE">Rescates</option>
-              </select>
+              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
+                Estado
+                <select
+                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
+                  value={estadoFilter}
+                  onChange={(event) => setEstadoFilter(event.target.value)}
+                >
+                  <option value="TODOS">Todos los estados</option>
+                  <option value="PENDIENTE">Pendientes</option>
+                  <option value="RESCATE">Rescates</option>
+                </select>
+              </label>
 
-              <select
-                className="ccr-control-input h-9 px-3 text-xs"
-                value={prioridadFilter}
-                onChange={(event) => setPrioridadFilter(event.target.value)}
-              >
-                <option value="TODAS">Todas las prioridades</option>
-                <option value="ALTA">Alta</option>
-                <option value="MEDIANA">Mediana</option>
-                <option value="MODERADA">Moderada</option>
-                <option value="LICENCIA_MEDICA">Lic. médica</option>
-              </select>
+              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
+                Prioridad
+                <select
+                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
+                  value={prioridadFilter}
+                  onChange={(event) => setPrioridadFilter(event.target.value)}
+                >
+                  <option value="TODAS">Todas las prioridades</option>
+                  <option value="ALTA">Alta</option>
+                  <option value="MEDIANA">Mediana</option>
+                  <option value="MODERADA">Moderada</option>
+                  <option value="LICENCIA_MEDICA">Lic. médica</option>
+                </select>
+              </label>
 
-              <button
-                type="button"
-                onClick={() => setOrdering((prev) => (prev === "dias" ? "-dias" : "dias"))}
-                className="ccr-control-button inline-flex h-9 items-center justify-center whitespace-nowrap px-3 text-[11px]"
-              >
-                {ordering === "dias" ? "Más nuevos" : "Más antiguos"}
-              </button>
+              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
+                Orden
+                <select
+                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
+                  value={ordering}
+                  onChange={(event) => setOrdering(event.target.value)}
+                >
+                  <option value="-dias">Más antiguos primero</option>
+                  <option value="dias">Más recientes primero</option>
+                </select>
+              </label>
+
               <button
                 type="button"
                 onClick={clearFilters}
-                className="ccr-control-button inline-flex h-9 items-center justify-center whitespace-nowrap px-3 text-[11px]"
+                className="ccr-control-button inline-flex h-full min-h-[62px] items-center justify-center whitespace-nowrap px-3 text-[11px]"
               >
                 Limpiar
               </button>
@@ -620,23 +657,23 @@ export default function LlamadosPage() {
           Cargando…
         </div>
       ) : (
-        <section className="grid min-h-[620px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_430px]">
+        <section className="grid min-h-[620px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_430px]">
           {pacientesFiltrados.length === 0 ? (
             <div className="ccr-panel rounded-2xl p-10 text-center text-sm font-semibold text-slate-500 xl:col-span-2">
               Sin pacientes para los filtros seleccionados.
             </div>
           ) : (
             <>
-              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                   <div>
-                    <h2 className="text-lg font-black text-slate-950">Cola de llamados</h2>
+                    <h2 className="text-lg font-black text-slate-950 dark:text-white">Pacientes por contactar</h2>
                     <p className="text-xs font-semibold text-slate-500">
                       {pacientesFiltrados.length} paciente{pacientesFiltrados.length !== 1 ? "s" : ""} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
                     </p>
                   </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                    Registro manual
+                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:border-blue-500/40 dark:bg-[#181818] dark:text-white">
+                    Registro de contacto
                   </span>
                 </div>
                 <div className="custom-scrollbar max-h-[560px] space-y-2 overflow-y-auto pr-1">
@@ -816,10 +853,10 @@ function ContactStat({
   tone: "blue" | "slate" | "orange" | "red";
 }) {
   const tones = {
-    blue: "border-blue-100 bg-blue-50 text-blue-700",
-    slate: "border-slate-100 bg-slate-50 text-slate-700",
-    orange: "border-orange-100 bg-orange-50 text-orange-700",
-    red: "border-red-100 bg-red-50 text-red-700",
+    blue: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-[#172554] dark:text-blue-100",
+    slate: "border-slate-100 bg-slate-50 text-slate-700 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-ink-black-50",
+    orange: "border-orange-100 bg-orange-50 text-orange-700 dark:border-orange-400/35 dark:bg-orange-400/10 dark:text-orange-100",
+    red: "border-red-100 bg-red-50 text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-100",
   };
 
   return (
@@ -842,7 +879,8 @@ function ContactabilidadListItem({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
+  const telefonoRecados = phoneLabel(paciente.telefono_recados);
+  const telefonoVisible = phoneLabel(paciente.telefono || paciente.telefono_recados);
   const ultimoContacto = paciente.ultimo_llamado;
   const sectorCesfam = sectorLabel(paciente.sector_cesfam);
   const sectorOficial = sectorLabel(paciente.sector_oficial);
@@ -851,27 +889,37 @@ function ContactabilidadListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-xl border bg-white p-3 text-left transition ${
+      className={`w-full rounded-xl border bg-white p-3 text-left transition dark:bg-[#151515] ${
         selected
-          ? "border-[#335FDB] shadow-[0_0_0_2px_rgba(51,95,219,0.18)]"
-          : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/30"
+          ? "border-blue-500 shadow-[0_0_0_2px_rgba(51,95,219,0.18)] dark:bg-[#172554]/40"
+          : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/30 dark:border-[#2a2a2a] dark:hover:border-blue-500 dark:hover:bg-[#181818]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-black text-slate-950">
+          <h2 className="truncate text-sm font-black text-slate-950 dark:text-white">
             {paciente.nombre}
           </h2>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
-            {paciente.id_ccr} · {telefonoPrincipal}
-          </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
+              {paciente.id_ccr}
+            </span>
+            <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-700 dark:border-blue-500/40 dark:bg-[#181818] dark:text-white">
+              Tel. {telefonoVisible}
+            </span>
+            {paciente.telefono_recados && (
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
+                Recados {telefonoRecados}
+              </span>
+            )}
+          </div>
+          <p className="mt-2 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
             {paciente.diagnostico || "Sin diagnóstico"}
           </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
             Sector CESFAM: {sectorCesfam} · Sector oficial: {sectorOficial}
           </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
             {ultimoContacto ? ultimoContacto.resultado_label : "Sin contactos registrados"}
           </p>
         </div>
@@ -879,13 +927,13 @@ function ContactabilidadListItem({
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
               paciente.estado === "RESCATE"
-                ? "bg-orange-50 text-orange-700"
-                : "bg-blue-50 text-blue-700"
+                ? "bg-orange-50 text-orange-700 dark:bg-orange-400/10 dark:text-orange-100"
+                : "bg-blue-50 text-blue-700 dark:bg-blue-500 dark:text-white"
             }`}
           >
             {ESTADO_LABELS[paciente.estado]}
           </span>
-          <FiChevronRight className={selected ? "text-[#335FDB]" : "text-slate-300"} size={16} />
+          <FiChevronRight className={selected ? "text-blue-500" : "text-slate-300"} size={16} />
         </div>
       </div>
     </button>
@@ -911,22 +959,23 @@ function ContactabilidadDetail({
   onEditarContacto: () => void;
   onVerFicha: () => void;
 }) {
-  const telefonoPrincipal = paciente.telefono || paciente.telefono_recados || "Sin teléfono";
+  const telefonoPrincipal = phoneLabel(paciente.telefono);
+  const telefonoRecados = phoneLabel(paciente.telefono_recados);
   const ultimoContacto = paciente.ultimo_llamado;
   const accionBloqueada = loadingNoContesto || loadingContesto || registroPendienteActivo;
   const sectorCesfam = sectorLabel(paciente.sector_cesfam);
   const sectorOficial = sectorLabel(paciente.sector_oficial);
 
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Paciente seleccionado</p>
+    <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-blue-500 dark:bg-[#0f0f10]">
+      <div className="border-b border-slate-200 px-4 py-3 dark:border-[#2a2a2a]">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700 dark:text-ink-black-300">Paciente seleccionado</p>
         <div className="mt-1 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="break-words text-base font-black leading-snug text-slate-950">
+            <h2 className="break-words text-base font-black leading-snug text-slate-950 dark:text-white">
               {paciente.nombre}
             </h2>
-            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
+            <p className="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
               {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
             </p>
           </div>
@@ -937,46 +986,72 @@ function ContactabilidadDetail({
       </div>
 
       <div className="space-y-3 p-4">
-        <p className="flex gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold leading-5 text-orange-800">
+        <p className="flex gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold leading-5 text-orange-800 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-100">
           <FiAlertTriangle className="mt-0.5 shrink-0" />
           {accionSugerida(paciente)}
         </p>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-slate-100 py-3 text-xs">
+        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 dark:border-blue-500/40 dark:bg-[#172554]/30">
+          <p className="text-[10px] font-black uppercase tracking-wide text-blue-700 dark:text-ink-black-300">
+            Números de contacto
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-blue-100 bg-white px-3 py-2 dark:border-[#2a2a2a] dark:bg-[#111111]">
+              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-ink-black-300">
+                <FiPhone size={12} />
+                Principal
+              </span>
+              <strong className="mt-1 block break-words text-sm text-slate-950 dark:text-white">
+                {telefonoPrincipal}
+              </strong>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-white px-3 py-2 dark:border-[#2a2a2a] dark:bg-[#111111]">
+              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-ink-black-300">
+                <FiPhoneCall size={12} />
+                Recados
+              </span>
+              <strong className="mt-1 block break-words text-sm text-slate-950 dark:text-white">
+                {telefonoRecados}
+              </strong>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-slate-100 py-3 text-xs dark:border-[#2a2a2a]">
           <p className="min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiPhone size={12} />
-              Teléfono
+              <FiPhoneMissed size={12} />
+              Intentos
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">{telefonoPrincipal}</strong>
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{paciente.n_intentos_contacto}</strong>
           </p>
           <p className="min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
               <FiUser size={12} />
               Responsable
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">{responsablePaciente(paciente)}</strong>
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{responsablePaciente(paciente)}</strong>
           </p>
           <p className="min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
               <FiMapPin size={12} />
               Sector CESFAM
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">{sectorCesfam}</strong>
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{sectorCesfam}</strong>
           </p>
           <p className="min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
               <FiMapPin size={12} />
               Sector oficial
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">{sectorOficial}</strong>
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{sectorOficial}</strong>
           </p>
           <p className="col-span-2 min-w-0">
             <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
               <FiMessageSquare size={12} />
               Diagnóstico
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">
               {paciente.diagnostico || "Sin diagnóstico"}
             </strong>
           </p>
@@ -985,7 +1060,7 @@ function ContactabilidadDetail({
               <FiClock size={12} />
               Último contacto
             </span>
-            <strong className="mt-0.5 block break-words text-slate-900">
+            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">
               {ultimoContacto
                 ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
                 : "Sin contactos registrados"}
@@ -993,7 +1068,7 @@ function ContactabilidadDetail({
           </p>
         </div>
 
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
           El resultado se confirma en el siguiente paso. Luego tendrá {SEGUNDOS_CANCELAR_REGISTRO} segundos para cancelar el registro.
         </p>
 
@@ -1011,7 +1086,7 @@ function ContactabilidadDetail({
             type="button"
             onClick={onContesto}
             disabled={accionBloqueada}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2.5 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
           >
             {loadingContesto ? <FiRefreshCw className="animate-spin" size={14} /> : <FiCheckCircle size={14} />}
             Contestó / agendar
@@ -1027,7 +1102,7 @@ function ContactabilidadDetail({
           <button
             type="button"
             onClick={onVerFicha}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-green-700 bg-white px-3 py-2 text-xs font-bold text-green-800 transition hover:bg-green-50"
           >
             <FiEye size={14} />
             Ver ficha
@@ -1076,7 +1151,7 @@ function RegistroPendienteBanner({
             type="button"
             onClick={onConfirmNow}
             disabled={loading}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#335FDB] px-3 text-xs font-black text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiSend size={13} />}
             Confirmar envío
@@ -1128,14 +1203,13 @@ function ConfirmarContactoModal({
     : "Se confirmará que el paciente contestó y se programará su atención.";
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Cerrar confirmación"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={loading ? undefined : onCancel}
-      />
-      <div className="relative w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+    <ModalOverlay
+      isOpen
+      onOpenChange={(open) => { if (!open && !loading) onCancel(); }}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-lg">
+        <Dialog aria-label={titulo} className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl outline-none">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Confirmación</p>
@@ -1210,14 +1284,15 @@ function ConfirmarContactoModal({
             onClick={onConfirm}
             disabled={confirmDisabled}
             className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black text-white transition disabled:opacity-50 ${
-              esNoContesto ? "bg-[#ED4E1D] hover:bg-[#C93F16]" : "bg-[#335FDB] hover:bg-[#284FC0]"
+              esNoContesto ? "bg-[#ED4E1D] hover:bg-[#C93F16]" : "bg-blue-500 hover:bg-blue-700"
             }`}
           >
             {loading && <FiRefreshCw className="animate-spin" size={14} />}
             {esNoContesto ? "Confirmar no contestó" : "Confirmar y agendar"}
           </button>
         </footer>
-      </div>
-    </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

@@ -1,29 +1,50 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Modal, ModalOverlay, Dialog } from "react-aria-components";
 import { api } from "@/lib/api";
-import type { Paciente } from "@/lib/types";
+import { useAPI, unwrapResults } from "@/lib/swr";
+import type { ActividadGrupal, Paciente, PaginatedResponse } from "@/lib/types";
+import { CATEGORIA_LABELS } from "@/lib/types";
+import { formatearRut } from "@/lib/rut";
+import AgendaGrid, { TONO_CATEGORIA } from "@/components/AgendaGrid";
+import MultiSelectProfesionales from "@/components/MultiSelectProfesionales";
+import { CalendarioDesplegable } from "@/components/ProximaAtencionModal";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
-import ProximaAtencionModal from "@/components/ProximaAtencionModal";
-import FichaPaciente from "@/components/FichaPaciente";
-import ConfirmDialog from "@/components/ConfirmDialog";
+import dynamic from "next/dynamic";
 import { useAuth } from "@/lib/auth-context";
 import { motion, AnimatePresence } from "framer-motion";
+
+// Heavy modals / slide-overs not visible on initial render — lazy-loaded.
+const ProximaAtencionModal = dynamic(() => import("@/components/ProximaAtencionModal"), {
+  ssr: false,
+});
+const ActividadesGrupalesModal = dynamic(() => import("@/components/ActividadesGrupalesModal"), { ssr: false });
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), {
+  ssr: false,
+});
+const ConfirmDialog = dynamic(() => import("@/components/ConfirmDialog"), {
+  ssr: false,
+});
 import {
   FiCalendar,
   FiCheckCircle,
   FiChevronLeft,
   FiChevronRight,
-  FiClock,
   FiEdit3,
   FiEye,
+  FiMoreHorizontal,
   FiRefreshCw,
   FiTrash2,
-  FiUserPlus,
   FiXCircle,
+  FiPlus,
+  FiSearch,
+  FiChevronDown,
+  FiUsers,
 } from "react-icons/fi";
+import { normalizeRut, normalizeSearchText } from "@/lib/utils";
 
 // =============================================================================
 // Helpers de fecha y reglas locales de calendario
@@ -47,16 +68,18 @@ function dateFromParam(value: string | null) {
   return date;
 }
 
-function formatMonthYear(date: Date) {
-  return new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(date);
+function capitalizarInicial(texto: string) {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 function formatDay(dateKey: string) {
-  return new Intl.DateTimeFormat("es-CL", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  }).format(fromDateKey(dateKey));
+  return capitalizarInicial(
+    new Intl.DateTimeFormat("es-CL", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }).format(fromDateKey(dateKey)),
+  );
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -69,6 +92,7 @@ function formatDateTime(value: string | null | undefined) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 
@@ -76,7 +100,7 @@ function formatTime(value: string | null | undefined) {
   if (!value) return "--:--";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--:--";
-  return date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function dateKeyFromDateTime(value: string) {
@@ -92,16 +116,6 @@ function mondayStartOffset(date: Date) {
   return (date.getDay() + 6) % 7;
 }
 
-const DIAS_SEMANA = [
-  { label: "L", className: "text-slate-400" },
-  { label: "M", className: "text-slate-400" },
-  { label: "M", className: "text-slate-400" },
-  { label: "J", className: "text-slate-400" },
-  { label: "V", className: "text-slate-400" },
-  { label: "S", className: "text-slate-400" },
-  { label: "D", className: "text-red-500" },
-];
-
 const ESTADOS_PROGRAMABLES = new Set(["PENDIENTE", "RESCATE", "INGRESADO"]);
 
 const tunnelVariants = {
@@ -109,7 +123,7 @@ const tunnelVariants = {
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.35, staggerChildren: 0.04 },
+    transition: { duration: 0.2, staggerChildren: 0.03 },
   },
 };
 
@@ -147,6 +161,13 @@ export default function CalendarioPage() {
   const [inasistenciaAgenda, setInasistenciaAgenda] = useState<Paciente | null>(null);
   const [eliminandoCita, setEliminandoCita] = useState<Paciente | null>(null);
   const [accionEnCurso, setAccionEnCurso] = useState("");
+  const [profesionalesFiltro, setProfesionalesFiltro] = useState<string[]>([]);
+  const [vista, setVista] = useState<"grilla" | "lista">("grilla");
+  const [selectorDiaAbierto, setSelectorDiaAbierto] = useState(false);
+  const selectorDiaRef = useRef<HTMLDivElement | null>(null);
+  const [agendarAbierto, setAgendarAbierto] = useState(false);
+  // Actividades grupales: `null` cerrado; `{}` lista; `{ id }` detalle de una actividad.
+  const [grupoAbierto, setGrupoAbierto] = useState<{ id?: number } | null>(null);
 
   const cargar = useCallback(async () => {
     if (!user) return;
@@ -155,8 +176,8 @@ export default function CalendarioPage() {
     try {
       // KINE ve solo su cartera; ADMIN/ADMINISTRATIVO pueden planificar global.
       const endpoint = user.rol === "KINE" ? "/pacientes/?solo_mios=1" : "/pacientes/";
-      const data = await api.get<Paciente[]>(endpoint);
-      setPacientes(data);
+      const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>(endpoint);
+      setPacientes(unwrapResults(data));
     } catch (error) {
       const message = getErrorMessage(error, "No se pudo cargar el calendario.");
       setError(message);
@@ -189,12 +210,6 @@ export default function CalendarioPage() {
     setFichaPaciente((prev) => (prev?.id === actualizado.id ? actualizado : prev));
   }
 
-  function irAHoy() {
-    const hoy = new Date();
-    setMesActual(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
-    setFechaSeleccionada(toDateKey(hoy));
-  }
-
   function puedeGestionarAgenda(paciente: Paciente) {
     if (!user) return false;
     if (user.rol === "ADMIN") return true;
@@ -213,10 +228,31 @@ export default function CalendarioPage() {
     });
   }, [pacientes, user]);
 
+  const profesionales = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          pacientesProgramables
+            .map((p) => p.responsable_nombre || p.kine_asignado_nombre)
+            .filter((nombre): nombre is string => Boolean(nombre)),
+        ),
+      ).sort((a, b) => a.localeCompare(b, "es")),
+    [pacientesProgramables],
+  );
+
+  const pacientesFiltrados = useMemo(
+    () =>
+      profesionalesFiltro.length
+        ? pacientesProgramables.filter((p) =>
+            profesionalesFiltro.includes(p.responsable_nombre || p.kine_asignado_nombre || ""),
+          )
+        : pacientesProgramables,
+    [pacientesProgramables, profesionalesFiltro],
+  );
+
   const porFecha = useMemo(() => {
-    // Mapa fecha -> pacientes para pintar el calendario sin recalcular en render.
     const mapa = new Map<string, Paciente[]>();
-    for (const p of pacientesProgramables) {
+    for (const p of pacientesFiltrados) {
       if (!p.proxima_atencion) continue;
       const fecha = dateKeyFromDateTime(p.proxima_atencion);
       const lista = mapa.get(fecha) ?? [];
@@ -229,28 +265,10 @@ export default function CalendarioPage() {
       mapa.set(fecha, lista);
     }
     return mapa;
-  }, [pacientesProgramables]);
+  }, [pacientesFiltrados]);
 
-  const diasDelMes = useMemo(() => {
-    const inicio = new Date(mesActual.getFullYear(), mesActual.getMonth(), 1);
-    const fin = new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 0);
-    const celdas: Array<Date | null> = Array(mondayStartOffset(inicio)).fill(null);
-    for (let d = 1; d <= fin.getDate(); d++) {
-      celdas.push(new Date(mesActual.getFullYear(), mesActual.getMonth(), d));
-    }
-    while (celdas.length % 7 !== 0) celdas.push(null);
-    return celdas;
-  }, [mesActual]);
 
-  const pacientesDelDia = porFecha.get(fechaSeleccionada) ?? [];
-  const pacientesSinFecha = useMemo(
-    () =>
-      pacientesProgramables
-        .filter((p) => !p.proxima_atencion)
-        .sort((a, b) => (b.dias_en_lista ?? 0) - (a.dias_en_lista ?? 0) || a.nombre.localeCompare(b.nombre, "es")),
-    [pacientesProgramables],
-  );
-  const citasHoy = porFecha.get(toDateKey(new Date()))?.length ?? 0;
+  const pacientesDelDia = useMemo(() => porFecha.get(fechaSeleccionada) ?? [], [porFecha, fechaSeleccionada]);
 
   async function handleAsistencia(paciente: Paciente) {
     if (!paciente.proxima_atencion) return;
@@ -322,227 +340,390 @@ export default function CalendarioPage() {
     }
   }
 
+  const hoyKey = toDateKey(new Date());
+  const semana = useMemo(() => {
+    const base = fromDateKey(fechaSeleccionada);
+    const lunes = new Date(base.getFullYear(), base.getMonth(), base.getDate() - mondayStartOffset(base));
+    return Array.from({ length: 7 }, (_, i) => new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + i));
+  }, [fechaSeleccionada]);
+
+  const bloquesDelDia = useMemo(() => {
+    const grupos = new Map<string, Paciente[]>();
+    for (const p of pacientesDelDia) {
+      const hora = p.proxima_atencion ? `${String(new Date(p.proxima_atencion).getHours()).padStart(2, "0")}:00` : "--:--";
+      grupos.set(hora, [...(grupos.get(hora) ?? []), p]);
+    }
+    return Array.from(grupos.entries());
+  }, [pacientesDelDia]);
+
+  const { data: actividadesData, mutate: recargarActividades } = useAPI<ActividadGrupal[] | PaginatedResponse<ActividadGrupal>>(
+    user ? `/actividades-grupales/?desde=${toDateKey(semana[0])}&hasta=${toDateKey(semana[6])}` : null,
+  );
+  const actividadesSemana = useMemo(() => unwrapResults(actividadesData), [actividadesData]);
+  const actividadesPorDia = useMemo(() => {
+    const mapa = new Map<string, ActividadGrupal[]>();
+    actividadesSemana.forEach((a) => {
+      const key = toDateKey(new Date(a.fecha_hora));
+      mapa.set(key, [...(mapa.get(key) ?? []), a]);
+    });
+    return mapa;
+  }, [actividadesSemana]);
+  const actividadesDelDia = actividadesPorDia.get(fechaSeleccionada) ?? [];
+
+  const profesionalesDelDia = new Set(
+    pacientesDelDia.map((p) => p.responsable_nombre || p.kine_asignado_nombre).filter(Boolean),
+  ).size;
+
+  // Cierra el selector de dia al hacer clic fuera o con Esc.
+  useEffect(() => {
+    if (!selectorDiaAbierto) return;
+    function onDown(e: MouseEvent) {
+      if (selectorDiaRef.current && !selectorDiaRef.current.contains(e.target as Node)) setSelectorDiaAbierto(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectorDiaAbierto(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [selectorDiaAbierto]);
+
+  const citasDelDiaPorProfesional = useMemo(() => {
+    const mapa = new Map<string, number>();
+    pacientesProgramables.forEach((p) => {
+      if (!p.proxima_atencion || toDateKey(new Date(p.proxima_atencion)) !== fechaSeleccionada) return;
+      const nombre = p.responsable_nombre || p.kine_asignado_nombre;
+      if (nombre) mapa.set(nombre, (mapa.get(nombre) ?? 0) + 1);
+    });
+    return mapa;
+  }, [pacientesProgramables, fechaSeleccionada]);
+
+  const citasPorDia = useMemo(() => {
+    const mapa = new Map<string, number>();
+    porFecha.forEach((lista, key) => mapa.set(key, lista.length));
+    return mapa;
+  }, [porFecha]);
+
+  function seleccionarFecha(dateKey: string) {
+    const fecha = fromDateKey(dateKey);
+    setMesActual(new Date(fecha.getFullYear(), fecha.getMonth(), 1));
+    setFechaSeleccionada(dateKey);
+  }
+
+  function moverDias(dias: number) {
+    const base = fromDateKey(fechaSeleccionada);
+    seleccionarFecha(toDateKey(new Date(base.getFullYear(), base.getMonth(), base.getDate() + dias)));
+  }
+
+  const botonIcono =
+    "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 outline-none transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-950/20 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200 dark:hover:bg-ink-black-700";
+
   return (
     <motion.div variants={tunnelVariants} initial="initial" animate="animate" className="ccr-dashboard-content mx-auto max-w-[1600px] space-y-4">
-      <motion.header variants={itemVariants} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-              <FiCalendar size={21} />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-950">Agenda CCR</h1>
-              <p className="mt-0.5 text-sm font-medium text-slate-500">Planificación diaria y seguimiento operativo.</p>
+      {/* ---------- Cabecera: fecha, navegacion y filtro ---------- */}
+      <motion.header variants={itemVariants} className="ccr-panel px-5 py-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-slate-950 dark:text-white">Agenda de atenciones</h1>
+            <div ref={selectorDiaRef} className="relative z-50 mt-1">
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={selectorDiaAbierto}
+                onClick={() => setSelectorDiaAbierto((v) => !v)}
+                className="-ml-2 inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm font-semibold text-slate-700 outline-none transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-ink-black-100 dark:hover:bg-ink-black-700"
+              >
+                <FiCalendar size={14} className="text-slate-500" aria-hidden="true" />
+                {formatDay(fechaSeleccionada)}
+                {fechaSeleccionada === hoyKey && (
+                  <span className="rounded-md bg-blue-500 px-1.5 py-0.5 text-[11px] font-bold text-white">Hoy</span>
+                )}
+                <FiChevronDown
+                  size={15}
+                  className={`text-slate-500 transition-transform ${selectorDiaAbierto ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
+              </button>
+              <AnimatePresence>
+                {selectorDiaAbierto && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute left-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_48px_-16px_rgba(22,24,27,0.35)] dark:border-ink-black-600 dark:bg-ink-black-800"
+                  >
+                    <CalendarioDesplegable
+                      key={fechaSeleccionada}
+                      valor={fechaSeleccionada}
+                      diasConCitas={citasPorDia}
+                      permitirPasado
+                      leyenda="Días con citas programadas"
+                      onElegir={(key) => {
+                        seleccionarFecha(key);
+                        setSelectorDiaAbierto(false);
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
-              <button
-                onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() - 1, 1))}
-                className="rounded-md p-2 text-slate-600 transition hover:bg-white hover:text-blue-700"
-                aria-label="Mes anterior"
-              >
-                <FiChevronLeft size={18} />
+            <MultiSelectProfesionales
+              opciones={profesionales}
+              seleccion={profesionalesFiltro}
+              onChange={setProfesionalesFiltro}
+              conteos={citasDelDiaPorProfesional}
+            />
+            {(user?.rol === "ADMIN" || user?.rol === "KINE") && (
+              <button type="button" onClick={() => setAgendarAbierto(true)} className="ccr-button-refresh outline-none focus-visible:ring-2 focus-visible:ring-slate-950/30">
+                <FiPlus size={14} aria-hidden="true" />
+                Agendar atención
               </button>
-              <p className="min-w-[150px] px-2 text-center text-sm font-black capitalize text-slate-800">{formatMonthYear(mesActual)}</p>
-              <button
-                onClick={() => setMesActual(new Date(mesActual.getFullYear(), mesActual.getMonth() + 1, 1))}
-                className="rounded-md p-2 text-slate-600 transition hover:bg-white hover:text-blue-700"
-                aria-label="Mes siguiente"
-              >
-                <FiChevronRight size={18} />
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={irAHoy}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              Hoy
-            </button>
-            <button
-              type="button"
-              onClick={() => void cargar()}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#335FDB] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-60"
-            >
-              <FiRefreshCw className={loading ? "animate-spin" : ""} size={14} />
-              Refrescar
-            </button>
+            )}
           </div>
+        </div>
+
+        {/* Franja semanal compacta: los dias con citas quedan resaltados */}
+        <div className="mt-3 flex items-center gap-1.5">
+          <button type="button" onClick={() => moverDias(-7)} className={botonIcono} aria-label="Semana anterior">
+            <FiChevronLeft size={16} />
+          </button>
+          <div className="grid flex-1 grid-cols-7 gap-1.5" role="tablist" aria-label="Días de la semana">
+            {semana.map((dia) => {
+              const key = toDateKey(dia);
+              const total = porFecha.get(key)?.length ?? 0;
+              const activo = key === fechaSeleccionada;
+              const esHoy = key === hoyKey;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activo}
+                  aria-label={`${formatDay(key)}: ${total ? `${total} cita${total !== 1 ? "s" : ""}` : "sin citas"}`}
+                  onClick={() => seleccionarFecha(key)}
+                  className={`relative flex h-10 items-center justify-center gap-1.5 rounded-lg px-1 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                    activo
+                      ? "text-white"
+                      : total > 0
+                        ? "bg-blue-50 text-blue-800 hover:bg-blue-100 dark:bg-blue-500/15 dark:text-blue-200"
+                        : "text-slate-500 hover:bg-slate-100 dark:text-ink-black-300 dark:hover:bg-ink-black-700"
+                  } ${esHoy && !activo ? "ring-1 ring-inset ring-blue-400" : ""}`}
+                >
+                  {activo && (
+                    <motion.span
+                      layoutId="agenda-dia-activo"
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-lg bg-blue-500"
+                      transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                    />
+                  )}
+                  <span className="relative font-semibold capitalize">
+                    {new Intl.DateTimeFormat("es-CL", { weekday: "short" }).format(dia).replace(".", "")}
+                  </span>
+                  <span className="relative font-bold tabular-nums">{dia.getDate()}</span>
+                  {total > 0 && (
+                    <span
+                      className={`relative rounded-full px-1.5 text-[10px] font-bold tabular-nums leading-4 ${
+                        activo ? "bg-white/25 text-white" : "bg-blue-500 text-white"
+                      }`}
+                    >
+                      {total}
+                    </span>
+                  )}
+                  {(actividadesPorDia.get(key)?.length ?? 0) > 0 && (
+                    <span
+                      aria-label="con actividad grupal"
+                      title="Actividad grupal"
+                      className={`relative h-2 w-2 rounded-full ${activo ? "bg-white" : "bg-violet-500"}`}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" onClick={() => moverDias(7)} className={botonIcono} aria-label="Semana siguiente">
+            <FiChevronRight size={16} />
+          </button>
         </div>
       </motion.header>
 
       {error && (
-        <motion.div variants={itemVariants} className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">
+        <motion.div variants={itemVariants} className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
           {error}
         </motion.div>
       )}
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <motion.main variants={itemVariants} className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Calendario mensual</p>
-                <h2 className="mt-1 text-lg font-black capitalize text-slate-950">{formatMonthYear(mesActual)}</h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                  Hoy: {citasHoy} cita{citasHoy !== 1 ? "s" : ""}
+      <div className="min-w-0 space-y-4">
+        {/* ---------- Actividades grupales del dia ---------- */}
+        {actividadesDelDia.length > 0 && (
+          <motion.section variants={itemVariants} className="ccr-panel min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                  <FiUsers size={14} aria-hidden="true" />
                 </span>
-                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                  Seleccionado: {pacientesDelDia.length}
-                </span>
+                <h2 className="text-base font-bold text-slate-950 dark:text-white">Actividades grupales</h2>
               </div>
+              <button type="button" onClick={() => setGrupoAbierto({})} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
+                Ver todas
+              </button>
             </div>
+            <ul className="grid grid-cols-1 gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
+              {actividadesDelDia.map((a) => (
+                <li key={a.id}>
+                  <button
+                    type="button"
+                    onClick={() => setGrupoAbierto({ id: a.id })}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                      a.estado === "CANCELADA"
+                        ? "border-slate-200 bg-slate-50 opacity-70 dark:border-ink-black-600 dark:bg-ink-black-900"
+                        : "border-violet-200 bg-violet-50/60 hover:bg-violet-50 dark:border-violet-500/30 dark:bg-violet-500/10"
+                    }`}
+                  >
+                    <span className="w-12 shrink-0 text-sm font-extrabold tabular-nums text-violet-800 dark:text-violet-200">
+                      {formatTime(a.fecha_hora)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-[13px] font-bold text-slate-900 dark:text-ink-black-50 ${a.estado === "CANCELADA" ? "line-through" : ""}`}>
+                        {a.nombre}
+                      </span>
+                      <span className="block truncate text-[11px] font-medium text-slate-500 dark:text-ink-black-300">
+                        {[a.lugar, a.responsable_nombre, a.estado !== "PROGRAMADA" ? a.estado_label : ""].filter(Boolean).join(" · ") || `${a.duracion_minutos} min`}
+                      </span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-bold tabular-nums text-violet-800 dark:bg-ink-black-800 dark:text-violet-200">
+                      <FiUsers size={11} aria-hidden="true" />
+                      {a.total_participantes}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </motion.section>
+        )}
 
-            <div className="mb-2 grid grid-cols-7 gap-1.5 text-center">
-              {DIAS_SEMANA.map((dia, i) => (
-                <div key={`${dia.label}-${i}`} className={`py-1.5 text-xs font-bold uppercase ${dia.className}`}>{dia.label}</div>
+        {/* ---------- Agenda del dia: quienes deben venir ---------- */}
+        <motion.section variants={itemVariants} className="ccr-panel min-w-0 overflow-hidden">
+          <div className="flex flex-col gap-1 border-b border-slate-200 px-5 py-4 dark:border-ink-black-600 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-950 dark:text-white">Citas programadas</h2>
+              <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
+                Pacientes citados en la fecha seleccionada.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+            <div role="tablist" aria-label="Vista de la agenda" className="flex rounded-lg bg-slate-100 p-0.5 dark:bg-ink-black-700">
+              {(["grilla", "lista"] as const).map((opcion) => (
+                <button
+                  key={opcion}
+                  type="button"
+                  role="tab"
+                  aria-selected={vista === opcion}
+                  onClick={() => setVista(opcion)}
+                  className={`relative rounded-md px-3 py-1 text-xs font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-slate-950/25 ${
+                    vista === opcion ? "text-slate-950 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-ink-black-300"
+                  }`}
+                >
+                  {vista === opcion && (
+                    <motion.span
+                      layoutId="agenda-vista-activa"
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-md bg-white shadow-sm dark:bg-ink-black-600"
+                      transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                    />
+                  )}
+                  <span className="relative">{opcion === "grilla" ? "Grilla" : "Lista"}</span>
+                </button>
               ))}
             </div>
-
-            {loading ? (
-              <div className="grid grid-cols-7 gap-1.5">
-                {Array.from({ length: 35 }).map((_, i) => (
-                  <div key={i} className="h-[74px] animate-pulse rounded-lg bg-slate-100 lg:h-[86px]" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-7 gap-1.5">
-                {diasDelMes.map((dia, index) => {
-                  if (!dia) return <div key={`empty-${index}`} className="h-[74px] rounded-lg border border-transparent lg:h-[86px]" />;
-                  const dateKey = toDateKey(dia);
-                  const items = porFecha.get(dateKey) ?? [];
-                  const isSelected = fechaSeleccionada === dateKey;
-                  const isToday = dateKey === toDateKey(new Date());
-                  const isSunday = dia.getDay() === 0;
-                  const dayClass = isSelected
-                    ? isSunday
-                      ? "border-red-600 bg-red-600 text-white shadow-md"
-                      : "border-blue-600 bg-blue-600 text-white shadow-md"
-                    : isToday
-                      ? isSunday
-                        ? "border-red-200 bg-red-50 text-red-700"
-                        : "border-blue-200 bg-blue-50 text-blue-800"
-                      : isSunday
-                        ? "border-red-100 bg-red-50 text-red-700 hover:border-red-200 hover:bg-red-100"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50";
-                  const countClass = isSelected
-                    ? isSunday
-                      ? "bg-white text-red-700"
-                      : "bg-white text-blue-700"
-                    : isSunday
-                      ? "bg-red-100 text-red-700"
-                      : "bg-blue-100 text-blue-700";
-
-                  return (
-                    <button
-                      key={dateKey}
-                      type="button"
-                      onClick={() => setFechaSeleccionada(dateKey)}
-                      className={`relative flex h-[74px] flex-col items-start justify-between rounded-lg border p-2 text-left transition lg:h-[86px] ${dayClass}`}
-                    >
-                      <span className="text-sm font-black">{dia.getDate()}</span>
-                      {items.length > 0 && (
-                        <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${countClass}`}>
-                          {items.length}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        </motion.main>
-
-        <motion.aside variants={itemVariants} className="space-y-4">
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda del día</p>
-                  <h2 className="mt-1 text-sm font-black capitalize text-slate-900">{formatDay(fechaSeleccionada)}</h2>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">Citas programadas para el día.</p>
-                </div>
-                <p className="shrink-0 rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">
-                  {pacientesDelDia.length} cita{pacientesDelDia.length !== 1 ? "s" : ""} programada{pacientesDelDia.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-            </div>
-
-            <div className="custom-scrollbar max-h-[204px] overflow-y-auto p-2">
-              {loading ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="mb-1 h-12 animate-pulse rounded-lg bg-slate-100" />
-                ))
-              ) : pacientesDelDia.length > 0 ? (
-                <div className="space-y-1">
-                  {pacientesDelDia.map((p) => (
-                    <AgendaDiaCard
-                      key={p.id}
-                      paciente={p}
-                      puedeGestionar={puedeGestionarAgenda(p)}
-                      disabled={accionEnCurso.endsWith(`-${p.id}`)}
-                      onEditar={() => setGestionandoCita(p)}
-                      onFicha={() => setFichaPaciente(p)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyState
-                  title="Sin citas para este día"
-                  description="Selecciona otro día en el calendario o programa una atención desde pendientes de agenda."
-                />
+            <p className="text-xs font-semibold text-slate-600 dark:text-ink-black-200">
+              <span className="font-bold tabular-nums text-slate-950 dark:text-white">{pacientesDelDia.length}</span>{" "}
+              cita{pacientesDelDia.length !== 1 ? "s" : ""}
+              {profesionalesDelDia > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-bold tabular-nums text-slate-950 dark:text-white">{profesionalesDelDia}</span>{" "}
+                  profesional{profesionalesDelDia !== 1 ? "es" : ""}
+                </>
               )}
+            </p>
             </div>
-          </section>
+          </div>
 
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Pendientes de agenda</p>
-                  <h2 className="mt-1 text-sm font-black text-slate-900">{pacientesSinFecha.length} paciente{pacientesSinFecha.length !== 1 ? "s" : ""} sin próxima atención</h2>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">Ordenados por más tiempo en espera.</p>
-                </div>
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  <FiUserPlus size={16} />
-                </span>
-              </div>
+          {loading ? (
+            <div className="space-y-2 p-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-ink-black-700" />
+              ))}
             </div>
+          ) : bloquesDelDia.length > 0 && vista === "grilla" ? (
+            <AgendaGrid
+              citas={pacientesDelDia}
+              esHoy={fechaSeleccionada === hoyKey}
+              onSelect={(p) => (puedeGestionarAgenda(p) ? setGestionandoCita(p) : setFichaPaciente(p))}
+            />
+          ) : bloquesDelDia.length === 0 ? (
+            <div className="p-5">
+              <EmptyState
+                title="Sin citas programadas"
+                description="No hay atenciones agendadas para este día. Selecciona otra fecha o usa «Agendar atención»."
+              />
+            </div>
+          ) : (
+            <ol className="divide-y divide-slate-200 dark:divide-ink-black-600">
+              {bloquesDelDia.map(([hora, citas]) => (
+                <li key={hora} className="grid grid-cols-[4.5rem_minmax(0,1fr)] sm:grid-cols-[5.5rem_minmax(0,1fr)]">
+                  <div className="border-r border-slate-200 px-4 py-4 dark:border-ink-black-600">
+                    <p className="text-sm font-bold tabular-nums text-slate-950 dark:text-white">{hora}</p>
+                  </div>
+                  <ul className="divide-y divide-slate-100 dark:divide-ink-black-700">
+                    {citas.map((p) => (
+                      <CitaRow
+                        key={p.id}
+                        paciente={p}
+                        puedeGestionar={puedeGestionarAgenda(p)}
+                        ocupado={accionEnCurso.endsWith(`-${p.id}`)}
+                        onAsistio={() => void handleAsistencia(p)}
+                        onNoAsistio={() => setInasistenciaAgenda(p)}
+                        onGestionar={() => setGestionandoCita(p)}
+                        onFicha={() => setFichaPaciente(p)}
+                      />
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ol>
+          )}
+        </motion.section>
 
-            <div className="custom-scrollbar max-h-[204px] overflow-y-auto p-2">
-              {pacientesSinFecha.length > 0 ? (
-                <div className="space-y-1">
-                  {pacientesSinFecha.map((p) => (
-                    <PendienteAgendaItem
-                      key={p.id}
-                      paciente={p}
-                      puedeGestionar={puedeGestionarAgenda(p)}
-                      onProgramar={() => setProgramando(p)}
-                      onFicha={() => setFichaPaciente(p)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="p-3">
-                  <EmptyState title="Sin pendientes" description="Todos los pacientes activos tienen agenda próxima." />
-                </div>
-              )}
-            </div>
-          </section>
-        </motion.aside>
       </div>
+
+      {agendarAbierto && (
+        <AgendarDialog
+          pacientes={pacientesProgramables}
+          puedeGestionar={puedeGestionarAgenda}
+          onClose={() => setAgendarAbierto(false)}
+          onElegir={(p) => {
+            setAgendarAbierto(false);
+            setProgramando(p);
+          }}
+        />
+      )}
 
       <AnimatePresence>
         {programando && (
           <ProximaAtencionModal
             paciente={programando}
-            fechaInicial={`${fechaSeleccionada}T09:00`}
+            agenda={pacientesProgramables}
+            // Reagendar parte desde la cita vigente; agendar, desde el dia seleccionado.
+            fechaInicial={programando.proxima_atencion ? undefined : `${fechaSeleccionada < hoyKey ? hoyKey : fechaSeleccionada}T09:00`}
             onClose={() => setProgramando(null)}
             onConfirm={async (fechaHora, observacion) => {
               const actualizado = programando.proxima_atencion
@@ -620,6 +801,18 @@ export default function CalendarioPage() {
         onCancel={() => setEliminandoCita(null)}
       />
 
+      {grupoAbierto && user && (
+        <ActividadesGrupalesModal
+          usuario={user}
+          pacientesDisponibles={pacientes.filter(
+            (p) => p.estado === "INGRESADO" && (user.rol !== "KINE" || p.kine_asignado === user.id),
+          )}
+          actividadInicial={grupoAbierto.id}
+          onClose={() => setGrupoAbierto(null)}
+          onCambio={() => void recargarActividades()}
+        />
+      )}
+
       {fichaPaciente && user && (
         <FichaPaciente
           paciente={fichaPaciente}
@@ -632,59 +825,93 @@ export default function CalendarioPage() {
   );
 }
 
-function AgendaDiaCard({
+function nombreLegible(nombre: string) {
+  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, letra: string) => sep + letra.toUpperCase());
+}
+
+function CitaRow({
   paciente,
   puedeGestionar,
-  disabled,
-  onEditar,
+  ocupado,
+  onAsistio,
+  onNoAsistio,
+  onGestionar,
   onFicha,
 }: {
   paciente: Paciente;
   puedeGestionar: boolean;
-  disabled: boolean;
-  onEditar: () => void;
+  ocupado: boolean;
+  onAsistio: () => void;
+  onNoAsistio: () => void;
+  onGestionar: () => void;
   onFicha: () => void;
 }) {
-  const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
+  const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin profesional asignado";
+  const categoria = paciente.categoria_label ?? CATEGORIA_LABELS[paciente.categoria] ?? "Sin categoría";
 
   return (
-    <article className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent bg-white px-2.5 py-2 transition hover:border-blue-100 hover:bg-blue-50/40">
-      <div className="min-w-0">
-        <p className="truncate text-[12px] font-black leading-tight text-slate-950" title={paciente.nombre}>
-          {paciente.nombre}
+    <li className="flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-ink-black-700/50 sm:flex-row sm:items-center sm:justify-between">
+      <button type="button" onClick={onFicha} className="min-w-0 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-slate-950/25">
+        <p className="truncate text-sm font-bold text-slate-950 dark:text-white" title={paciente.nombre}>
+          <span
+            aria-hidden="true"
+            className={`mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle ${TONO_CATEGORIA[paciente.categoria]?.dot ?? "bg-slate-400"}`}
+          />
+          <span className="tabular-nums">{formatTime(paciente.proxima_atencion)}</span>
+          <span className="mx-2 text-slate-300" aria-hidden="true">|</span>
+          {nombreLegible(paciente.nombre)}
         </p>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500">
-          <span className="inline-flex shrink-0 items-center gap-1 font-black text-blue-700">
-            <FiClock size={11} />
-            {formatTime(paciente.proxima_atencion)}
-          </span>
-          <span className="text-slate-300">•</span>
-          <span className="truncate">Kine: {responsable}</span>
-        </div>
-      </div>
+        <p className="mt-0.5 truncate text-xs font-semibold text-slate-600 dark:text-ink-black-200">
+          <span className="tabular-nums">{formatearRut(paciente.rut)}</span>
+          {paciente.edad ? <span className="font-bold text-slate-800 dark:text-ink-black-100"> · {paciente.edad} años</span> : null}
+          <span className="font-medium text-slate-500 dark:text-ink-black-300"> · {categoria}</span>
+        </p>
+        <p className="mt-0.5 truncate text-xs font-medium text-slate-500 dark:text-ink-black-300">{responsable}</p>
+      </button>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        {puedeGestionar && (
+        {puedeGestionar ? (
+          <>
+            <button
+              type="button"
+              onClick={onAsistio}
+              disabled={ocupado}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-500 px-3 text-xs font-bold text-white outline-none transition-colors hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-slate-950/30 disabled:opacity-50 dark:bg-blue-500 dark:text-white"
+            >
+              <FiCheckCircle size={13} aria-hidden="true" />
+              Asistió
+            </button>
+            <button
+              type="button"
+              onClick={onNoAsistio}
+              disabled={ocupado}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 focus-visible:ring-2 focus-visible:ring-amber-500/30 disabled:opacity-50 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200"
+            >
+              <FiXCircle size={13} aria-hidden="true" />
+              No asistió
+            </button>
+            <button
+              type="button"
+              onClick={onGestionar}
+              disabled={ocupado}
+              aria-label={`Más acciones para ${paciente.nombre}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 outline-none transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-950/20 disabled:opacity-50 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200"
+            >
+              <FiMoreHorizontal size={15} />
+            </button>
+          </>
+        ) : (
           <button
             type="button"
-            onClick={onEditar}
-            disabled={disabled}
-            className="inline-flex h-7 items-center gap-1 rounded-md bg-[#335FDB] px-2 text-[10px] font-bold text-white transition hover:bg-[#284FC0] focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:opacity-50"
+            onClick={onFicha}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-950/20 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-200"
           >
-            <FiEdit3 size={11} />
-            Editar
+            <FiEye size={13} aria-hidden="true" />
+            Ver ficha operativa
           </button>
         )}
-        <button
-          type="button"
-          onClick={onFicha}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-        >
-          <FiEye size={11} />
-          Ficha
-        </button>
       </div>
-    </article>
+    </li>
   );
 }
 
@@ -712,11 +939,15 @@ function GestionarCitaModal({
   const disabled = accionEnCurso.endsWith(`-${paciente.id}`);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <ModalOverlay
+      isOpen
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-xl">
+        <Dialog aria-label="Gestionar cita" className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_-20px_rgba(22,24,27,0.35)] outline-none">
         <div className="border-b border-slate-200 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Agenda operativa</p>
-          <h3 className="mt-1 text-lg font-black text-slate-900">Editar cita</h3>
+                    <h3 className="text-lg font-bold text-slate-950">Gestionar cita</h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">
             {paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}
           </p>
@@ -737,7 +968,7 @@ function GestionarCitaModal({
                 type="button"
                 onClick={() => void onAsistencia()}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-3 text-xs font-bold text-green-800 transition hover:bg-green-100 disabled:opacity-50"
               >
                 <FiCheckCircle size={15} />
                 Llegó / asistió
@@ -755,7 +986,7 @@ function GestionarCitaModal({
                 type="button"
                 onClick={onReagendar}
                 disabled={disabled}
-                className="inline-flex items-center justify-center gap-2 rounded-md bg-[#335FDB] px-3 py-3 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-3 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
               >
                 <FiEdit3 size={15} />
                 Reagendar
@@ -790,64 +1021,15 @@ function GestionarCitaModal({
             type="button"
             onClick={onFicha}
             disabled={disabled}
-            className="inline-flex items-center gap-2 rounded-md border border-emerald-700 bg-white px-4 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50 disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-800 transition hover:bg-slate-50 disabled:opacity-50"
           >
             <FiEye size={14} />
             Ver ficha operativa
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PendienteAgendaItem({
-  paciente,
-  puedeGestionar,
-  onProgramar,
-  onFicha,
-}: {
-  paciente: Paciente;
-  puedeGestionar: boolean;
-  onProgramar: () => void;
-  onFicha: () => void;
-}) {
-  const responsable = paciente.responsable_nombre || paciente.kine_asignado_nombre || "Sin responsable";
-  const diasEspera = paciente.dias_en_lista === 1 ? "1 día" : `${paciente.dias_en_lista} días`;
-
-  return (
-    <article className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-transparent bg-white px-2.5 py-2 transition hover:border-blue-100 hover:bg-blue-50/40">
-      <div className="min-w-0">
-        <p className="truncate text-[12px] font-black leading-tight text-slate-950" title={paciente.nombre}>
-          {paciente.nombre}
-        </p>
-        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-500">
-          <span className="truncate">Kine: {responsable}</span>
-          <span className="text-slate-300">•</span>
-          <span className="shrink-0">{diasEspera}</span>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {puedeGestionar && (
-          <button
-            type="button"
-            onClick={onProgramar}
-            className="inline-flex h-7 items-center gap-1 rounded-md bg-[#335FDB] px-2 text-[10px] font-bold text-white transition hover:bg-[#284FC0] focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            <FiCalendar size={11} />
-            Programar
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onFicha}
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-emerald-700 bg-white px-2 text-[10px] font-bold text-emerald-800 transition hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-        >
-          <FiEye size={11} />
-          Ficha
-        </button>
-      </div>
-    </article>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 
@@ -866,11 +1048,15 @@ function InasistenciaAgendaModal({
   const [justificada, setJustificada] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <ModalOverlay
+      isOpen
+      onOpenChange={(open) => { if (!open && !loading) onClose(); }}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-lg">
+        <Dialog aria-label="Registrar inasistencia" className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_-20px_rgba(22,24,27,0.35)] outline-none">
         <div className="border-b border-slate-200 px-5 py-4">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Agenda operativa</p>
-          <h3 className="mt-1 text-lg font-black text-slate-900">Registrar inasistencia</h3>
+                    <h3 className="text-lg font-bold text-slate-950">Registrar inasistencia</h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">
             {paciente.nombre} · {formatDateTime(paciente.proxima_atencion)}
           </p>
@@ -878,7 +1064,7 @@ function InasistenciaAgendaModal({
 
         <div className="space-y-4 p-5">
           <label className="block">
-            <span className="text-xs font-bold uppercase tracking-wide text-slate-600">Motivo u observación</span>
+            <span className="text-sm font-bold text-slate-800">Motivo u observación</span>
             <textarea
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
@@ -894,7 +1080,7 @@ function InasistenciaAgendaModal({
               type="checkbox"
               checked={justificada}
               onChange={(e) => setJustificada(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-[#335FDB] focus:ring-[#335FDB]"
+              className="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500"
             />
             Justificada
           </label>
@@ -905,7 +1091,7 @@ function InasistenciaAgendaModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="ccr-control-button px-4 py-2 text-xs disabled:opacity-50"
+            className="ccr-button-cancel"
           >
             Cancelar
           </button>
@@ -913,22 +1099,157 @@ function InasistenciaAgendaModal({
             type="button"
             onClick={() => onConfirm(motivo.trim(), justificada)}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-500 px-4 text-xs font-bold text-white transition hover:bg-blue-600 disabled:opacity-50"
           >
             {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiXCircle size={13} />}
             {loading ? "Guardando..." : "Guardar"}
           </button>
         </div>
-      </div>
-    </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-      <p className="text-sm font-black text-slate-700">{title}</p>
-      <p className="mx-auto mt-1 max-w-md text-xs font-semibold text-slate-500">{description}</p>
+    <div className="rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center dark:border-ink-black-600">
+      <FiCalendar className="mx-auto text-slate-400" size={20} aria-hidden="true" />
+      <p className="mt-2 text-sm font-bold text-slate-950 dark:text-white">{title}</p>
+      <p className="mx-auto mt-1 max-w-sm text-xs font-medium text-slate-500 dark:text-ink-black-300">{description}</p>
     </div>
+  );
+}
+
+// =============================================================================
+// Agendar: buscar a quien programar por RUT o nombre
+// =============================================================================
+
+function AgendarDialog({
+  pacientes,
+  puedeGestionar,
+  onClose,
+  onElegir,
+}: {
+  pacientes: Paciente[];
+  puedeGestionar: (p: Paciente) => boolean;
+  onClose: () => void;
+  onElegir: (p: Paciente) => void;
+}) {
+  const [busqueda, setBusqueda] = useState("");
+  const [soloPendientes, setSoloPendientes] = useState(true);
+
+  const resultados = useMemo(() => {
+    const texto = normalizeSearchText(busqueda);
+    const rut = normalizeRut(busqueda);
+    return pacientes
+      .filter((p) => (soloPendientes ? !p.proxima_atencion : true))
+      .filter((p) => {
+        if (!texto) return true;
+        if (rut.length >= 3 && normalizeRut(p.rut).includes(rut)) return true;
+        return normalizeSearchText(p.nombre).includes(texto);
+      })
+      .sort((a, b) => (b.dias_en_lista ?? 0) - (a.dias_en_lista ?? 0))
+      .slice(0, 60);
+  }, [busqueda, pacientes, soloPendientes]);
+
+  return (
+    <ModalOverlay
+      isOpen
+      isDismissable
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      className="fixed inset-0 z-[80] flex items-start justify-center bg-slate-950/30 px-4 pt-[10vh] backdrop-blur-[2px]"
+    >
+      <Modal className="w-full max-w-[640px] outline-none">
+        <Dialog
+          aria-label="Agendar atención"
+          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_64px_-20px_rgba(22,24,27,0.35)] outline-none dark:border-ink-black-600 dark:bg-ink-black-800"
+        >
+          <div className="border-b border-slate-200 px-5 pb-4 pt-5 dark:border-ink-black-600">
+            <h3 className="text-lg font-bold text-slate-950 dark:text-white">Agendar atención</h3>
+            <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
+              Busque al paciente por RUT o nombre. La fecha y hora se definen en el paso siguiente.
+            </p>
+            <div className="relative mt-4">
+              <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} aria-hidden="true" />
+              <input
+                autoFocus
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && resultados.length === 1 && puedeGestionar(resultados[0])) {
+                    onElegir(resultados[0]);
+                  }
+                }}
+                placeholder="Ej: 12.345.678-9 o apellido"
+                aria-label="Buscar paciente por RUT o nombre"
+                className="ccr-control-input w-full pl-9 pr-3"
+              />
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-ink-black-200">
+              <input
+                type="checkbox"
+                checked={soloPendientes}
+                onChange={(e) => setSoloPendientes(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-slate-400"
+              />
+              Mostrar solo pacientes sin cita
+            </label>
+          </div>
+
+          <ul className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto dark:divide-ink-black-700">
+            {resultados.length === 0 ? (
+              <li className="px-5 py-10 text-center">
+                <p className="text-sm font-bold text-slate-950 dark:text-white">Sin resultados</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  Verifique el RUT o desmarque «Mostrar solo pacientes sin cita».
+                </p>
+              </li>
+            ) : (
+              resultados.map((p) => {
+                const habilitado = puedeGestionar(p);
+                const categoria = p.categoria_label ?? CATEGORIA_LABELS[p.categoria] ?? "Sin categoría";
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      disabled={!habilitado}
+                      onClick={() => onElegir(p)}
+                      className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-ink-black-700"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-slate-950 dark:text-white">{nombreLegible(p.nombre)}</span>
+                        <span className="mt-0.5 block truncate text-xs font-semibold text-slate-600 dark:text-ink-black-200">
+                          <span className="tabular-nums">{formatearRut(p.rut)}</span>
+                          {p.edad ? <span className="font-bold"> · {p.edad} años</span> : null}
+                          <span className="font-medium text-slate-500"> · {categoria}</span>
+                        </span>
+                        <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500 dark:text-ink-black-300">
+                          {p.proxima_atencion
+                            ? `Ya tiene cita: ${formatDateTime(p.proxima_atencion)}`
+                            : `${p.dias_en_lista ?? 0} días esperando`}
+                          {" · "}
+                          {p.responsable_nombre || p.kine_asignado_nombre || "Sin profesional asignado"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-xs font-bold text-slate-700 dark:text-ink-black-100">
+                        {habilitado ? (p.proxima_atencion ? "Reagendar" : "Agendar") : "Sin permiso"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+
+          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3 text-[11px] font-semibold text-slate-500 dark:border-ink-black-600 dark:bg-ink-black-900">
+            <span>{resultados.length === 60 ? "Mostrando los primeros 60" : `${resultados.length} pacientes`}</span>
+            <button type="button" onClick={onClose} className="ccr-control-button">
+              Cerrar
+            </button>
+          </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

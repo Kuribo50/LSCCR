@@ -15,7 +15,10 @@ CENTROS_VALIDOS = {
     "HLH", "TMT HT", "FST HT", "CEQ", "CESFAM", "CECOSF", "SANTO",
 }
 
-MESES_IGNORAR = {"LISTAS", "INSTRUCCIONES", "REVISION", "REVISIÓN", "RESUMEN"}
+MESES_IGNORAR = {
+    "LISTAS", "INSTRUCCIONES", "REVISION", "REVISIÓN", "RESUMEN",
+    "BORRADOR", "BORRADOR2", "ASIGNADOS",
+}
 MESES_VALIDOS = {
     "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
     "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
@@ -58,7 +61,8 @@ COLUMN_ALIASES: dict[str, list[str]] = {
                      "OBJETIVOS DEL TRATAMIENTO (OBSERVACIONES)",
                      "OBJETIVOS DEL TRATAMIENTO", "OBS", "COMENTARIOS", "NOTAS"],
     "kine_asignado": [
-        "KINE ASIGNADO", "RESPONSABLE CCR", "RESPONSABLE", "KINE",
+        "KINE ASIGNADO", "KINESIOLOGO ASIGNADO", "KINESIÓLOGO ASIGNADO",
+        "PROFESIONAL ASIGNADO", "RESPONSABLE CCR", "RESPONSABLE", "KINE",
     ],
     "estado_sugerido": ["ESTADO SUGERIDO", "ESTADO", "SITUACION", "SITUACIÓN"],
     "recepcion_original": [
@@ -79,13 +83,14 @@ KINES_ACTIVOS_CCR: dict[str, list[str]] = {
     "Mane Sáez": ["MANE", "MANE SAEZ", "MANE SÁEZ", "MARÍA ELENA SAEZ", "MARIA ELENA SAEZ", "M. SAEZ"],
     "Sebastián Campos": [
         "SEBA C", "SEBA CA", "SEBA CAMPOS", "SEBASTIAN CAMPOS", "SEBASTIÁN CAMPOS",
-        "INGRESA SEBA CAMPOS", "S. CAMPOS",
+        "INGRESA SEBA CAMPOS", "S. CAMPOS", "SC", "S C", "S.C",
     ],
     "Sebastián Salgado": [
         "SEBA SALGADO", "SEBASTIAN SALGADO", "SEBASTIÁN SALGADO", "SEBA SA", "S. SALGADO",
+        "SS", "S S", "S.S",
     ],
     "Pilar Alarcón": ["PILAR", "PILAR ALARCON", "PILAR ALARCÓN", "P. ALARCON", "P. ALARCÓN"],
-    "Karen Torres": ["KAREN", "KAREN TORRES", "K. TORRES"],
+    "Karen Torres": ["KAREN", "KAREN TORRES", "K. TORRES", "K T", "K.T", "KT"],
 }
 
 KINES_NO_ACTIVOS = {
@@ -347,6 +352,13 @@ def _resolver_kine(
 
     for fuente, valor in fuentes:
         valor_norm = _normalizar(valor)
+        if valor_norm in {
+            "SIN", "SIN ASIGNAR", "NO", "N/A", "NA", "PENDIENTE", "S/R",
+            "N C", "NC", "RESCATE", "ATENCIONES HT", "FALLECIDO",
+        }:
+            continue
+        if valor_norm.startswith("NSP") and not _detectar_kines_en_texto(valor)[0]:
+            continue
         if valor_norm and valor_norm not in {"SIN", "SIN ASIGNAR", "NO", "N/A", "NA", "PENDIENTE", "S/R"}:
             return {
                 "usuario": None,
@@ -428,6 +440,14 @@ def _parsear_fecha(valor):
     if match4:
         texto = match4.group(1)
         for fmt in ("%d.%m.%Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return datetime.strptime(texto, fmt).date()
+            except ValueError:
+                continue
+        # Excel con configuracion regional de EE.UU. guarda texto mes/dia/año
+        # (ej: '3/27/2026'). Solo se acepta si dia/mes no calza (dia > 12),
+        # asi las fechas ambiguas siguen leyendose como dia/mes.
+        for fmt in ("%m/%d/%Y", "%m-%d-%Y", "%m.%d.%Y"):
             try:
                 return datetime.strptime(texto, fmt).date()
             except ValueError:
@@ -769,6 +789,12 @@ def _procesar_hoja(
             dup_key = _dup_key(rut, fecha_derivacion, diagnostico)
             rut_recurrente = rut in ruts_existentes or rut in ruts_vistos_importacion
             if dup_key in duplicados_vistos or dup_key in existentes or rut_recurrente:
+                if kine_info["usuario"]:
+                    for paciente_previo in pacientes_a_crear:
+                        if paciente_previo.rut == rut and paciente_previo.kine_asignado_id is None:
+                            paciente_previo.kine_asignado = kine_info["usuario"]
+                            paciente_previo._importacion_kine_detectado = kine_info["kine_detectado"]
+                            break
                 duplicados += 1
                 registros.append(_registro_preview(
                     hoja=sheet_name, fila=row_idx, nombre=nombre, rut=rut,
@@ -814,6 +840,7 @@ def _procesar_hoja(
             paciente._importacion_kine_detectado = kine_info["kine_detectado"]
             paciente._importacion_motivo_revision = " ".join(motivos_revision)
             paciente._importacion_asignado_historico = asignado_historico
+            paciente._importacion_categoria_excel = bool(categoria_excel)
             pacientes_a_crear.append(paciente)
             registros.append(_registro_preview(
                 hoja=sheet_name, fila=row_idx, nombre=nombre, rut=rut,
@@ -987,6 +1014,8 @@ def _procesar_derivaciones(
             if periodo:
                 periodos_detectados[periodo] = periodos_detectados.get(periodo, 0) + 1
 
+    _completar_edades_faltantes(pacientes_a_crear, registros)
+
     return {
         "total": total,
         "duplicados": duplicados,
@@ -997,6 +1026,58 @@ def _procesar_derivaciones(
         "periodos_detectados": periodos_detectados,
     }
 
+
+
+def _completar_edades_faltantes(pacientes: list[Paciente], registros: list[dict]) -> int:
+    """Completa la edad de derivaciones que la traen vacia (se leen como 0).
+
+    Usa la edad de otra fila del mismo RUT en el archivo o, si no hay, la de un
+    paciente ya registrado. Con la edad corregida se recalculan mayor_60 y la
+    categoria automatica (la regla MAS65 depende de la edad). Si la categoria
+    venia explicita en el Excel, se respeta. Devuelve cuantas edades completo.
+    """
+    sin_edad = [p for p in pacientes if not p.edad]
+    if not sin_edad:
+        return 0
+
+    edades: dict[str, int] = {}
+    for registro in registros:
+        rut = registro.get("rut")
+        edad = registro.get("edad") or 0
+        if rut and edad > 0:
+            edades[rut] = max(edades.get(rut, 0), edad)
+    for p in pacientes:
+        if p.rut and p.edad:
+            edades[p.rut] = max(edades.get(p.rut, 0), p.edad)
+    faltantes = {p.rut for p in sin_edad if p.rut and p.rut not in edades}
+    if faltantes:
+        for rut, edad in (
+            Paciente.objects.filter(rut__in=faltantes, edad__gt=0).values_list("rut", "edad")
+        ):
+            edades[rut] = max(edades.get(rut, 0), edad)
+
+    completadas = 0
+    for p in sin_edad:
+        edad = edades.get(p.rut)
+        if not edad:
+            continue
+        p.edad = edad
+        p.mayor_60 = p.mayor_60 or edad >= 60
+        if not getattr(p, "_importacion_categoria_excel", False):
+            p.categoria = categoria_por_diagnostico(p.diagnostico, edad)
+        nota = "Edad tomada de otra derivación del mismo RUT."
+        p.observaciones = f"{p.observaciones} {nota}".strip() if p.observaciones else nota
+        completadas += 1
+
+    if completadas:
+        corregidos = {p.rut: p for p in sin_edad if p.edad}
+        for registro in registros:
+            p = corregidos.get(registro.get("rut"))
+            if p and not registro.get("edad"):
+                registro["edad"] = p.edad
+                registro["mayor_60"] = p.mayor_60
+                registro["categoria"] = p.categoria
+    return completadas
 
 def _resumen_registros_oficiales(registros: list[dict]) -> dict:
     registros_validos = [

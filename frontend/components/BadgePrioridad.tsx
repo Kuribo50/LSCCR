@@ -1,21 +1,22 @@
-import type { Prioridad } from '@/lib/types'
-import { PRIORIDAD_LABELS } from '@/lib/types'
+import type { Prioridad } from "@/lib/types";
+import { PRIORIDAD_LABELS } from "@/lib/types";
+import { TONO_CHIP, TONO_DOT, type Tono } from "@/lib/tonos";
 
-const ESTILOS: Record<Prioridad, { bg: string; color: string }> = {
-  ALTA:           { bg: '#ffe6e6', color: '#970502' },
-  MEDIANA:        { bg: '#fff6e6', color: '#976502' },
-  MODERADA:       { bg: '#cffce5', color: '#066031' },
-  LICENCIA_MEDICA:{ bg: '#F1F5F9', color: '#334155' },
-}
+const TONO_PRIORIDAD: Record<Prioridad, Tono> = {
+  ALTA: "red",
+  MEDIANA: "amber",
+  MODERADA: "green",
+  LICENCIA_MEDICA: "slate",
+};
 
 export default function BadgePrioridad({ prioridad }: { prioridad: Prioridad }) {
-  const { bg, color } = ESTILOS[prioridad] ?? { bg: '#F5F5F5', color: '#616161' }
+  const tono = TONO_PRIORIDAD[prioridad] ?? "slate";
   return (
     <span
-      className="inline-block rounded-md border border-black/5 px-2 py-0.5 text-[11px] font-semibold leading-tight whitespace-nowrap"
-      style={{ backgroundColor: bg, color }}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-semibold leading-tight ${TONO_CHIP[tono]}`}
     >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONO_DOT[tono]}`} aria-hidden="true" />
       {PRIORIDAD_LABELS[prioridad] ?? prioridad}
     </span>
-  )
+  );
 }

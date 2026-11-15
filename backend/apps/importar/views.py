@@ -15,8 +15,8 @@ from rest_framework.views import APIView
 
 from apps.pacientes.exports import crear_excel_pacientes, excel_response
 from apps.pacientes.models import MovimientoPaciente, Paciente
-from apps.pacientes.services import categoria_por_diagnostico, prioridad_normalizada
-from apps.usuarios.permissions import IsAdminOrAdministrativoRole
+from apps.pacientes.services import ESTADOS_FINALES, categoria_por_diagnostico, prioridad_normalizada
+from apps.usuarios.permissions import IsAdminOrAdministrativoRole, IsAdminRole
 
 from .models import ImportacionMensual
 from .parser import normalizar_texto, parsear_derivaciones, parsear_fecha, previsualizar_derivaciones
@@ -53,13 +53,7 @@ MESES_LABEL = {
     12: "Diciembre",
 }
 
-ESTADOS_EGRESADOS = [
-    Paciente.Estado.ALTA_MEDICA,
-    Paciente.Estado.EGRESO_VOLUNTARIO,
-    Paciente.Estado.EGRESO_ADMINISTRATIVO,
-    Paciente.Estado.ABANDONO,
-    Paciente.Estado.DERIVADO,
-]
+ESTADOS_EGRESADOS = ESTADOS_FINALES
 
 
 def _bool_from_request(value) -> bool:
@@ -1616,7 +1610,7 @@ class ResetPoblacionView(APIView):
     Tambien limpia el historial de importaciones.
     Solo accesible para ADMIN.
     """
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminRole]
 
     @transaction.atomic
     def delete(self, request):

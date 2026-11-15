@@ -4,7 +4,10 @@ const outputMode = process.env.NEXT_OUTPUT_MODE === 'standalone' ? 'standalone' 
 const distDir = process.env.NEXT_DIST_DIR || (process.env.NODE_ENV === 'development' ? '.next-dev' : '.next')
 
 const nextConfig: NextConfig = {
+  // Evita 308 en POST /api/.../ que rompia el login via proxy local.
+  skipTrailingSlashRedirect: true,
   distDir,
+  outputFileTracingRoot: process.cwd(),
   ...(outputMode ? { output: outputMode } : {}),
   eslint: {
     ignoreDuringBuilds: true,

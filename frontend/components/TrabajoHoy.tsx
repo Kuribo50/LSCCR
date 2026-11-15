@@ -28,6 +28,7 @@ interface CardConfig {
     border: string;
     bg: string;
     icon: string;
+    iconDark: string;
     text: string;
   };
 }
@@ -39,9 +40,10 @@ const CARDS: CardConfig[] = [
     descripcion: "Pacientes ingresados sin agenda próxima.",
     icon: FiCalendar,
     tone: {
-      border: "border-slate-200",
-      bg: "bg-slate-50",
-      icon: "text-slate-600",
+      border: "border-blue-100",
+      bg: "bg-blue-50",
+      icon: "text-blue-600",
+      iconDark: "dark:text-slate-200",
       text: "text-slate-800",
     },
   },
@@ -51,9 +53,10 @@ const CARDS: CardConfig[] = [
     descripcion: "2 o más inasistencias no justificadas.",
     icon: FiUserX,
     tone: {
-      border: "border-red-300",
+      border: "border-red-100",
       bg: "bg-red-50",
-      icon: "text-red-900",
+      icon: "text-red-600",
+      iconDark: "dark:text-red-200",
       text: "text-red-950",
     },
   },
@@ -66,15 +69,12 @@ export default function TrabajoHoy({
   onVerGrupo,
 }: Props) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="ccr-panel p-5">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">
-            Gestión diaria
-          </p>
-          <h2 className="text-xl font-black text-slate-950">Trabajo de hoy</h2>
+          <h2 className="text-lg font-extrabold text-[color:var(--ink)]">Trabajo de hoy</h2>
         </div>
-        <p className="text-xs font-medium text-slate-600">
+        <p className="text-xs font-medium text-slate-600 dark:text-ink-black-200">
           Alertas operativas para priorizar acciones del CCR.
         </p>
       </div>
@@ -122,21 +122,21 @@ function AlertaCard({
   ).slice(0, 3);
 
   return (
-    <article className="flex min-h-[230px] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-100 hover:shadow-md">
+    <article className="flex min-h-[230px] flex-col rounded-2xl border border-slate-200 bg-white p-4 transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_12px_28px_-16px_rgba(47,99,214,0.35)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 dark:border-ink-black-600 dark:bg-ink-black-800 dark:hover:border-blue-500/60">
       <div className="flex items-start justify-between gap-3">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${config.tone.border} ${config.tone.bg}`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${config.tone.border} ${config.tone.bg} dark:border-ink-black-600 dark:bg-ink-black-700`}
         >
-          <Icon className={config.tone.icon} size={20} />
+          <Icon className={`${config.tone.icon} ${config.tone.iconDark}`} size={20} />
         </div>
-        <div className={`text-right text-3xl font-black ${config.tone.text}`}>
+        <div className={`text-right text-3xl font-bold tabular-nums ${config.tone.text} dark:!text-white`}>
           {loading ? "..." : total}
         </div>
       </div>
 
       <div className="mt-3">
-        <h3 className="text-sm font-black text-slate-900">{config.titulo}</h3>
-        <p className="mt-1 min-h-10 text-xs leading-5 text-slate-600">
+        <h3 className="text-sm font-bold text-slate-950 dark:text-white">{config.titulo}</h3>
+        <p className="mt-1 min-h-10 text-xs leading-5 text-slate-600 dark:text-ink-black-200">
           {config.descripcion}
         </p>
       </div>
@@ -145,11 +145,11 @@ function AlertaCard({
         {loading ? (
           <div className="space-y-2">
             {[0, 1, 2].map((item) => (
-              <div key={item} className="h-8 animate-pulse rounded-md bg-slate-100" />
+              <div key={item} className="h-8 animate-pulse rounded-md bg-slate-100 dark:bg-[#202020]" />
             ))}
           </div>
         ) : total === 0 ? (
-          <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+          <div className="rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-800 dark:bg-green-400/10 dark:text-green-100">
             Sin pendientes
           </div>
         ) : (
@@ -158,12 +158,12 @@ function AlertaCard({
               key={paciente.id}
               type="button"
               onClick={() => onVerPaciente(paciente)}
-              className="block w-full rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-left transition hover:border-blue-100 hover:bg-white"
+              className="block w-full rounded-lg bg-slate-50 px-3 py-2 text-left outline-none transition-colors hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:bg-ink-black-700 dark:hover:bg-blue-500/15"
             >
-              <p className="truncate text-xs font-bold text-slate-800">
-                {paciente.nombre}
+              <p className="truncate text-xs font-bold text-slate-800 dark:text-white">
+                {paciente.nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase())}
               </p>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-500">
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-ink-black-200">
                 {paciente.id_ccr} · {formatearRut(paciente.rut)}
               </p>
             </button>
@@ -174,7 +174,7 @@ function AlertaCard({
       <button
         type="button"
         onClick={() => onVerGrupo(config.key)}
-        className="mt-4 inline-flex items-center justify-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+        className="ccr-control-button mt-4 w-full"
       >
         Ver todos
         <FiArrowRight size={14} />

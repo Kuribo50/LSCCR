@@ -117,7 +117,7 @@ export default function RegistrarContactoModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
-          <div className="flex items-center gap-2 text-[#335FDB] dark:text-white">
+          <div className="flex items-center gap-2 text-blue-500 dark:text-white">
             <FiPhoneCall className="text-xl" />
             <h2 className="text-sm font-semibold uppercase tracking-[0.05em]">
               Registrar Contacto
@@ -125,7 +125,7 @@ export default function RegistrarContactoModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-full p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-gray-900 dark:text-[#b5d8e3] dark:hover:bg-[#242424] dark:hover:text-white"
+            className="rounded-full p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-gray-900 dark:text-ink-black-200 dark:hover:bg-[#242424] dark:hover:text-white"
           >
             <FiX size={18} />
           </button>
@@ -194,7 +194,7 @@ export default function RegistrarContactoModal({
           {!showScheduler ? (
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-[#ecf5f8]">
+                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-ink-black-50">
                   Observación operativa del contacto {requiereNotaEgreso ? "(obligatoria)" : "(opcional)"}
                 </label>
                 <textarea
@@ -202,7 +202,7 @@ export default function RegistrarContactoModal({
                   onChange={(e) => setNotas(e.target.value)}
                   placeholder="Ej. Dejó mensaje, número equivocado, etc."
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:placeholder:text-[#6b7280] dark:focus:ring-blue-500/20"
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:placeholder:text-[#6b7280] dark:focus:ring-blue-500/20"
                 />
               </div>
 
@@ -211,7 +211,7 @@ export default function RegistrarContactoModal({
                   type="button"
                   onClick={() => setShowScheduler(true)}
                   disabled={loading}
-                  className="rounded-lg bg-[#335FDB] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#284FC0] disabled:opacity-50"
+                  className="rounded-lg bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                 >
                   <span className="inline-flex items-center justify-center gap-2">
                     <FiCheckCircle size={14} />
@@ -237,7 +237,7 @@ export default function RegistrarContactoModal({
             <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
                 <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-white">Paciente contestó</p>
-                <p className="text-[11px] text-gray-600 dark:text-[#b5d8e3]">Ahora programa la fecha de su atención, el paciente pasará directo a estado INGRESADO.</p>
+                <p className="text-[11px] text-gray-600 dark:text-ink-black-200">Ahora programa la fecha de su atención, el paciente pasará directo a estado INGRESADO.</p>
               </div>
 
               <div>
@@ -248,27 +248,27 @@ export default function RegistrarContactoModal({
                   type="datetime-local"
                   value={fechaHora}
                   onChange={(e) => setFechaHora(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-[#335FDB] dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
                 />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("09:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
                   >
                     09:00
                   </button>
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("12:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
                   >
                     12:00
                   </button>
                   <button
                     type="button"
                     onClick={() => aplicarHorarioRapido("15:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-[#335fdb] dark:hover:bg-[#eef3ff]"
+                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
                   >
                     15:00
                   </button>
@@ -276,14 +276,14 @@ export default function RegistrarContactoModal({
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-[#ecf5f8]">
+                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-ink-black-50">
                   Observaciones (opcional)
                 </label>
                 <textarea
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
                   rows={2}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:focus:ring-blue-500/20"
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:focus:ring-blue-500/20"
                 />
               </div>
 
@@ -292,7 +292,7 @@ export default function RegistrarContactoModal({
                   type="button"
                   onClick={() => setShowScheduler(false)}
                   disabled={loading}
-                  className="flex-1 rounded-lg border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
+                  className="flex-1 rounded-lg border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-50 dark:hover:bg-[#242424]"
                 >
                   Atrás
                 </button>
@@ -300,7 +300,7 @@ export default function RegistrarContactoModal({
                   type="button"
                   onClick={() => void handleSubmit(true)}
                   disabled={loading}
-                  className="flex-1 rounded-lg bg-[#335FDB] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#284FC0] disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
                 >
                   {loading ? "Guardando..." : "Confirmar"}
                 </button>

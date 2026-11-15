@@ -67,6 +67,44 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(item["responsable_asignado"], self.kine.id)
         self.assertEqual(item["responsable_nombre"], self.kine.nombre)
 
+    def test_filtro_categoria_acepta_varias_separadas_por_coma(self):
+        lumbago = self.crear_paciente(categoria=Paciente.Categoria.LUMBAGOS)
+        sdt = self.crear_paciente(categoria=Paciente.Categoria.SDT)
+        hombro = self.crear_paciente(categoria=Paciente.Categoria.HOMBROS)
+
+        response = self.client.get("/api/pacientes/", {"categoria": "LUMBAGOS,SDT"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        ids = {p["id"] for p in data}
+        self.assertIn(lumbago.id, ids)
+        self.assertIn(sdt.id, ids)
+        self.assertNotIn(hombro.id, ids)
+
+        response = self.client.get("/api/pacientes/", {"categoria": "HOMBROS"})
+        data = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        self.assertEqual({p["id"] for p in data}, {hombro.id})
+
+    def test_filtros_prioridad_sector_y_kine_aceptan_varios_valores(self):
+        alta = self.crear_paciente(prioridad=Paciente.Prioridad.ALTA, sector_cesfam="Rojo")
+        mediana = self.crear_paciente(prioridad=Paciente.Prioridad.MEDIANA, sector_cesfam="AZUL")
+        moderada = self.crear_paciente(prioridad=Paciente.Prioridad.MODERADA, sector_cesfam="Verde")
+        sin_kine = self.crear_paciente(kine_asignado=None, sector_cesfam="Verde")
+
+        def ids(params):
+            response = self.client.get("/api/pacientes/", params)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+            return {p["id"] for p in data}
+
+        self.assertEqual(ids({"prioridad": "ALTA,MEDIANA"}), {alta.id, mediana.id})
+        self.assertEqual(ids({"sector_cesfam": "rojo,azul"}), {alta.id, mediana.id})
+        self.assertEqual(ids({"kine": "SIN_ASIGNAR"}), {sin_kine.id})
+        self.assertEqual(
+            ids({"kine": f"{self.kine.id},SIN_ASIGNAR"}),
+            {alta.id, mediana.id, moderada.id, sin_kine.id},
+        )
+
     def test_categoria_borrador_mantiene_valor_y_muestra_no_categorizado(self):
         paciente = self.crear_paciente(categoria=Paciente.Categoria.BORRADOR)
 
@@ -915,3 +953,108 @@ class PacienteWorkflowTests(APITestCase):
             response.status_code,
             {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN},
         )
+
+
+class ActividadGrupalTests(APITestCase):
+    def setUp(self):
+        self.kine = Usuario.objects.create_user(
+            rut="33333333-3", password="testpass", nombre="Kine Uno", rol=Usuario.Rol.KINE
+        )
+        self.otro_kine = Usuario.objects.create_user(
+            rut="44444444-4", password="testpass", nombre="Kine Dos", rol=Usuario.Rol.KINE
+        )
+        self.admin = Usuario.objects.create_user(
+            rut="55555555-5", password="testpass", nombre="Admin", rol=Usuario.Rol.ADMIN
+        )
+        self.contador = 0
+        self.p1 = self.crear(self.kine)
+        self.p2 = self.crear(self.kine)
+        self.ajeno = self.crear(self.otro_kine)
+        self.pendiente = self.crear(self.kine, estado=Paciente.Estado.PENDIENTE)
+
+    def crear(self, kine, **extra):
+        self.contador += 1
+        data = {
+            "fecha_derivacion": timezone.localdate(),
+            "percapita_desde": "CESFAM",
+            "nombre": f"Paciente {self.contador}",
+            "rut": f"800000{self.contador:02d}-{self.contador % 10}",
+            "edad": 50,
+            "diagnostico": "Lumbago",
+            "profesional": "KINESIOLOGO",
+            "prioridad": Paciente.Prioridad.MODERADA,
+            "categoria": Paciente.Categoria.LUMBAGOS,
+            "kine_asignado": kine,
+            "estado": Paciente.Estado.INGRESADO,
+        }
+        data.update(extra)
+        return Paciente.objects.create(**data)
+
+    def payload(self, ids):
+        return {
+            "nombre": "Taller de columna",
+            "fecha_hora": (timezone.now() + timedelta(days=2)).isoformat(),
+            "duracion_minutos": 60,
+            "lugar": "Gimnasio",
+            "paciente_ids": ids,
+        }
+
+    def test_kine_crea_actividad_con_sus_pacientes_y_marca_asistencia(self):
+        self.client.force_authenticate(self.kine)
+        response = self.client.post("/api/actividades-grupales/", self.payload([self.p1.id, self.p2.id]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["total_participantes"], 2)
+        self.assertEqual(response.data["responsable"], self.kine.id)
+
+        actividad_id = response.data["id"]
+        response = self.client.post(
+            f"/api/actividades-grupales/{actividad_id}/asistencia/",
+            {"paciente_id": self.p1.id, "asistencia": "ASISTIO"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_asistentes"], 1)
+
+        historial = self.client.get(f"/api/pacientes/{self.p1.id}/historial-acciones/")
+        tipos = [a["tipo"] for a in historial.data["acciones"]]
+        self.assertIn("ACTIVIDAD_GRUPAL", tipos)
+
+    def test_kine_no_puede_agregar_pacientes_ajenos_ni_no_ingresados(self):
+        self.client.force_authenticate(self.kine)
+        response = self.client.post("/api/actividades-grupales/", self.payload([self.p1.id, self.ajeno.id]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post("/api/actividades-grupales/", self.payload([self.pendiente.id]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.post("/api/actividades-grupales/", self.payload([]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_admin_mezcla_kines_y_filtra_por_fecha_y_paciente(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post("/api/actividades-grupales/", self.payload([self.p1.id, self.ajeno.id]), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        hoy = timezone.localdate()
+        listado = self.client.get(
+            "/api/actividades-grupales/",
+            {"desde": hoy.isoformat(), "hasta": (hoy + timedelta(days=7)).isoformat(), "paciente": self.ajeno.id},
+        )
+        data = listado.data.get("results", listado.data) if isinstance(listado.data, dict) else listado.data
+        self.assertEqual(len(data), 1)
+
+        # Otro kine ve la actividad porque participa un paciente suyo, pero no puede editarla.
+        self.client.force_authenticate(self.otro_kine)
+        actividad_id = response.data["id"]
+        self.assertEqual(self.client.get(f"/api/actividades-grupales/{actividad_id}/").status_code, status.HTTP_200_OK)
+        editar = self.client.patch(f"/api/actividades-grupales/{actividad_id}/", {"nombre": "Otro"}, format="json")
+        self.assertEqual(editar.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_actualizar_participantes(self):
+        self.client.force_authenticate(self.kine)
+        creada = self.client.post("/api/actividades-grupales/", self.payload([self.p1.id]), format="json")
+        response = self.client.patch(
+            f"/api/actividades-grupales/{creada.data['id']}/",
+            {"paciente_ids": [self.p2.id], "estado": "REALIZADA"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual([p["paciente_id"] for p in response.data["participantes"]], [self.p2.id])
+        self.assertEqual(response.data["estado"], "REALIZADA")

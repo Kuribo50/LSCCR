@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Modal, ModalOverlay, Dialog } from "react-aria-components";
 import type { Estado, Paciente, Rol } from "@/lib/types";
 import { ESTADO_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
@@ -32,7 +33,7 @@ const ESTADO_DESCRIPCIONES: Partial<Record<Estado, string>> = {
   ALTA_MEDICA: "Cierre por alta indicada por el profesional.",
   EGRESO_VOLUNTARIO: "Cierre porque el paciente decide terminar el proceso.",
   EGRESO_ADMINISTRATIVO: "Cierre operativo por contactabilidad fallida antes del ingreso.",
-  DERIVADO: "Cierre por derivacion a otro dispositivo o nivel de atencion.",
+  DERIVADO: "Cierre por derivación a otro dispositivo o nivel de atención.",
 };
 
 interface Props {
@@ -116,25 +117,23 @@ export default function CambiarEstadoModal({
   }
 
   return (
-    <div
+    <ModalOverlay
+      isOpen
+      onOpenChange={(open) => { if (!open) onClose(); }}
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4 py-4 backdrop-blur-sm"
-      onClick={onClose}
     >
-      <div
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-[#D4E4D4] bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Encabezado del modal */}
-        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-6 py-5">
+      <Modal className="w-full max-w-2xl">
+        <Dialog aria-label="Cambiar estado del paciente" className="flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl outline-none dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
+        <div className="shrink-0 border-b border-blue-100 bg-blue-50 px-6 py-5 dark:border-[#2a2a2a] dark:bg-[#151515]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700 dark:text-blue-300">
                 Cambiar estado operativo
               </p>
-              <h3 className="mt-1 text-lg font-bold text-slate-950">
+              <h3 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">
                 {paciente.id_ccr} · {paciente.nombre}
               </h3>
-              <p className="mt-1 text-xs font-medium text-slate-600">
+              <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
                 RUT {paciente.rut ? formatearRut(paciente.rut) : "No registrado"}
               </p>
             </div>
@@ -143,27 +142,25 @@ export default function CambiarEstadoModal({
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
-          {/* Estado actual del paciente */}
-          <div className="rounded-lg border border-blue-100 bg-white px-4 py-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+          <div className="rounded-lg border border-blue-100 bg-white px-4 py-3 dark:border-[#2a2a2a] dark:bg-[#151515]">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
               Vista previa
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <BadgeEstado estado={paciente.estado} />
-              <span className="text-sm font-semibold text-slate-400">→</span>
+              <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">→</span>
               {estadoNuevo ? (
                 <BadgeEstado estado={estadoNuevo} />
               ) : (
-                <span className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500">
+                <span className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-[#3a3a3a] dark:text-slate-400">
                   Selecciona nuevo estado
                 </span>
               )}
             </div>
           </div>
 
-          {/* Opciones de cambio permitidas */}
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-600">
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.06em] text-slate-600 dark:text-slate-300">
               Nuevo estado
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -185,21 +182,21 @@ export default function CambiarEstadoModal({
                       }}
                       className={`rounded-lg border p-4 text-left transition ${
                         seleccionado
-                          ? "border-[#335FDB] bg-blue-50 shadow-sm"
-                          : "border-slate-200 bg-white hover:border-[#335FDB] hover:bg-blue-50"
+                          ? "border-blue-500 bg-blue-50 shadow-sm dark:bg-blue-950/30"
+                          : "border-slate-200 bg-white hover:border-blue-500 hover:bg-blue-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:hover:border-blue-500 dark:hover:bg-blue-950/20"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-bold text-slate-900">
+                        <span className="text-sm font-bold text-slate-900 dark:text-white">
                           {ESTADO_LABELS[estado]}
                         </span>
                         {notaEstado && (
-                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">
+                          <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-300">
                             Requiere nota
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-slate-600">
+                      <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
                         {ESTADO_DESCRIPCIONES[estado] ?? "Cambio de estado operativo."}
                       </p>
                     </button>
@@ -208,14 +205,13 @@ export default function CambiarEstadoModal({
             </div>
           </div>
 
-          {/* Notas del cambio */}
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.06em] text-slate-600">
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-[0.06em] text-slate-600 dark:text-slate-300">
               Notas{" "}
               {requiereNota ? (
-                <span className="text-amber-700">*</span>
+                <span className="text-amber-700 dark:text-amber-400">*</span>
               ) : (
-                <span className="text-slate-400">(opcional)</span>
+                <span className="text-slate-400 dark:text-slate-500">(opcional)</span>
               )}
             </label>
             <textarea
@@ -230,40 +226,40 @@ export default function CambiarEstadoModal({
                   ? "Describe el motivo del cambio para mantener trazabilidad."
                   : "Notas adicionales del cambio."
               }
-              className={`w-full resize-none rounded-lg border px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 ${
+              className={`w-full resize-none rounded-lg border px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 dark:text-white dark:placeholder:text-slate-500 ${
                 requiereNota && !notas.trim()
-                  ? "border-amber-300 bg-amber-50 focus:border-amber-500 focus:ring-2 focus:ring-amber-100"
-                  : "border-slate-200 bg-white focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
+                  ? "border-amber-300 bg-amber-50 focus:border-amber-500 focus:ring-2 focus:ring-amber-100 dark:border-amber-500/40 dark:bg-amber-950/20 dark:focus:ring-amber-500/20"
+                  : "border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:focus:ring-blue-500/20"
               }`}
             />
           </div>
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
               {error}
             </div>
           )}
         </div>
 
-        {/* Acciones del modal */}
-        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-blue-100 bg-slate-50 px-6 py-4 sm:flex-row">
+        <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-blue-100 bg-slate-50 px-6 py-4 dark:border-[#2a2a2a] dark:bg-[#151515] sm:flex-row">
           <button
             type="button"
             onClick={handleConfirm}
             disabled={loading || !puedeConfirmar}
-            className="flex-1 rounded-lg bg-[#335FDB] py-2.5 text-sm font-bold text-white transition hover:bg-[#284FC0] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+            className="flex-1 rounded-lg bg-blue-500 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-[#2a2a2a] dark:disabled:text-slate-500"
           >
             {loading ? "Guardando..." : "Confirmar cambio"}
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+            className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-slate-300 dark:hover:bg-[#202020]"
           >
             Cancelar
           </button>
         </div>
-      </div>
-    </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

@@ -147,7 +147,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                     setNotas('')
                     setError('')
                   }}
-                  className="flex-shrink-0 bg-verde-ccr text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-900 transition"
+                  className="flex-shrink-0 bg-brand-ccr text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-green-900 transition"
                 >
                   Contactar
                 </button>
@@ -165,7 +165,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
                       : "Observación operativa del contacto (opcional)..."
                   }
                   rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-verde-ccr resize-none"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-brand-ccr resize-none"
                 />
                 <div className="flex gap-2">
                   <button

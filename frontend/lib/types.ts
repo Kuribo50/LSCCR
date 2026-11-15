@@ -1,3 +1,12 @@
+// Respuesta paginada DRF: el backend puede devolver un array plano (legacy) o
+// un objeto { count, next, previous, results }. Los hooks SWR normalizan ambos.
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export type Rol = "KINE" | "ADMINISTRATIVO" | "ADMIN";
 export type Prioridad = "ALTA" | "MEDIANA" | "MODERADA" | "LICENCIA_MEDICA";
 export type Categoria =
@@ -158,7 +167,8 @@ export type HistorialAccionTipo =
   | "AGENDA_ASISTIO"
   | "AGENDA_NO_ASISTIO"
   | "AGENDA_REAGENDADO"
-  | "AGENDA_CANCELADO";
+  | "AGENDA_CANCELADO"
+  | "ACTIVIDAD_GRUPAL";
 
 export interface HistorialAccionPaciente {
   tipo: HistorialAccionTipo;
@@ -176,6 +186,19 @@ export interface HistorialAccionPaciente {
 export interface HistorialAccionesPaciente {
   paciente: Paciente;
   acciones: HistorialAccionPaciente[];
+}
+
+export type RiesgoNivel = "ALTO" | "MEDIO" | "BAJO";
+
+export interface PacienteRiesgo extends Paciente {
+  riesgo_score: number;
+  riesgo_nivel: RiesgoNivel;
+  riesgo_factores: string[];
+}
+
+export interface RiesgoAbandonoResponse {
+  resumen: { alto: number; medio: number; bajo: number; total: number };
+  pacientes: PacienteRiesgo[];
 }
 
 export interface AlertaOperativaGrupo {
@@ -540,6 +563,12 @@ export interface ImportacionRevisionActionResultado {
   item: ImportacionRevisionItem;
 }
 
+export const ROL_LABELS: Record<Rol, string> = {
+  KINE: "Kinesiólogo/a",
+  ADMINISTRATIVO: "Administrativo/a",
+  ADMIN: "Administrador/a",
+};
+
 export const CATEGORIA_LABELS: Record<Categoria, string> = {
   BORRADOR: "No categorizado",
   MAS65: "Mayor 65",
@@ -617,4 +646,37 @@ export interface PerfilPaciente {
   sector_cesfam?: string;
   mayor_60: boolean;
   derivaciones: PacienteConMovimientos[];
+}
+
+export type ActividadGrupalEstado = "PROGRAMADA" | "REALIZADA" | "CANCELADA";
+export type AsistenciaActividad = "PENDIENTE" | "ASISTIO" | "NO_ASISTIO";
+
+export interface ParticipanteActividad {
+  paciente_id: number;
+  nombre: string;
+  rut: string;
+  id_ccr: string;
+  categoria: Categoria;
+  telefono: string;
+  asistencia: AsistenciaActividad;
+  asistencia_label: string;
+}
+
+/** Actividad o sesion grupal: varios pacientes asisten juntos en una fecha. */
+export interface ActividadGrupal {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  lugar: string;
+  fecha_hora: string;
+  duracion_minutos: number;
+  estado: ActividadGrupalEstado;
+  estado_label: string;
+  responsable: number | null;
+  responsable_nombre: string | null;
+  creado_por_nombre: string | null;
+  participantes: ParticipanteActividad[];
+  total_participantes: number;
+  total_asistentes: number;
+  creado_en: string;
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { FiUserPlus, FiX } from "react-icons/fi";
+import CampoFecha, { fechaHoyKey } from "./CampoFecha";
 import { api } from "@/lib/api";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import type { Categoria, Paciente, Prioridad } from "@/lib/types";
@@ -35,16 +36,13 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
   const [error, setError] = useState("");
   const isKine = user?.rol === "KINE";
 
-  // Form state
   const [rut, setRut] = useState("");
   const [nombre, setNombre] = useState("");
   const [fechaNacimiento, setFechaNacimiento] = useState("");
   const [edad, setEdad] = useState("");
   const [telefono, setTelefono] = useState("+569");
   const [email, setEmail] = useState("");
-  const [fechaDerivacion, setFechaDerivacion] = useState(() => 
-    new Date().toISOString().split("T")[0]
-  );
+  const [fechaDerivacion, setFechaDerivacion] = useState(fechaHoyKey);
   const [sectorOficial, setSectorOficial] = useState("");
   const [sectorCesfam, setSectorCesfam] = useState("");
   const [diagnostico, setDiagnostico] = useState("");
@@ -79,7 +77,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
     if (!val.startsWith("+569")) {
       val = "+569" + val.replace("+569", "").replace(/\D/g, "");
     }
-    setTelefono(val.slice(0, 12)); // max 12 chars: +569 followed by 8 digits
+    setTelefono(val.slice(0, 12));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -88,7 +86,6 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
     setError("");
 
     try {
-      // 1. Create Patient
       const rawRut = rut.replace(/[^0-9kK]/g, "");
       
       const res = await api.post<Paciente>("/pacientes/", {
@@ -112,8 +109,8 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
       if (autoAsignar && isKine) {
         try {
           await api.post(`/pacientes/${res.id}/asignar/`, {});
-        } catch (assignError) {
-          console.error("No se pudo autoasignar", assignError);
+        } catch {
+          // Si falla la autoasignacion, el paciente igual queda creado.
         }
       }
 
@@ -148,23 +145,23 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
         if (!v) resetForm();
         onOpenChange(v);
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm [animation:fade_150ms_ease-out]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm [animation:fade_150ms_ease-out]"
       isDismissable
     >
-      <Modal className="w-full max-w-[900px] overflow-hidden rounded-2xl bg-[#FCFDFD] shadow-2xl outline-none [animation:zoom_150ms_ease-out]">
+      <Modal className="w-full max-w-[900px] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl outline-none [animation:zoom_150ms_ease-out]">
         <Dialog className="flex max-h-[90vh] flex-col outline-none">
           {({ close }) => (
             <>
-              <header className="flex shrink-0 items-center justify-between border-b border-[#E9F3ED] bg-[#FAFCFB] px-6 py-4">
+              <header className="flex shrink-0 items-center justify-between border-b border-blue-100 bg-white px-6 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e9f4fb] text-[#335fdb]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-500">
                     <FiUserPlus size={20} />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-[#1D3B2A]">
+                    <h2 className="text-base font-black text-slate-950">
                       Ingreso Manual de Paciente
                     </h2>
-                    <p className="text-[13px] text-[#698B77]">
+                    <p className="text-[13px] font-semibold text-slate-500">
                       Formulario avanzado para nuevos ingresos a la lista base.
                     </p>
                   </div>
@@ -172,13 +169,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                 <button
                   type="button"
                   onClick={close}
-                  className="rounded-lg p-2 text-[#698B77] transition hover:bg-[#E9F3ED] hover:text-[#1D3B2A]"
+                  aria-label="Cerrar ingreso manual de paciente"
+                  className="rounded-lg p-2 text-slate-500 transition hover:bg-blue-50 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   <FiX size={20} />
                 </button>
               </header>
 
-              <div className="flex-1 overflow-y-auto p-6 [scrollbar-color:#BCCDBE_transparent] [scrollbar-width:thin]">
+              <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6 [scrollbar-color:#BFDBFE_transparent] [scrollbar-width:thin]">
                 {error && (
                   <div className="mb-6 rounded-xl border border-[#F5C2C7] bg-[#F8D7DA] p-4 text-[13px] text-[#842029]">
                     <p className="font-semibold">No se pudo registrar:</p>
@@ -187,12 +185,11 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                 )}
 
                 <form id="crear-paciente-form" onSubmit={handleSubmit} className="space-y-4">
-                  {/* Identificacion del paciente */}
-                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
-                    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Identificacion</h3>
+                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Identificacion</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5 sm:col-span-1">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           RUT
                         </label>
                         <input
@@ -200,11 +197,11 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={rut}
                           onChange={handleRutChange}
                           placeholder="Sin puntos, con guión"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] font-semibold text-[#2C4837] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Nombre Completo
                         </label>
                         <input
@@ -212,27 +209,29 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={nombre}
                           onChange={(e) => setNombre(e.target.value)}
                           placeholder="Nombres y Apellidos"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Demografia y datos de contacto */}
-                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
-                    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Demografia y Contacto</h3>
+                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Demografia y Contacto</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Fecha Nacimiento
                         </label>
-                        <input
-                          type="date"
+                        <CampoFecha
+                          compacto
+                          label="Fecha de nacimiento"
                           value={fechaNacimiento}
-                          onChange={(e) => {
-                            setFechaNacimiento(e.target.value);
-                            if (e.target.value) {
-                              const birth = new Date(e.target.value);
+                          max={fechaHoyKey()}
+                          vistaVacia="anios"
+                          onChange={(valor) => {
+                            setFechaNacimiento(valor);
+                            if (valor) {
+                              const birth = new Date(`${valor}T00:00:00`);
                               const now = new Date();
                               const ageMatch = now.getFullYear() - birth.getFullYear();
                               const isBefore = now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
@@ -242,11 +241,10 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                               }
                             }
                           }}
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Edad
                         </label>
                         <input
@@ -257,22 +255,22 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={edad}
                           onChange={(e) => setEdad(e.target.value)}
                           placeholder="Automático"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Celular
                         </label>
                         <input
                           value={telefono}
                           onChange={handleTelefonoChange}
                           placeholder="+56912345678"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Correo Electrónico
                         </label>
                         <input
@@ -280,18 +278,17 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="Opcional"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Bloque de datos de derivación. */}
-                  <div className="rounded-xl border border-[#a8d4f0] bg-white p-4">
-                    <h3 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#698B77]">Información de derivación</h3>
+                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Información de derivación</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Diagnóstico
                         </label>
                         <input
@@ -299,40 +296,40 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={diagnostico}
                           onChange={(e) => setDiagnostico(e.target.value)}
                           placeholder="Descripción detallada del diagnóstico"
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Sector oficial
                         </label>
                         <input
                           value={sectorOficial}
                           onChange={(e) => setSectorOficial(e.target.value)}
                           placeholder="AZUL, ROJO, VERDE..."
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           SectorCesfam
                         </label>
                         <input
                           value={sectorCesfam}
                           onChange={(e) => setSectorCesfam(e.target.value)}
                           placeholder="AZUL, CECOSF EL SANTO..."
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Categoría
                         </label>
                         <select
                           required
                           value={categoria}
                           onChange={(e) => setCategoria(e.target.value as Categoria)}
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         >
                           {CATEGORIAS.map((c) => (
                             <option key={c} value={c}>{CATEGORIA_LABELS[c]}</option>
@@ -340,14 +337,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Prioridad
                         </label>
                         <select
                           required
                           value={prioridad}
                           onChange={(e) => setPrioridad(e.target.value as Prioridad)}
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         >
                           {PRIORIDADES.map((p) => (
                             <option key={p} value={p}>{PRIORIDAD_LABELS[p]}</option>
@@ -355,19 +352,20 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Fecha Derv. Original
                         </label>
-                        <input
-                          required
-                          type="date"
+                        <CampoFecha
+                          compacto
+                          label="Fecha de derivación original"
                           value={fechaDerivacion}
-                          onChange={(e) => setFechaDerivacion(e.target.value)}
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          max={fechaHoyKey()}
+                          opcional={false}
+                          onChange={setFechaDerivacion}
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3 flex flex-col">
-                        <label className="text-[12px] font-semibold text-[#1D3B2A]">
+                        <label className="text-[12px] font-bold text-slate-700">
                           Observaciones
                         </label>
                         <textarea
@@ -375,19 +373,19 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={observaciones}
                           onChange={(e) => setObservaciones(e.target.value)}
                           placeholder="Notas extra de la derivación o del estado..."
-                          className="w-full rounded-lg border border-[#a8d4f0] bg-[#FAFCFB] px-3 py-2 text-[13px] outline-none focus:border-[#2694d9] focus:bg-white focus:ring-1 focus:ring-[#2694d9]"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
                   {isKine && (
-                    <div className="mt-4 rounded-xl border border-[#CDEAE0] bg-[#e9f4fb] p-4 text-[13px] flex items-center justify-between">
+                    <div className="mt-4 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 p-4 text-[13px]">
                       <div>
-                        <label htmlFor="autoAsignar" className="font-bold text-[#1D3B2A] cursor-pointer block">
+                        <label htmlFor="autoAsignar" className="block cursor-pointer font-bold text-slate-900">
                           Ingresar directo a mis pacientes
                         </label>
-                        <p className="text-[#456A55] text-[12px] mt-0.5 max-w-[65ch]">
+                        <p className="mt-0.5 max-w-[65ch] text-[12px] font-semibold text-slate-600">
                           El paciente pasará a tu cartera en estado Pendiente listo para ser gestionado.
                         </p>
                       </div>
@@ -396,19 +394,19 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         id="autoAsignar"
                         checked={autoAsignar} 
                         onChange={(e) => setAutoAsignar(e.target.checked)}
-                        className="h-5 w-5 rounded border-[#6ab0c8] text-[#335fdb] focus:ring-[#2694d9] bg-white shadow-sm"
+                        className="h-5 w-5 rounded border-blue-200 bg-white text-blue-500 shadow-sm focus:ring-blue-500"
                       />
                     </div>
                   )}
                 </form>
               </div>
 
-              <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-[#E9F3ED] bg-[#FAFCFB] px-6 py-4">
+              <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-blue-100 bg-white px-6 py-4">
                 <button
                   type="button"
                   onClick={close}
                   disabled={loading}
-                  className="rounded-xl px-5 py-2 text-[13px] font-bold text-[#698B77] transition hover:bg-[#E9F3ED]"
+                  className="rounded-xl px-5 py-2 text-[13px] font-bold text-slate-600 transition hover:bg-blue-50 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
                 >
                   Cancelar
                 </button>
@@ -416,7 +414,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                   type="submit"
                   form="crear-paciente-form"
                   disabled={loading}
-                  className="rounded-xl bg-[#335fdb] px-6 py-2.5 text-[13px] font-bold text-white transition hover:bg-[#284fc0] disabled:opacity-50 flex items-center justify-center min-w-[150px] shadow-sm"
+                  className="flex min-w-[150px] items-center justify-center rounded-xl bg-blue-500 px-6 py-2.5 text-[13px] font-bold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
                 >
                   {loading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />

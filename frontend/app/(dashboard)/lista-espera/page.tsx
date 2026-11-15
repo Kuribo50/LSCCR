@@ -9,7 +9,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createColumnHelper,
@@ -23,32 +22,55 @@ import {
 } from "@tanstack/react-table";
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FiDownload, FiFilter, FiMail, FiPhone, FiRefreshCw, FiSearch, FiUser } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiDownload, FiFilter, FiMail, FiPhone, FiRefreshCw, FiSearch, FiUser, FiX } from "react-icons/fi";
+import { motion } from "framer-motion";
+import { TONO_CATEGORIA } from "@/components/AgendaGrid";
+import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import { formatearRut } from "@/lib/rut";
+import { sectorColorClasses } from "@/lib/sectores";
+import SectorBadge from "@/components/SectorBadge";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { usePersistentTableState } from "@/lib/tables/usePersistentTableState";
-import type { Categoria, Estado, Paciente, Prioridad } from "@/lib/types";
+import { useAPI, unwrapResults } from "@/lib/swr";
+import type { Categoria, Estado, Paciente, PaginatedResponse, Prioridad } from "@/lib/types";
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import FichaPaciente from "@/components/FichaPaciente";
+import {
+  normalizeRut,
+  normalizeSearchText,
+  toCapitalizedWords,
+  formatDateDisplay,
+  dateSortValue,
+  getResponsableLabel,
+  descargarBlob,
+  multiSelectFilter as multiSelectFilterBase,
+} from "@/lib/utils";
+import FilterPopover, {
+  type ColumnMeta,
+  type FilterPopoverPosition,
+  PRIORIDAD_ORDER,
+  getColumnMeta,
+  sortFilterValues,
+} from "@/components/FilterPopover";
+import dynamic from "next/dynamic";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import BadgeDias from "@/components/BadgeDias";
-import ConfirmDialog from "@/components/ConfirmDialog";
 import { TableSkeleton } from "@/components/Skeleton";
 import EmptyState from "@/components/EmptyState";
+
+// Heavy components not needed on initial render — lazy-loaded to reduce bundle.
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), {
+  ssr: false,
+});
+const ConfirmDialog = dynamic(() => import("@/components/ConfirmDialog"), {
+  ssr: false,
+});
 
 // =============================================================================
 // Tipos, constantes y helpers de tabla
 // =============================================================================
-
-const PRIORIDAD_ORDER: Record<Prioridad, number> = {
-  ALTA: 0,
-  MEDIANA: 1,
-  MODERADA: 2,
-  LICENCIA_MEDICA: 3,
-};
 
 const LISTA_ESPERA_ESTADOS: Estado[] = ["PENDIENTE", "RESCATE"];
 
@@ -74,16 +96,8 @@ type WaitlistRow = {
   searchIndex: string;
 };
 
-type ColumnMeta = {
-  label: string;
-  kind?: "text" | "number";
-  filterable?: boolean;
-  align?: "left" | "center" | "right";
-};
-
 type FilterDraftState = Record<string, string[]>;
 type FilterQueryState = Record<string, string>;
-type FilterPopoverPosition = { top: number; left: number };
 type AssignContactDraft = {
   telefono: string;
   telefono_recados: string;
@@ -91,145 +105,36 @@ type AssignContactDraft = {
   observaciones: string;
 };
 type QuickFilterState = {
-  estado: Estado | "TODOS";
-  prioridad: Prioridad | "TODAS";
-  categoria: Categoria | "TODAS";
-  sector_cesfam: string;
-  sector_oficial: string;
-  responsable: string;
+  // Cada filtro acepta varios valores; vacio = sin filtrar.
+  estado: Estado[];
+  prioridad: Prioridad[];
+  categoria: Categoria[];
+  sector_cesfam: string[];
+  sector_oficial: string[];
+  responsable: string[];
 };
 
-function normalizeRut(value: string) {
-  return value.toLowerCase().replace(/[^0-9k]/g, "");
+/** true si hay valores elegidos y el del paciente no esta entre ellos. */
+function fueraDeFiltro<T>(valores: T[], valor: T) {
+  return valores.length > 0 && !valores.includes(valor);
 }
 
-function normalizeSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase("es-CL")
-    .trim();
+/** Valor del filtro Profesional: id del kine o SIN_RESPONSABLE. */
+function claveResponsable(paciente: Paciente) {
+  return paciente.kine_asignado ? String(paciente.kine_asignado) : "SIN_RESPONSABLE";
 }
 
-function toCapitalizedWords(value: string) {
-  const normalized = value
-    .trim()
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .toLocaleLowerCase("es-CL");
-  return normalized.replace(/\p{L}+/gu, (word) => {
-    const [first = "", ...rest] = Array.from(word);
-    return `${first.toLocaleUpperCase("es-CL")}${rest.join("")}`;
-  });
-}
-
-function getResponsableLabel(paciente: Paciente) {
-  return (
-    paciente.responsable_nombre ??
-    paciente.kine_asignado_nombre ??
-    "Sin responsable"
-  );
-}
-
-function formatDateDisplay(value: string | null | undefined) {
-  if (!value) return "Sin fecha";
-  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return "Sin fecha";
-  return parsed.toLocaleDateString("es-CL");
-}
-
-function dateSortValue(value: string | null | undefined) {
-  if (!value) return Number.POSITIVE_INFINITY;
-  const parsed = new Date(value.length > 10 ? value : `${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return Number.POSITIVE_INFINITY;
-  return parsed.getTime();
-}
-
-function descargarBlob(blob: Blob, filename: string) {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
-}
-
-const multiSelectFilter: FilterFn<WaitlistRow> = (
-  row,
-  columnId,
-  filterValue,
-) => {
-  if (typeof filterValue === "string") {
-    const query = filterValue.trim();
-    if (!query) return true;
-
-    const cellValue = String(row.getValue(columnId) ?? "");
-    if (columnId === "rut") {
-      return normalizeRut(cellValue).includes(normalizeRut(query));
-    }
-
-    return normalizeSearchText(cellValue).includes(normalizeSearchText(query));
-  }
-
-  const selected = Array.isArray(filterValue) ? filterValue : [];
-  if (selected.length === 0) return true;
-  return selected.includes(String(row.getValue(columnId)));
-};
-
-multiSelectFilter.autoRemove = (value) =>
-  typeof value === "string"
-    ? value.trim().length === 0
-    : !Array.isArray(value) || value.length === 0;
+const multiSelectFilter = multiSelectFilterBase as FilterFn<WaitlistRow>;
 
 const columnHelper = createColumnHelper<WaitlistRow>();
-
-function getColumnMeta(column: Column<WaitlistRow>): ColumnMeta {
-  return (column.columnDef.meta ?? { label: column.id }) as ColumnMeta;
-}
-
-function sortFilterValues(columnId: string, values: string[]) {
-  if (columnId === "edad" || columnId === "dias_en_lista") {
-    return [...values].sort((a, b) => Number(a) - Number(b));
-  }
-
-  if (columnId === "prioridadLabel") {
-    return [...values].sort((a, b) => {
-      const aKey = Object.entries(PRIORIDAD_LABELS).find(
-        ([, label]) => label === a,
-      )?.[0] as Prioridad | undefined;
-      const bKey = Object.entries(PRIORIDAD_LABELS).find(
-        ([, label]) => label === b,
-      )?.[0] as Prioridad | undefined;
-      return (
-        (aKey ? PRIORIDAD_ORDER[aKey] : 999) -
-        (bKey ? PRIORIDAD_ORDER[bKey] : 999)
-      );
-    });
-  }
-
-  return [...values].sort((a, b) => a.localeCompare(b, "es"));
-}
-
-function matchesFilterSearch(columnId: string, option: string, query: string) {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) return true;
-
-  if (columnId === "rut") {
-    return normalizeRut(option).includes(normalizeRut(trimmedQuery));
-  }
-
-  return normalizeSearchText(option).includes(normalizeSearchText(trimmedQuery));
-}
 
 const BASE_COLUMN_VISIBILITY: VisibilityState = {
   responsable: true,
   nombre: true,
-  rut: true,
+  rut: false,
   edad: true,
   sector_cesfam: true,
-  sector_oficial: true,
+  sector_oficial: false,
   diagnostico: true,
   fecha_ingreso: true,
   prioridadLabel: true,
@@ -271,23 +176,28 @@ function getResponsiveColumnVisibility(width: number): VisibilityState {
     };
   }
 
+  // Pantallas medianas: se oculta la fecha de ingreso para que la tabla entre completa.
+  if (width < 1500) {
+    return { ...BASE_COLUMN_VISIBILITY, fecha_ingreso: false };
+  }
+
   return BASE_COLUMN_VISIBILITY;
 }
 
 function getCompactColumnSizing(isAdmin: boolean): Record<string, number> {
   return {
-    acciones: isAdmin ? 132 : 96,
+    acciones: isAdmin ? 48 : 92,
     responsable: 132,
-    nombre: 200,
-    rut: 126,
-    edad: 72,
-    sector_cesfam: 170,
-    sector_oficial: 170,
-    diagnostico: 230,
-    fecha_ingreso: 112,
-    prioridadLabel: 104,
-    categoriaLabel: 104,
-    dias_en_lista: 88,
+    nombre: 210,
+    rut: 112,
+    edad: 68,
+    sector_cesfam: 140,
+    sector_oficial: 150,
+    diagnostico: 150,
+    fecha_ingreso: 96,
+    prioridadLabel: 100,
+    categoriaLabel: 128,
+    dias_en_lista: 76,
   };
 }
 
@@ -301,9 +211,7 @@ export default function ListaEsperaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [mutationError, setMutationError] = useState("");
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null);
   const [asignando, setAsignando] = useState<number | null>(null);
   const [asignarPaciente, setAsignarPaciente] = useState<Paciente | null>(null);
@@ -323,12 +231,12 @@ export default function ListaEsperaPage() {
   const [deleting, setDeleting] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [quickFilters, setQuickFilters] = useState<QuickFilterState>({
-    estado: "TODOS",
-    prioridad: "TODAS",
-    categoria: "TODAS",
-    sector_cesfam: "TODOS",
-    sector_oficial: "TODOS",
-    responsable: "TODOS",
+    estado: [],
+    prioridad: [],
+    categoria: [],
+    sector_cesfam: [],
+    sector_oficial: [],
+    responsable: [],
   });
   const [showQuickFilters, setShowQuickFilters] = useState(false);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
@@ -337,24 +245,24 @@ export default function ListaEsperaPage() {
   const initialTableState = useMemo(
     () => ({
       globalSearch: "",
-      sorting: [{ id: "dias_en_lista", desc: true as const }],
+      sorting: [{ id: "rut", desc: false as const }],
       columnFilters: [],
       columnSizing: getCompactColumnSizing(user?.rol === "ADMIN"),
       columnOrder: [
-        "acciones",
-        "responsable",
         "nombre",
-        "rut",
         "edad",
-        "sector_cesfam",
-        "sector_oficial",
-        "diagnostico",
-        "fecha_ingreso",
-        "prioridadLabel",
         "categoriaLabel",
+        "prioridadLabel",
         "dias_en_lista",
+        "responsable",
+        "sector_cesfam",
+        "fecha_ingreso",
+        "diagnostico",
+        "sector_oficial",
+        "rut",
       ],
-      columnVisibility: {},
+      // El RUT ya se muestra bajo el nombre; la columna queda disponible pero oculta.
+      columnVisibility: { rut: false, sector_oficial: false },
     }),
     [user?.rol],
   );
@@ -369,7 +277,7 @@ export default function ListaEsperaPage() {
     setColumnVisibility,
     resetTableState,
   } = usePersistentTableState({
-    storageKey: "table-prefs:lista-espera",
+    storageKey: "table-prefs:lista-espera:v6",
     initialState: initialTableState,
   });
   const deferredSearch = useDeferredValue(tableState.globalSearch);
@@ -382,36 +290,27 @@ export default function ListaEsperaPage() {
   const alertaActiva = alertaParam && ALERTA_LABELS[alertaParam] ? alertaParam : null;
   const alertaActivaLabel = alertaActiva ? ALERTA_LABELS[alertaActiva] : null;
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const params = new URLSearchParams();
-      if (alertaActiva) {
-        params.set("alerta", alertaActiva);
-      } else {
-        params.set("estado", LISTA_ESPERA_ESTADOS.join(","));
-      }
-      if (mes) params.set("mes", mes);
-      if (anio) params.set("anio", anio);
-      if (importacionId) params.set("importacion", importacionId);
-      const data = await api.get<Paciente[]>(
-        `/pacientes/?${params.toString()}`,
-      );
-      setPacientes(data);
-    } catch (error) {
-      setPacientes([]);
-      const message = getErrorMessage(error, "No se pudo cargar la lista de espera.");
-      setError(message);
-      toastError(message);
-    } finally {
-      setLoading(false);
+  const swrPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (alertaActiva) {
+      params.set("alerta", alertaActiva);
+    } else {
+      params.set("estado", LISTA_ESPERA_ESTADOS.join(","));
     }
-  }, [alertaActiva, mes, anio, importacionId, toastError]);
+    if (mes) params.set("mes", mes);
+    if (anio) params.set("anio", anio);
+    if (importacionId) params.set("importacion", importacionId);
+    return `/pacientes/?${params.toString()}`;
+  }, [alertaActiva, mes, anio, importacionId]);
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const {
+    data: swrData,
+    error: swrError,
+    isLoading: loading,
+    mutate,
+  } = useAPI<Paciente[] | PaginatedResponse<Paciente>>(swrPath);
+  const pacientes = unwrapResults(swrData);
+  const error = mutationError || (swrError ? getErrorMessage(swrError, "No se pudo cargar la lista de espera.") : "");
 
   useEffect(() => {
     if (!hasHydrated || !searchParam) return;
@@ -463,9 +362,9 @@ export default function ListaEsperaPage() {
 
     setColumnOrder((prev) => {
       if (!prev.length) return prev;
-      if (prev[0] === "acciones") return prev;
-      const withoutActions = prev.filter((id) => id !== "acciones");
-      return ["acciones", ...withoutActions];
+      // Las acciones viven en la ficha del paciente; la tabla no tiene esa columna.
+      if (!prev.includes("acciones")) return prev;
+      return prev.filter((id) => id !== "acciones");
     });
   }, [hasHydrated, setColumnOrder]);
 
@@ -481,7 +380,7 @@ export default function ListaEsperaPage() {
       await api.delete(`/pacientes/${deleteTarget.id}/`);
       toastSuccess(`Paciente "${deleteTarget.nombre}" eliminado correctamente.`);
       setDeleteTarget(null);
-      void cargar();
+      void mutate();
     } catch (error) {
       toastError(getErrorMessage(error, "No se pudo eliminar el paciente."));
     } finally {
@@ -497,8 +396,8 @@ export default function ListaEsperaPage() {
       if (alertaActiva) {
         params.set("alerta", alertaActiva);
       }
-      if (quickFilters.estado !== "TODOS") {
-        params.set("estado", quickFilters.estado);
+      if (quickFilters.estado.length > 0) {
+        params.set("estado", quickFilters.estado.join(","));
       } else if (!alertaActiva) {
         // Alcance base de lista de espera: pendientes y rescates, sin limitar
         // por responsable. Los filtros rapidos solo acotan esa vista.
@@ -510,16 +409,15 @@ export default function ListaEsperaPage() {
       if (tableState.globalSearch.trim()) {
         params.set("search", tableState.globalSearch.trim());
       }
-      if (quickFilters.prioridad !== "TODAS") params.set("prioridad", quickFilters.prioridad);
-      if (quickFilters.categoria !== "TODAS") params.set("categoria", quickFilters.categoria);
-      if (quickFilters.sector_cesfam !== "TODOS") params.set("sector_cesfam", quickFilters.sector_cesfam);
-      if (quickFilters.sector_oficial !== "TODOS") params.set("sector_oficial", quickFilters.sector_oficial);
-      if (quickFilters.responsable !== "TODOS") {
-        if (quickFilters.responsable === "SIN_RESPONSABLE") {
-          params.set("sin_asignar", "1");
-        } else {
-          params.set("kine", quickFilters.responsable);
-        }
+      if (quickFilters.prioridad.length > 0) params.set("prioridad", quickFilters.prioridad.join(","));
+      if (quickFilters.categoria.length > 0) params.set("categoria", quickFilters.categoria.join(","));
+      if (quickFilters.sector_cesfam.length > 0) params.set("sector_cesfam", quickFilters.sector_cesfam.join(","));
+      if (quickFilters.sector_oficial.length > 0) params.set("sector_oficial", quickFilters.sector_oficial.join(","));
+      if (quickFilters.responsable.length > 0) {
+        params.set(
+          "kine",
+          quickFilters.responsable.map((r) => (r === "SIN_RESPONSABLE" ? "SIN_ASIGNAR" : r)).join(","),
+        );
       }
       const blob = await api.getBlob(`/pacientes/exportar/?${params.toString()}`);
       descargarBlob(blob, `lista-espera-ccr-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}.xlsx`);
@@ -612,12 +510,12 @@ export default function ListaEsperaPage() {
   const quickFilterCount = useMemo(
     () =>
       [
-        quickFilters.estado !== "TODOS",
-        quickFilters.prioridad !== "TODAS",
-        quickFilters.categoria !== "TODAS",
-        quickFilters.sector_cesfam !== "TODOS",
-        quickFilters.sector_oficial !== "TODOS",
-        quickFilters.responsable !== "TODOS",
+        quickFilters.estado.length > 0,
+        quickFilters.prioridad.length > 0,
+        quickFilters.categoria.length > 0,
+        quickFilters.sector_cesfam.length > 0,
+        quickFilters.sector_oficial.length > 0,
+        quickFilters.responsable.length > 0,
       ].filter(Boolean).length,
     [quickFilters],
   );
@@ -627,43 +525,12 @@ export default function ListaEsperaPage() {
       pacientes.filter((paciente) => {
         // Primero se aplican filtros rapidos de negocio; luego React Table
         // aplica busqueda global, filtros por columna, orden y visibilidad.
-        if (quickFilters.estado !== "TODOS" && paciente.estado !== quickFilters.estado) {
-          return false;
-        }
-        if (
-          quickFilters.prioridad !== "TODAS" &&
-          paciente.prioridad !== quickFilters.prioridad
-        ) {
-          return false;
-        }
-        if (
-          quickFilters.categoria !== "TODAS" &&
-          paciente.categoria !== quickFilters.categoria
-        ) {
-          return false;
-        }
-        if (
-          quickFilters.sector_cesfam !== "TODOS" &&
-          paciente.sector_cesfam !== quickFilters.sector_cesfam
-        ) {
-          return false;
-        }
-        if (
-          quickFilters.sector_oficial !== "TODOS" &&
-          paciente.sector_oficial !== quickFilters.sector_oficial
-        ) {
-          return false;
-        }
-        if (quickFilters.responsable === "SIN_RESPONSABLE" && paciente.kine_asignado) {
-          return false;
-        }
-        if (
-          quickFilters.responsable !== "TODOS" &&
-          quickFilters.responsable !== "SIN_RESPONSABLE" &&
-          String(paciente.kine_asignado) !== quickFilters.responsable
-        ) {
-          return false;
-        }
+        if (fueraDeFiltro(quickFilters.estado, paciente.estado)) return false;
+        if (fueraDeFiltro(quickFilters.prioridad, paciente.prioridad)) return false;
+        if (fueraDeFiltro(quickFilters.categoria, paciente.categoria)) return false;
+        if (fueraDeFiltro(quickFilters.sector_cesfam, paciente.sector_cesfam)) return false;
+        if (fueraDeFiltro(quickFilters.sector_oficial, paciente.sector_oficial)) return false;
+        if (fueraDeFiltro(quickFilters.responsable, claveResponsable(paciente))) return false;
         return true;
       }),
     [pacientes, quickFilters],
@@ -728,16 +595,16 @@ export default function ListaEsperaPage() {
       ...(user?.rol === "ADMIN"
         ? [
             columnHelper.accessor("responsable", {
-              header: "Responsable CCR",
+              header: "Profesional",
               enableColumnFilter: true,
               filterFn: multiSelectFilter,
               enableResizing: true,
               size: 132,
               minSize: 108,
-              meta: { label: "Responsable CCR", filterable: true } satisfies ColumnMeta,
+              meta: { label: "Profesional", filterable: true } satisfies ColumnMeta,
               cell: (info) => (
                 <div
-                  className="truncate font-semibold text-gray-800"
+                  className={`truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-400"}`}
                   title={info.getValue() || "Sin responsable"}
                 >
                   {info.getValue() || "Sin asignar"}
@@ -747,19 +614,19 @@ export default function ListaEsperaPage() {
           ]
         : []),
       columnHelper.accessor("nombre", {
-        header: "Nombre",
+        header: "Paciente",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 200,
-        minSize: 160,
-        meta: { label: "Nombre", filterable: true } satisfies ColumnMeta,
+        size: 240,
+        minSize: 180,
+        meta: { label: "Paciente", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
-          <div
-            className="truncate font-semibold text-gray-800"
-            title={info.getValue()}
-          >
-            {info.getValue()}
+          <div className="min-w-0 leading-tight" title={info.getValue()}>
+            <p className="truncate text-[13px] font-bold text-slate-950 dark:text-white">
+              {info.getValue().toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase())}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-medium tabular-nums text-slate-500">{info.row.original.rut}</p>
           </div>
         ),
       }),
@@ -770,8 +637,10 @@ export default function ListaEsperaPage() {
         enableResizing: true,
         size: 126,
         minSize: 102,
+        // Orden numerico por el cuerpo del RUT (sin digito verificador).
         sortingFn: (a, b) =>
-          a.original.rutRaw.localeCompare(b.original.rutRaw, "es"),
+          (Number.parseInt(a.original.rutRaw.slice(0, -1), 10) || 0) -
+          (Number.parseInt(b.original.rutRaw.slice(0, -1), 10) || 0),
         meta: { label: "RUT", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <div className="font-mono text-gray-600">{info.getValue()}</div>
@@ -782,8 +651,17 @@ export default function ListaEsperaPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 72,
-        minSize: 64,
+        size: 70,
+        minSize: 60,
+        // Edad 0 significa que la planilla de derivacion no traia la edad.
+        cell: (info) =>
+          info.getValue() ? (
+            <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{info.getValue()}</span>
+          ) : (
+            <span className="text-[11px] font-medium text-slate-400" title="La planilla de derivación no trae la edad">
+              Sin dato
+            </span>
+          ),
         meta: {
           label: "Edad",
           filterable: true,
@@ -791,18 +669,14 @@ export default function ListaEsperaPage() {
         } satisfies ColumnMeta,
       }),
       columnHelper.accessor("sector_cesfam", {
-        header: "Sector CESFAM",
+        header: "Sector",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
         size: 170,
         minSize: 140,
         meta: { label: "Sector CESFAM", filterable: true } satisfies ColumnMeta,
-        cell: (info) => (
-          <span className="block truncate text-gray-600" title={info.getValue()}>
-            {info.getValue()}
-          </span>
-        ),
+        cell: (info) => <SectorBadge sector={info.getValue()} />,
       }),
       columnHelper.accessor("sector_oficial", {
         header: "Sector oficial",
@@ -833,7 +707,7 @@ export default function ListaEsperaPage() {
         ),
       }),
       columnHelper.accessor("fecha_ingreso", {
-        header: "Fecha ingreso",
+        header: "Ingreso",
         enableColumnFilter: false,
         enableResizing: true,
         size: 112,
@@ -868,15 +742,23 @@ export default function ListaEsperaPage() {
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
-        size: 104,
-        minSize: 92,
+        size: 150,
+        minSize: 120,
         meta: { label: "Categoría", filterable: true } satisfies ColumnMeta,
-        cell: (info) => (
-          <span className="text-gray-600">{info.getValue()}</span>
-        ),
+        cell: (info) => {
+          const tono = TONO_CATEGORIA[info.row.original.patient.categoria];
+          return (
+            <span
+              className={`inline-flex max-w-full items-center gap-1.5 truncate rounded-md border px-2 py-0.5 text-[11px] font-bold text-slate-800 dark:text-ink-black-100 ${tono?.bg ?? ""} ${tono?.border ?? "border-slate-200"}`}
+            >
+              <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${tono?.dot ?? "bg-slate-400"}`} />
+              <span className="truncate">{CATEGORIA_LABELS[info.row.original.patient.categoria] ?? info.getValue()}</span>
+            </span>
+          );
+        },
       }),
       columnHelper.accessor("dias_en_lista", {
-        header: "Días de espera",
+        header: "Espera",
         enableColumnFilter: true,
         filterFn: multiSelectFilter,
         enableResizing: true,
@@ -889,50 +771,8 @@ export default function ListaEsperaPage() {
         } satisfies ColumnMeta,
         cell: (info) => <BadgeDias days={info.getValue()} />,
       }),
-      columnHelper.display({
-        id: "acciones",
-        header: "Acciones",
-        enableSorting: false,
-        enableColumnFilter: false,
-        enableResizing: true,
-        size: user?.rol === "ADMIN" ? 132 : 96,
-        minSize: user?.rol === "ADMIN" ? 116 : 88,
-        meta: { label: "Acciones", align: "left" } satisfies ColumnMeta,
-        cell: (info) => {
-          const paciente = info.row.original.patient;
-          return (
-            <div className="flex items-center justify-start gap-1">
-              {user?.rol === "KINE" && (
-                <button
-                  type="button"
-                  disabled={asignando === paciente.id}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    abrirAsignacionConContacto(paciente);
-                  }}
-                  className="ccr-table-action ccr-action-primary px-2 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {asignando === paciente.id ? "Asignando..." : "Tomar"}
-                </button>
-              )}
-              {user?.rol === "ADMIN" && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    handleEliminar(paciente.id, paciente.nombre);
-                  }}
-                  className="ccr-table-action ccr-action-danger px-2 py-1 text-[10px]"
-                >
-                  Eliminar
-                </button>
-              )}
-            </div>
-          );
-        },
-      }),
     ],
-    [asignando, handleEliminar, user?.rol],
+    [user?.rol],
   );
 
   const table = useReactTable({
@@ -975,26 +815,28 @@ export default function ListaEsperaPage() {
   });
 
   const filteredRows = table.getFilteredRowModel().rows.length;
+  const categoriasConConteo = Array.from(
+    pacientes.reduce((mapa, p) => mapa.set(p.categoria, (mapa.get(p.categoria) ?? 0) + 1), new Map<Categoria, number>()),
+  ).sort((a, b) => b[1] - a[1]);
+  // Cantidad de pacientes por valor, para mostrar en los desplegables de filtro.
+  const conteo = (campo: "estado" | "prioridad" | "sector_cesfam" | "sector_oficial" | "responsable", valor: string) =>
+    pacientes.filter((p) => (campo === "responsable" ? claveResponsable(p) : p[campo]) === valor).length;
   const tableRows = table.getRowModel().rows;
   const activeFilterCount =
     tableState.columnFilters.length +
     quickFilterCount +
     (tableState.globalSearch.trim() ? 1 : 0) +
     (alertaActiva ? 1 : 0);
+  // Anchos de columna fijos en px (estilo Excel): header y filas comparten el mismo
+  // template exacto, asi las columnas no se reajustan al filtrar ni cuando aparece/
+  // desaparece la barra de scroll. Antes el minmax(...,1fr) las estiraba y deformaba.
+  // Solo el diagnostico se estira para ocupar el ancho libre: el resto mantiene
+  // su ancho exacto, asi la tabla llena la pantalla sin deformar columnas.
   const columnTemplate = table
     .getVisibleLeafColumns()
-    .map((column) => {
-      if (
-        column.id === "nombre" ||
-        column.id === "diagnostico" ||
-        column.id === "sector_cesfam" ||
-        column.id === "sector_oficial" ||
-        column.id === "categoriaLabel"
-      ) {
-        return `minmax(${column.getSize()}px, 1fr)`;
-      }
-      return `${column.getSize()}px`;
-    })
+    .map((column) =>
+      column.id === "diagnostico" ? `minmax(${column.getSize()}px, 1fr)` : `${column.getSize()}px`,
+    )
     .join(" ");
   const tableMinWidth = table
     .getVisibleLeafColumns()
@@ -1003,7 +845,7 @@ export default function ListaEsperaPage() {
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => tableScrollRef.current,
-    estimateSize: () => 36,
+    estimateSize: () => 52,
     overscan: 10,
   });
 
@@ -1049,7 +891,7 @@ export default function ListaEsperaPage() {
     const nombrePaciente = asignarPaciente.nombre;
     setAsignando(asignarPaciente.id);
     setAsignarError("");
-    setError("");
+    setMutationError("");
     try {
       const payload: Partial<Paciente> & {
         telefono: string;
@@ -1072,12 +914,12 @@ export default function ListaEsperaPage() {
       await api.post(`/pacientes/${asignarPaciente.id}/asignar/`);
       setAsignarPaciente(null);
       toastSuccess(`Paciente "${nombrePaciente}" asignado a tu cartera.`);
-      await cargar();
+      await mutate();
       window.dispatchEvent(new Event("ccr:refresh-sidebar"));
     } catch (e: unknown) {
       const detail = getErrorMessage(e, "Error al asignar.");
       setAsignarError(detail);
-      setError(detail);
+      setMutationError(detail);
       toastError(detail);
     } finally {
       setAsignando(null);
@@ -1146,12 +988,12 @@ export default function ListaEsperaPage() {
       setDraftFilters({});
       setFilterQueries({});
       setQuickFilters({
-        estado: "TODOS",
-        prioridad: "TODAS",
-        categoria: "TODAS",
-        sector_cesfam: "TODOS",
-        sector_oficial: "TODOS",
-        responsable: "TODOS",
+        estado: [],
+        prioridad: [],
+        categoria: [],
+        sector_cesfam: [],
+        sector_oficial: [],
+        responsable: [],
       });
     });
   }
@@ -1159,56 +1001,45 @@ export default function ListaEsperaPage() {
   if (!user) return null;
 
   return (
-    <div className="ccr-waitlist-page space-y-3 text-[13px]">
-      <header className="ccr-waitlist-toolbar ccr-panel rounded-2xl p-4 sm:p-5">
+    <div className="ccr-waitlist-page flex h-[max(520px,calc(100dvh-64px-1.5rem))] flex-col overflow-hidden sm:h-[max(520px,calc(100dvh-64px-2rem))] border border-slate-200 bg-white text-[13px] dark:border-ink-black-600 dark:bg-ink-black-800">
+      <header className="ccr-waitlist-toolbar shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-ink-black-600 dark:bg-ink-black-800">
         <div className="space-y-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Lista de espera</h1>
-              <p className="mt-0.5 text-xs font-medium text-gray-500">
-                Priorización, filtros y asignación de pacientes pendientes.
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-slate-950 dark:text-white">Lista de espera</h1>
+              <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
+                <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{pacientes.length}</span> pacientes pendientes
+                {filteredRows !== pacientes.length && (
+                  <>
+                    {" · "}mostrando <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{filteredRows}</span>
+                  </>
+                )}
+                .
               </p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <div className="grid grid-cols-3 gap-2 sm:flex">
-                <span className="ccr-waitlist-stat">
-                  <span>Total</span>
-                  <strong>{pacientes.length}</strong>
-                </span>
-                <span className="ccr-waitlist-stat">
-                  <span>Vista</span>
-                  <strong>{filteredRows}</strong>
-                </span>
-                <span className="ccr-waitlist-stat">
-                  <span>Filtros</span>
-                  <strong>{activeFilterCount}</strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => void cargar()}
-                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-auto sm:justify-start"
-              >
-                <FiRefreshCw size={13} />
-                Recargar
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar la lista">
+                <FiRefreshCw size={13} aria-hidden="true" />
+                Actualizar
               </button>
               <button
                 type="button"
                 onClick={() => void exportarExcel()}
                 disabled={exportando}
-                className="ccr-export-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold disabled:opacity-60 sm:w-auto"
+                className="ccr-export-button disabled:opacity-60"
               >
-                <FiDownload size={13} />
-                {exportando ? "Exportando..." : "Exportar Excel"}
+                <FiDownload size={13} aria-hidden="true" />
+                {exportando ? "Exportando…" : "Exportar Excel"}
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+            <div className="relative order-1 min-w-0 flex-1 sm:max-w-sm">
               <FiSearch
                 className="ccr-waitlist-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
                 size={15}
+                aria-hidden="true"
               />
               <input
                 type="text"
@@ -1220,174 +1051,107 @@ export default function ListaEsperaPage() {
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.preventDefault();
                 }}
-                className="ccr-control-input w-full px-9 py-2.5 text-xs"
-                placeholder="Buscar por nombre, RUT, sector o diagnóstico"
+                className="ccr-control-input w-full pl-9 pr-3"
+                placeholder="Buscar nombre o RUT"
                 aria-label="Buscar pacientes"
               />
             </div>
-
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {/* Filtro rapido por categoria: multiseleccion */}
+            {categoriasConConteo.length > 0 && (
+              <div className="order-1">
+                <MultiSelectFiltro
+                  label="Categoría"
+                  values={quickFilters.categoria}
+                  opciones={categoriasConConteo.map(([cat, total]) => ({
+                    value: cat,
+                    label: CATEGORIA_LABELS[cat],
+                    dot: TONO_CATEGORIA[cat]?.dot,
+                    total,
+                  }))}
+                  onChange={(valores) => setQuickFilters((prev) => ({ ...prev, categoria: valores as Categoria[] }))}
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowQuickFilters((prev) => !prev)}
+              className="ccr-control-button order-2 ml-auto"
+              aria-expanded={showQuickFilters}
+              aria-controls="lista-espera-quick-filters"
+            >
+              <FiFilter size={13} aria-hidden="true" />
+              Filtros
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-blue-500 px-1.5 text-[10px] font-bold leading-4 text-white">{activeFilterCount}</span>
+              )}
+            </button>
+            {activeFilterCount > 0 && (
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center px-3 text-xs sm:w-auto"
+                aria-label="Quitar todos los filtros"
+                title="Quitar filtros"
+                className="order-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 outline-none transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-900/60 dark:bg-transparent dark:text-red-300"
               >
-                Limpiar filtros
+                <FiX size={15} aria-hidden="true" />
               </button>
-              <button
-                type="button"
-                onClick={() => setShowQuickFilters((prev) => !prev)}
-                className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center gap-1.5 px-3 text-xs sm:w-auto"
-                aria-expanded={showQuickFilters}
-                aria-controls="lista-espera-quick-filters"
-              >
-                <FiFilter size={13} />
-                Filtros
-              </button>
-            </div>
+            )}
           </div>
+
 
           {showQuickFilters && (
-          <div
-            id="lista-espera-quick-filters"
-            className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm"
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
-                Filtros de tabla
-              </p>
-              <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                {filteredRows} resultado{filteredRows !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <label className="text-[11px] font-semibold text-slate-500">
-                Estado
-                <select
-                  value={quickFilters.estado}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      estado: event.target.value as QuickFilterState["estado"],
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODOS">Todos</option>
-                  {quickFilterOptions.estados.map((estado) => (
-                    <option key={estado} value={estado}>
-                      {ESTADO_LABELS[estado]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-[11px] font-semibold text-slate-500">
-                Prioridad
-                <select
-                  value={quickFilters.prioridad}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      prioridad: event.target.value as QuickFilterState["prioridad"],
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODAS">Todas</option>
-                  {quickFilterOptions.prioridades.map((prioridad) => (
-                    <option key={prioridad} value={prioridad}>
-                      {PRIORIDAD_LABELS[prioridad]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-[11px] font-semibold text-slate-500">
-                Categoría
-                <select
-                  value={quickFilters.categoria}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      categoria: event.target.value as QuickFilterState["categoria"],
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODAS">Todas</option>
-                  {quickFilterOptions.categorias.map((categoria) => (
-                    <option key={categoria} value={categoria}>
-                      {CATEGORIA_LABELS[categoria]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-[11px] font-semibold text-slate-500">
-                Sector CESFAM
-                <select
-                  value={quickFilters.sector_cesfam}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      sector_cesfam: event.target.value,
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODOS">Todos</option>
-                  {quickFilterOptions.sectoresCesfam.map((sector) => (
-                    <option key={sector} value={sector}>
-                      {sector}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-[11px] font-semibold text-slate-500">
-                Sector oficial
-                <select
-                  value={quickFilters.sector_oficial}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      sector_oficial: event.target.value,
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODOS">Todos</option>
-                  {quickFilterOptions.sectoresOficiales.map((sector) => (
-                    <option key={sector} value={sector}>
-                      {sector}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-[11px] font-semibold text-slate-500">
-                Responsable
-                <select
-                  value={quickFilters.responsable}
-                  onChange={(event) =>
-                    setQuickFilters((prev) => ({
-                      ...prev,
-                      responsable: event.target.value,
-                    }))
-                  }
-                  className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                >
-                  <option value="TODOS">Todos</option>
-                  {quickFilterOptions.responsables.map((responsable) => (
-                    <option key={responsable.value} value={responsable.value}>
-                      {responsable.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
+            <motion.div
+              id="lista-espera-quick-filters"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+              className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
+            >
+              <MultiSelectFiltro
+                anchoCompleto
+                label="Estado"
+                textoTodos
+                values={quickFilters.estado}
+                opciones={quickFilterOptions.estados.map((e) => ({ value: e, label: ESTADO_LABELS[e], total: conteo("estado", e) }))}
+                onChange={(v) => setQuickFilters((prev) => ({ ...prev, estado: v as Estado[] }))}
+              />
+              <MultiSelectFiltro
+                anchoCompleto
+                label="Prioridad"
+                values={quickFilters.prioridad}
+                opciones={quickFilterOptions.prioridades.map((pr) => ({ value: pr, label: PRIORIDAD_LABELS[pr], total: conteo("prioridad", pr) }))}
+                onChange={(v) => setQuickFilters((prev) => ({ ...prev, prioridad: v as Prioridad[] }))}
+              />
+              <MultiSelectFiltro
+                anchoCompleto
+                label="Sector CESFAM"
+                textoTodos
+                values={quickFilters.sector_cesfam}
+                opciones={quickFilterOptions.sectoresCesfam.map((sec) => ({
+                  value: sec,
+                  label: sec,
+                  dot: sectorColorClasses(sec).dot,
+                  total: conteo("sector_cesfam", sec),
+                }))}
+                onChange={(v) => setQuickFilters((prev) => ({ ...prev, sector_cesfam: v }))}
+              />
+              <MultiSelectFiltro
+                anchoCompleto
+                label="Sector oficial"
+                textoTodos
+                values={quickFilters.sector_oficial}
+                opciones={quickFilterOptions.sectoresOficiales.map((sec) => ({ value: sec, label: sec, total: conteo("sector_oficial", sec) }))}
+                onChange={(v) => setQuickFilters((prev) => ({ ...prev, sector_oficial: v }))}
+              />
+              <MultiSelectFiltro
+                anchoCompleto
+                label="Profesional"
+                textoTodos
+                values={quickFilters.responsable}
+                opciones={quickFilterOptions.responsables.map((r) => ({ value: r.value, label: r.label, total: conteo("responsable", r.value) }))}
+                onChange={(v) => setQuickFilters((prev) => ({ ...prev, responsable: v }))}
+              />
+            </motion.div>
           )}
 
           {isPending && (
@@ -1416,7 +1180,7 @@ export default function ListaEsperaPage() {
       )}
 
       {!error && (
-        <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+        <section className="ccr-data-table ccr-operational-table relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-ink-black-800">
           {(loading || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
               {loading && !hasHydrated ? (
@@ -1424,8 +1188,8 @@ export default function ListaEsperaPage() {
                   <TableSkeleton rows={6} />
                 </div>
               ) : (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#daebf1]">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-[#335FDB]" />
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-100">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
                   Actualizando...
                 </div>
               )}
@@ -1436,22 +1200,22 @@ export default function ListaEsperaPage() {
           ref={tableScrollRef}
           onScroll={(event) => {
             horizontalScrollRef.current = event.currentTarget.scrollLeft;
+            if (openFilter) {
+              setOpenFilter(null);
+              setFilterPosition(null);
+            }
           }}
-          className="ccr-table-scroll max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
+          className="ccr-table-scroll min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable] border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]"
         >
           <div
-            className="w-full min-w-max rounded-lg border border-gray-200 bg-white dark:border-[#262626] dark:bg-[#151515]"
+            className="w-full min-w-max bg-white dark:bg-ink-black-800"
             style={{ minWidth: tableMinWidth }}
           >
             {table.getHeaderGroups().map((headerGroup) => (
               <div
                 key={headerGroup.id}
-                className="ccr-table-head sticky top-0 z-20 grid border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]"
-                style={{
-                  gridAutoColumns: "max-content",
-                  gridAutoFlow: "column",
-                  gridTemplateColumns: columnTemplate,
-                }}
+                className="ccr-table-head sticky top-0 z-20 grid border-b border-slate-200 bg-slate-50 dark:border-ink-black-600 dark:bg-ink-black-900"
+                style={{ gridTemplateColumns: columnTemplate }}
               >
                 {headerGroup.headers.map((header) => {
                   const meta = getColumnMeta(header.column);
@@ -1469,10 +1233,10 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={header.id}
-                      className="relative border-r border-gray-200 px-2 py-1.5 last:border-r-0 dark:border-[#262626]"
+                      className="group relative flex h-11 items-center px-2.5"
                     >
                       {header.isPlaceholder ? null : (
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex w-full min-w-0 items-center justify-between gap-1">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1484,27 +1248,27 @@ export default function ListaEsperaPage() {
                                 );
                               });
                             }}
-                            className="ccr-table-sort-button flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-semibold text-gray-700 dark:text-[#daebf1]"
+                            className="ccr-table-sort-button flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] font-bold text-slate-500 outline-none hover:text-slate-950 focus-visible:text-slate-950 dark:text-ink-black-300"
+                            title={header.column.getCanSort() ? "Ordenar" : undefined}
                           >
-                            <span className="whitespace-normal leading-tight">
+                            <span className="truncate whitespace-nowrap">
                               {flexRender(
                                 header.column.columnDef.header,
                                 header.getContext(),
                               )}
                             </span>
                             {isSorted && (
-                              <span className="text-[11px] text-blue-600">
-                                {isSorted === "asc" ? "▲" : "▼"}
-                                {sortIndex >= 0 &&
-                                table.getState().sorting.length > 1
-                                  ? ` ${sortIndex + 1}`
-                                  : ""}
+                              <span className="inline-flex shrink-0 items-center text-blue-600" aria-label={isSorted === "asc" ? "orden ascendente" : "orden descendente"}>
+                                {isSorted === "asc" ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />}
+                                {sortIndex >= 0 && table.getState().sorting.length > 1 ? (
+                                  <span className="text-[10px] font-bold">{sortIndex + 1}</span>
+                                ) : null}
                               </span>
                             )}
                           </button>
 
                           {meta.filterable && (
-                            <div data-filter-root className="relative shrink-0">
+                            <div data-filter-root className={`absolute right-1 top-1/2 -translate-y-1/2 ${isFilterActive || openFilter === header.column.id ? "" : "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto"}`}>
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -1521,12 +1285,14 @@ export default function ListaEsperaPage() {
                                 }}
                                 className={
                                   isFilterActive
-                                    ? "ccr-table-filter-button is-active inline-flex h-7 w-7 items-center justify-center rounded-md"
-                                    : "ccr-table-filter-button inline-flex h-7 w-7 items-center justify-center rounded-md"
+                                    ? "ccr-table-filter-button is-active inline-flex h-6 w-6 items-center justify-center rounded-md"
+                                    : `ccr-table-filter-button inline-flex h-6 w-6 items-center justify-center rounded-md !bg-slate-50 transition-opacity focus-visible:opacity-100 ${
+                                        openFilter === header.column.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                      }`
                                 }
                                 aria-label={`Filtrar ${meta.label}`}
                               >
-                                <FiFilter size={12} />
+                                <FiFilter size={11} />
                               </button>
 
                               {openFilter === header.column.id && filterPosition && (
@@ -1620,10 +1386,8 @@ export default function ListaEsperaPage() {
                   return (
                     <div
                       key={row.id}
-                      className="ccr-table-row absolute left-0 top-0 grid w-full cursor-pointer border-b border-gray-100 bg-white transition hover:bg-blue-50/50 dark:border-[#262626] dark:bg-[#151515] dark:hover:bg-[#202020]"
+                      className="ccr-table-row absolute left-0 top-0 grid w-full cursor-pointer border-b border-slate-100 bg-white transition-colors hover:bg-blue-50/60 dark:border-ink-black-700 dark:bg-ink-black-800 dark:hover:bg-blue-500/10"
                       style={{
-                        gridAutoColumns: "max-content",
-                        gridAutoFlow: "column",
                         gridTemplateColumns: columnTemplate,
                         transform: `translateY(${virtualRow.start}px)`,
                       }}
@@ -1641,7 +1405,7 @@ export default function ListaEsperaPage() {
                         return (
                           <div
                             key={cell.id}
-                            className={`flex h-9 items-center overflow-hidden border-r border-gray-100 px-1.5 py-0.5 text-[11px] text-gray-700 last:border-r-0 dark:border-[#262626] dark:text-[#b5d8e3] sm:px-2 ${alignment}`}
+                            className={`flex h-[52px] items-center overflow-hidden px-2 text-xs text-slate-700 dark:text-ink-black-200 sm:px-3 ${alignment}`}
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -1658,7 +1422,7 @@ export default function ListaEsperaPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex shrink-0 flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
           <p>
             {filteredRows} paciente{filteredRows !== 1 ? "s" : ""} en espera
           </p>
@@ -1693,9 +1457,27 @@ export default function ListaEsperaPage() {
           usuario={user}
           onClose={() => setSeleccionado(null)}
           onRefresh={() => {
-            void cargar();
+            void mutate();
             setSeleccionado(null);
           }}
+          onTomar={
+            user?.rol === "KINE" && !seleccionado.kine_asignado
+              ? () => {
+                  const paciente = seleccionado;
+                  setSeleccionado(null);
+                  abrirAsignacionConContacto(paciente);
+                }
+              : undefined
+          }
+          onEliminar={
+            user?.rol === "ADMIN"
+              ? () => {
+                  const paciente = seleccionado;
+                  setSeleccionado(null);
+                  handleEliminar(paciente.id, paciente.nombre);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -1758,10 +1540,10 @@ function AsignarContactoModal({
         className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_34px_80px_-32px_rgba(15,23,42,0.55)] dark:border-[#2a2a2a] dark:bg-[#111111]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="border-b border-[#dbe7ff] bg-gradient-to-br from-[#f4f8ff] via-white to-[#eef3ff] px-5 py-5 dark:border-[#2a2a2a] dark:from-[#151515] dark:via-[#111111] dark:to-[#151515] sm:px-6">
+        <div className="border-b border-[#dbe7ff] bg-gradient-to-br from-[#f4f8ff] via-white to-blue-50 px-5 py-5 dark:border-[#2a2a2a] dark:from-[#151515] dark:via-[#111111] dark:to-[#151515] sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#335FDB] dark:text-[#8fc4d6]">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-500 dark:text-ink-black-300">
                 Asignación
               </p>
               <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
@@ -1775,15 +1557,15 @@ function AsignarContactoModal({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-[#ecf5f8] dark:hover:bg-[#242424]"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-50 dark:hover:bg-[#242424]"
               aria-label="Cerrar"
             >
               ×
             </button>
           </div>
 
-          <div className="mt-4 flex max-w-full items-center gap-3 rounded-xl border border-[#dbe7ff] bg-white/95 px-3.5 py-2.5 text-[12px] text-slate-700 shadow-sm dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-[#ecf5f8]">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#cddcff] bg-[#eef3ff] text-[#335FDB] dark:border-[#2a2a2a] dark:bg-[#1a1a1a] dark:text-[#8fc4d6]">
+          <div className="mt-4 flex max-w-full items-center gap-3 rounded-xl border border-[#dbe7ff] bg-white/95 px-3.5 py-2.5 text-[12px] text-slate-700 shadow-sm dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-50">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#cddcff] bg-blue-50 text-blue-500 dark:border-[#2a2a2a] dark:bg-[#1a1a1a] dark:text-ink-black-300">
               <FiUser size={16} />
             </div>
             <div className="min-w-0">
@@ -1798,7 +1580,7 @@ function AsignarContactoModal({
         </div>
 
         <div className="space-y-4 bg-white px-5 py-5 dark:bg-[#111111] sm:px-6">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-[12px] text-slate-600 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-[#b5d8e3]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-[12px] text-slate-600 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-ink-black-200">
             Campos opcionales: teléfono principal, recados, correo y observación.
           </div>
 
@@ -1887,7 +1669,7 @@ function AsignarContactoModal({
             type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="rounded-xl bg-[#335FDB] px-5 py-2.5 text-sm font-bold text-white shadow-[0_12px_24px_-14px_rgba(51,95,219,0.9)] transition hover:bg-[#284FC0] disabled:opacity-50"
+            className="rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-bold text-white shadow-[0_12px_24px_-14px_rgba(51,95,219,0.9)] transition hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? "Asignando..." : "Guardar y tomar"}
           </button>
@@ -1897,193 +1679,3 @@ function AsignarContactoModal({
   );
 }
 
-type FilterPopoverProps = {
-  column: Column<WaitlistRow>;
-  position: FilterPopoverPosition;
-  sortState: false | "asc" | "desc";
-  query: string;
-  selectedValues: string[];
-  onSortAsc: () => void;
-  onSortDesc: () => void;
-  onClearSort: () => void;
-  onQueryChange: (value: string) => void;
-  onSelectionChange: (values: string[]) => void;
-  onCancel: () => void;
-  onApply: (selectedValuesOverride?: string[]) => void;
-};
-
-function FilterPopover({
-  column,
-  position,
-  sortState,
-  query,
-  selectedValues,
-  onSortAsc,
-  onSortDesc,
-  onClearSort,
-  onQueryChange,
-  onSelectionChange,
-  onCancel,
-  onApply,
-}: FilterPopoverProps) {
-  const meta = getColumnMeta(column);
-  const options = sortFilterValues(
-    column.id,
-    Array.from(column.getFacetedUniqueValues().keys())
-      .map((value) => String(value))
-      .filter(Boolean),
-  );
-  const visibleOptions = options.filter((option) =>
-    matchesFilterSearch(column.id, option, query),
-  );
-  const allVisibleSelected =
-    visibleOptions.length > 0 &&
-    visibleOptions.every((option) => selectedValues.includes(option));
-  const shouldApplyVisibleOnly =
-    query.trim().length > 0 &&
-    selectedValues.length === options.length &&
-    visibleOptions.length < options.length;
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      data-filter-root
-      className="ccr-filter-popover fixed z-[100] w-[min(92vw,320px)] overflow-hidden rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-[#262626] dark:bg-[#0f0f10]"
-      style={{
-        left: position.left,
-        maxHeight: "calc(100vh - 24px)",
-        top: position.top,
-      }}
-    >
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-[12px] font-semibold text-gray-800 dark:text-[#ecf5f8]">
-            {meta.label}
-          </h3>
-          <p className="text-[10px] text-gray-400 dark:text-[#459dba]">Filtro de lista</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => onSelectionChange(options)}
-          className="text-[10px] font-semibold text-gray-500 hover:text-gray-700 dark:text-[#6ab0c8] dark:hover:text-[#daebf1]"
-        >
-          Limpiar
-        </button>
-      </div>
-
-      {column.getCanSort() && (
-        <div className="mb-3 space-y-1 rounded-lg border border-gray-100 bg-gray-50/70 p-2 dark:border-[#262626] dark:bg-[#151515]">
-          <button
-            type="button"
-            onClick={onSortAsc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "asc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
-          >
-            Ordenar de menor a mayor
-          </button>
-          <button
-            type="button"
-            onClick={onSortDesc}
-            className={`block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium ${sortState === "desc" ? "bg-blue-50 text-blue-700 dark:bg-[#202020] dark:text-blue-200" : "text-gray-600 hover:bg-gray-100 dark:text-[#b5d8e3] dark:hover:bg-[#202020]"}`}
-          >
-            Ordenar de mayor a menor
-          </button>
-          <button
-            type="button"
-            onClick={onClearSort}
-            className="block w-full rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-gray-500 hover:bg-gray-100 dark:text-[#6ab0c8] dark:hover:bg-[#202020]"
-          >
-            Quitar orden
-          </button>
-        </div>
-      )}
-
-      <input
-        value={query}
-        onChange={(event) => onQueryChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") event.preventDefault();
-        }}
-        placeholder="Buscar opción"
-        className="mb-3 w-full rounded-md border border-gray-200 bg-white px-2 py-2 text-xs text-gray-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100 dark:border-[#262626] dark:bg-[#151515] dark:text-[#ecf5f8] dark:placeholder:text-[#459dba] dark:focus:ring-blue-500/20"
-      />
-
-      <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[11px]">
-        <button
-          type="button"
-          onClick={() => {
-            if (allVisibleSelected) {
-              onSelectionChange(
-                selectedValues.filter(
-                  (value) => !visibleOptions.includes(value),
-                ),
-              );
-              return;
-            }
-            onSelectionChange(
-              Array.from(new Set([...selectedValues, ...visibleOptions])),
-            );
-          }}
-          className="font-semibold text-blue-700 hover:underline"
-        >
-          Seleccionar todo
-        </button>
-        <span className="text-gray-400 dark:text-[#459dba]">{visibleOptions.length} opciones</span>
-      </div>
-
-      <div className={`space-y-1 overflow-y-auto rounded-lg border border-gray-100 p-2 dark:border-[#262626] ${visibleOptions.length > 5 ? "max-h-56" : "max-h-40"}`}>
-        {visibleOptions.length === 0 ? (
-          <p className="px-2 py-2 text-xs text-gray-400 dark:text-[#459dba]">Sin coincidencias.</p>
-        ) : (
-          visibleOptions.map((option) => {
-            const checked = selectedValues.includes(option);
-            return (
-              <label
-                key={option}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-gray-50 dark:hover:bg-[#202020]"
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={() => {
-                    if (checked) {
-                      onSelectionChange(
-                        selectedValues.filter((value) => value !== option),
-                      );
-                    } else {
-                      onSelectionChange([...selectedValues, option]);
-                    }
-                  }}
-                  className="h-3.5 w-3.5 accent-[#335FDB]"
-                />
-                <span className="truncate text-gray-700 dark:text-[#b5d8e3]" title={option}>
-                  {option}
-                </span>
-              </label>
-            );
-          })
-        )}
-      </div>
-
-      <div className="mt-3 flex items-center justify-end gap-2 border-t border-gray-100 pt-2 dark:border-[#262626]">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] dark:hover:bg-[#202020]"
-        >
-          Cancelar
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            onApply(shouldApplyVisibleOnly ? visibleOptions : undefined)
-          }
-          className="ccr-filter-apply rounded-md bg-[#335FDB] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[#284FC0]"
-        >
-          Aplicar
-        </button>
-      </div>
-    </div>,
-    document.body,
-  );
-}

@@ -21,14 +21,16 @@ import {
   FiUser,
 } from "react-icons/fi";
 
+const IS_DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 const DEMO_PASSWORD = "Ccr2025*";
 const DEFAULT_RUT = "66666666K";
 const REMEMBER_RUT_KEY = "ccr-login-rut";
 const REMEMBER_SESSION_KEY = "ccr-login-remember";
 const LOGIN_THEME_KEY = "ccr-login-theme";
+const BRAND_ALT = "Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes";
 
-// Accesos rapidos visibles para presentacion/demo. No retirarlos hasta la etapa
-// final de endurecimiento indicada en docs/PENDIENTES.md.
+// Accesos rapidos visibles solo en modo demo (NEXT_PUBLIC_DEMO_MODE=true).
 type QuickUser = {
   id: string;
   nombre: string;
@@ -85,7 +87,7 @@ const QUICK_USERS: QuickUser[] = [
 function quickAccessClasses(tone: QuickUser["tone"], selected: boolean) {
   const selectedClasses = {
     blue: "border-white bg-white text-sky-950 shadow-sky-950/20",
-    green: "border-white bg-white text-emerald-950 shadow-emerald-950/20",
+    green: "border-white bg-white text-green-950 shadow-green-950/20",
     indigo: "border-white bg-white text-indigo-950 shadow-indigo-950/20",
   };
 
@@ -120,9 +122,9 @@ export default function LoginPage() {
   const { login } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
-  const [rut, setRut] = useState(formatearRut(DEFAULT_RUT));
-  const [password, setPassword] = useState(DEMO_PASSWORD);
-  const [selectedQuickRut, setSelectedQuickRut] = useState(DEFAULT_RUT);
+  const [rut, setRut] = useState(IS_DEMO ? formatearRut(DEFAULT_RUT) : "");
+  const [password, setPassword] = useState(IS_DEMO ? DEMO_PASSWORD : "");
+  const [selectedQuickRut, setSelectedQuickRut] = useState(IS_DEMO ? DEFAULT_RUT : "");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberSession, setRememberSession] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -157,6 +159,7 @@ export default function LoginPage() {
   }
 
   function handleQuickUserSelect(rutUsuario: string) {
+    if (!IS_DEMO) return;
     // Carga credenciales demo sin autenticar todavia; el submit sigue pasando
     // por SimpleJWT y validaciones reales del backend.
     setSelectedQuickRut(rutUsuario);
@@ -214,23 +217,25 @@ export default function LoginPage() {
         <span>{darkMode ? "Modo claro" : "Modo oscuro"}</span>
       </button>
 
-      <div className="ccr-login-shell ccr-login-enter relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[2.75rem] bg-white shadow-2xl shadow-slate-900/18 dark:!bg-slate-950 lg:grid-cols-[0.9fr_1.1fr]">
-        <aside className="hidden min-h-[720px] bg-gradient-to-br from-[#0b72bf] via-[#075494] to-[#07305f] p-7 text-white dark:!from-[#02111f] dark:!via-[#07305f] dark:!to-[#0f172a] lg:flex lg:flex-col lg:justify-center">
-          <div className="mx-auto mb-7 max-w-[285px] rounded-[1.4rem] bg-white p-3 shadow-2xl shadow-slate-950/20">
+      <div className="ccr-login-shell ccr-login-enter relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[36px] bg-white shadow-ink dark:!bg-slate-950 lg:grid-cols-[0.9fr_1.1fr]">
+        <aside className="hidden min-h-[720px] bg-[#16181B] p-7 text-white lg:flex lg:flex-col lg:justify-center">
+          <div className="mx-auto mb-7 max-w-[285px] p-2">
             <Image
               src={logoHorizontal}
-              alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
-              className="h-auto w-full object-contain"
+              alt={BRAND_ALT}
+              className="h-auto w-full object-contain drop-shadow-[0_18px_28px_rgba(2,6,23,0.28)]"
+              sizes="285px"
               priority
             />
           </div>
 
-          <div className="rounded-[2rem] border border-white/12 bg-white/8 p-4 shadow-2xl shadow-slate-950/20">
+          {IS_DEMO && (
+          <div className="rounded-[28px] bg-white/[0.06] p-3">
             <div className="mb-4 px-2">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">
+              <p className="text-sm font-bold text-white">
                 Accesos rápidos
               </p>
-              <p className="mt-1 text-xs font-bold text-sky-100/80">
+              <p className="mt-1 text-xs font-medium text-white/60">
                 Selecciona un perfil para cargar sus credenciales.
               </p>
             </div>
@@ -262,6 +267,7 @@ export default function LoginPage() {
               })}
             </div>
           </div>
+          )}
         </aside>
 
         <main className="relative flex min-h-[720px] w-full flex-col justify-center bg-white px-2 py-8 dark:!bg-white sm:px-6 lg:px-12">
@@ -269,13 +275,15 @@ export default function LoginPage() {
             <div className="ccr-login-panel mb-6 flex justify-center lg:hidden">
               <Image
                 src={logoHorizontal}
-                alt="Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes"
+                alt={BRAND_ALT}
                 className="h-auto w-full max-w-sm object-contain drop-shadow-[0_18px_34px_rgba(15,23,42,0.16)]"
+                sizes="(max-width: 640px) 88vw, 384px"
                 priority
               />
             </div>
 
-            <div className="mb-6 grid grid-cols-2 gap-2 rounded-[1.75rem] bg-gradient-to-br from-sky-700 via-blue-900 to-slate-950 p-3 lg:hidden">
+            {IS_DEMO && (
+            <div className="mb-6 grid grid-cols-2 gap-2 rounded-[1.75rem] bg-[#16181B] p-3 lg:hidden">
               {QUICK_USERS.map((user) => {
                 const Icon = user.icon;
                 const selected = selectedQuickRut === user.rut;
@@ -301,11 +309,12 @@ export default function LoginPage() {
                 );
               })}
             </div>
+            )}
 
-            <div className="flex min-h-[520px] rounded-[2rem] border border-slate-200 bg-white p-5 shadow-2xl shadow-slate-900/10 sm:p-8">
+            <div className="flex min-h-[520px] rounded-[28px] bg-white p-5 sm:p-8">
             <form onSubmit={handleSubmit} className="flex w-full flex-col justify-center space-y-5" noValidate>
               <div className="space-y-2">
-                <label htmlFor="rut" className="ml-1 text-xs font-black uppercase tracking-[0.15em] text-slate-600">
+                <label htmlFor="rut" className="ml-1 text-sm font-bold text-slate-700">
                   Nombre de usuario / RUT
                 </label>
                 <div className="group relative">
@@ -324,7 +333,7 @@ export default function LoginPage() {
                     onChange={(e) => {
                       const nextRut = e.target.value.replace(/[^0-9Kk]/g, "").toUpperCase();
                       setRut(formatearRut(e.target.value));
-                      setSelectedQuickRut(QUICK_USERS.some((user) => user.rut === nextRut) ? nextRut : "");
+                      setSelectedQuickRut(IS_DEMO && QUICK_USERS.some((user) => user.rut === nextRut) ? nextRut : "");
                       setError(null);
                     }}
                     onFocus={() => setFocusedInput("rut")}
@@ -334,13 +343,13 @@ export default function LoginPage() {
                     required
                     aria-invalid={Boolean(error)}
                     aria-describedby={error ? "login-error" : undefined}
-                    className="ccr-login-input w-full rounded-2xl border border-slate-200 bg-white py-4 pl-12 pr-4 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    className="ccr-login-input w-full rounded-2xl border border-transparent bg-slate-50 py-4 pl-12 pr-4 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="password" className="ml-1 text-xs font-black uppercase tracking-[0.15em] text-slate-600">
+                <label htmlFor="password" className="ml-1 text-sm font-bold text-slate-700">
                   Contraseña
                 </label>
                 <div className="group relative">
@@ -365,27 +374,27 @@ export default function LoginPage() {
                     required
                     aria-invalid={Boolean(error)}
                     aria-describedby={error ? "login-error" : undefined}
-                    className="ccr-login-input w-full rounded-2xl border border-slate-200 bg-white py-4 pl-12 pr-14 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
+                    className="ccr-login-input w-full rounded-2xl border border-transparent bg-slate-50 py-4 pl-12 pr-14 text-base font-bold text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-sky-50 hover:text-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-100"
+                    className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-sky-100"
                   >
                     {showPassword ? <FiEyeOff size={19} /> : <FiEye size={19} />}
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm shadow-sm">
+              <div className="flex items-center justify-between gap-3 rounded-full bg-slate-50 px-4 py-3 text-sm">
                 <label htmlFor="remember-session" className="flex cursor-pointer items-center gap-3 font-bold text-slate-700">
                   <input
                     id="remember-session"
                     type="checkbox"
                     checked={rememberSession}
                     onChange={(event) => handleRememberChange(event.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-300"
+                    className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-blue-300"
                   />
                   Mantener sesión iniciada
                 </label>
@@ -400,7 +409,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || !rut.trim() || !password.trim()}
-                className="ccr-login-submit flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-700 to-indigo-700 px-4 py-4 text-base font-black text-white shadow-xl shadow-blue-700/25 transition hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-blue-700/30 focus:outline-none focus:ring-4 focus:ring-sky-200 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
+                className="ccr-login-submit flex w-full items-center justify-center gap-2 rounded-full bg-blue-500 px-4 py-4 text-base font-bold text-white shadow-ink outline-none transition hover:bg-blue-600 focus-visible:ring-4 focus-visible:ring-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
                   <>

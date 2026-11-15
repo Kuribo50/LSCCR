@@ -2,12 +2,15 @@
   "name": "lista-espera-ccr-frontend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.1.1",
   "scripts": {
     "clean": "node -e \"const fs=require('fs');['.next','.next-dev','.next-build'].forEach((d)=>fs.rmSync(d,{recursive:true,force:true}));\"",
-    "dev": "next dev",
+    "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
@@ -18,17 +21,35 @@
     "react-aria-components": "^1.4.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.6.0",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "sharp": "^0.35.3",
+    "swr": "^2.4.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.7.4",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.20",
+    "daisyui": "^4.12.24",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.4",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.7"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.14"
+    }
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true,
+    "sharp@0.35.3": true
   }
 }

@@ -5,7 +5,8 @@ import { FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
 import { formatearRut } from '@/lib/rut'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
-import type { Estado, Paciente } from '@/lib/types'
+import { unwrapResults } from '@/lib/swr'
+import type { Estado, Paciente, PaginatedResponse } from '@/lib/types'
 import { CATEGORIA_LABELS, ESTADO_LABELS } from '@/lib/types'
 import FichaPaciente from '@/components/FichaPaciente'
 import BadgePrioridad from '@/components/BadgePrioridad'
@@ -119,11 +120,11 @@ export default function EgresosPage() {
     setError('')
     try {
       if (user?.rol === 'KINE') {
-        const data = await api.get<Paciente[]>('/pacientes/?solo_mios=1')
-        setPacientes(data.filter((p) => EGRESO_STATES.includes(p.estado as EgresoState)))
+        const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>('/pacientes/?solo_mios=1')
+        setPacientes(unwrapResults(data).filter((p) => EGRESO_STATES.includes(p.estado as EgresoState)))
       } else {
-        const data = await api.get<Paciente[]>('/pacientes/?is_egreso=1')
-        setPacientes(data)
+        const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>('/pacientes/?is_egreso=1')
+        setPacientes(unwrapResults(data))
       }
     } catch {
       setPacientes([])
@@ -217,13 +218,13 @@ export default function EgresosPage() {
   if (!user) return null
 
   return (
-    <div className="space-y-3 text-[13px]">
+    <div className="ccr-page-fill space-y-3 text-[13px]">
       <header className="ccr-waitlist-toolbar ccr-panel rounded-2xl p-4 sm:p-5">
         <div className="space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="text-lg font-bold text-gray-900 dark:!text-white">Historial de egresos</h1>
-              <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-[#b5d8e3]">
+              <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-ink-black-200">
                 Derivaciones concluidas por tipo de egreso.
               </p>
             </div>
@@ -396,12 +397,12 @@ export default function EgresosPage() {
       )}
 
       {loading ? (
-        <div className="ccr-panel ccr-data-table ccr-operational-table rounded-lg bg-white p-4">
+        <div className="ccr-fill ccr-panel ccr-data-table ccr-operational-table rounded-lg bg-white p-4">
           <TableSkeleton rows={6} />
         </div>
       ) : (
-        <section className="ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
-          <div className="ccr-table-scroll min-h-[320px] max-h-[clamp(320px,calc(100dvh-335px),860px)] overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
+        <section className="ccr-fill ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white dark:bg-[#0f0f10]">
+          <div className="ccr-table-scroll overflow-auto border-b border-gray-100 [animation:tableFadeIn_260ms_ease-out] dark:border-[#262626]">
             <table className="w-full min-w-[1660px] table-fixed border-collapse text-[12px]">
               <colgroup>
                 <col style={{ width: 180 }} />
@@ -419,40 +420,40 @@ export default function EgresosPage() {
               </colgroup>
               <thead className="sticky top-0 z-10">
                 <tr className="ccr-table-head border-b border-gray-200 bg-gray-50/80 dark:border-[#262626] dark:bg-[#202020]">
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Paciente
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     RUT
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Responsable CCR
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Sector CESFAM
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Sector oficial
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Diagnóstico
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Gravedad
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Categoría
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Tipo egreso
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Fecha egreso
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Observación operativa
                   </th>
-                  <th className="border-r border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                  <th className="border-r border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Días
                   </th>
                 </tr>
@@ -482,25 +483,25 @@ export default function EgresosPage() {
                           {toCapitalizedWords(paciente.nombre)}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap border-r border-gray-100 px-2 py-1 align-middle font-mono text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="whitespace-nowrap border-r border-gray-100 px-2 py-1 align-middle font-mono text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         {formatearRut(paciente.rut)}
                       </td>
-                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-700 dark:border-[#262626] dark:text-[#daebf1]">
+                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                         <div className="truncate">
                           {toCapitalizedWords(paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? 'Sin asignar')}
                         </div>
                       </td>
-                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         <div className="truncate" title={paciente.sector_cesfam || '-'}>
                           {paciente.sector_cesfam || '-'}
                         </div>
                       </td>
-                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="max-w-[150px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         <div className="truncate" title={paciente.sector_oficial || '-'}>
                           {paciente.sector_oficial || '-'}
                         </div>
                       </td>
-                      <td className="max-w-[210px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="max-w-[210px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         <div className="truncate" title={paciente.diagnostico || 'Sin diagnóstico'}>
                           {paciente.diagnostico || 'Sin diagnóstico'}
                         </div>
@@ -508,7 +509,7 @@ export default function EgresosPage() {
                       <td className="border-r border-gray-100 px-2 py-1 align-middle dark:border-[#262626]">
                         <BadgePrioridad prioridad={paciente.prioridad} />
                       </td>
-                      <td className="border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                           {toCapitalizedWords(CATEGORIA_LABELS[paciente.categoria] ?? paciente.categoria)}
                         </span>
@@ -521,7 +522,7 @@ export default function EgresosPage() {
                           ? new Date(`${paciente.fecha_egreso}T00:00:00`).toLocaleDateString('es-CL')
                           : 'Sin fecha'}
                       </td>
-                      <td className="max-w-[220px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-[#b5d8e3]">
+                      <td className="max-w-[220px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
                         <div className="line-clamp-1">
                           {paciente.observaciones || 'Sin observación registrada'}
                         </div>
@@ -536,7 +537,7 @@ export default function EgresosPage() {
             </table>
           </div>
 
-          <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-[#b5d8e3] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
             <p>
               {pacientesFiltrados.length} egreso
               {pacientesFiltrados.length !== 1 ? 's' : ''} en la tabla

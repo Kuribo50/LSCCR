@@ -673,3 +673,78 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(ImportacionMensual.objects.count(), 0)
         self.assertTrue(Usuario.objects.filter(pk=usuario.pk).exists())
         self.assertIn("Datos operativos CCR eliminados", salida.getvalue())
+
+
+class ParsearFechaYCategoriaTests(APITestCase):
+    def test_fecha_texto_mes_dia_estadounidense(self):
+        from apps.importar.parser import _parsear_fecha
+
+        self.assertEqual(_parsear_fecha("3/27/2026"), date(2026, 3, 27))
+        # Ambigua: se mantiene dia/mes (formato chileno).
+        self.assertEqual(_parsear_fecha("3/5/2026"), date(2026, 5, 3))
+        self.assertEqual(_parsear_fecha("27/03/2026"), date(2026, 3, 27))
+        self.assertIsNone(_parsear_fecha("13/13/2026"))
+
+    def test_categoria_por_diagnostico_planilla_ccr(self):
+        from apps.pacientes.services import categoria_por_diagnostico
+
+        casos = {
+            "SD DOLOROSO NO TRAUMÁTICO": Paciente.Categoria.SDNT,
+            "SD DOLOROSO TRAUMÁTICO": Paciente.Categoria.SDT,
+            "OTROS NEUROMUSCULARES": Paciente.Categoria.OTROS_NEUROS,
+            "NEURO PRIORITARIO": Paciente.Categoria.OTROS_NEUROS,
+            "AYUDA TECNICA": Paciente.Categoria.AATT,
+            "ARTROSIS DORSAL": Paciente.Categoria.OA_MENOS65,
+            "LUMBAGO": Paciente.Categoria.LUMBAGOS,
+            "HOMBRO DOLOROSO": Paciente.Categoria.HOMBROS,
+        }
+        for diagnostico, esperada in casos.items():
+            with self.subTest(diagnostico=diagnostico):
+                self.assertEqual(categoria_por_diagnostico(diagnostico, 40), esperada)
+        self.assertEqual(
+            categoria_por_diagnostico("SD DOLOROSO NO TRAUMÁTICO", 70), Paciente.Categoria.MAS65
+        )
+
+
+class CompletarEdadesTests(APITestCase):
+    def _paciente(self, rut, edad, diagnostico="LUMBAGO", categoria_excel=False):
+        p = Paciente(rut=rut, nombre="X", edad=edad, diagnostico=diagnostico, categoria="LUMBAGOS", observaciones="")
+        p._importacion_categoria_excel = categoria_excel
+        return p
+
+    def test_completa_edad_desde_otra_fila_del_mismo_rut(self):
+        from apps.importar.parser import _completar_edades_faltantes
+
+        sin_edad = self._paciente("80688709", 0)
+        registros = [{"rut": "80688709", "edad": 72}, {"rut": "80688709", "edad": 0}]
+        completadas = _completar_edades_faltantes([sin_edad], registros)
+
+        self.assertEqual(completadas, 1)
+        self.assertEqual(sin_edad.edad, 72)
+        self.assertTrue(sin_edad.mayor_60)
+        # Con 72 anios pasa a la categoria de mayores de 65.
+        self.assertEqual(sin_edad.categoria, Paciente.Categoria.MAS65)
+        self.assertIn("Edad tomada de otra derivación", sin_edad.observaciones)
+        self.assertEqual(registros[1]["edad"], 72)
+
+    def test_respeta_categoria_explicita_y_deja_sin_dato_si_no_hay_fuente(self):
+        from apps.importar.parser import _completar_edades_faltantes
+
+        explicita = self._paciente("11111111", 0, categoria_excel=True)
+        sin_fuente = self._paciente("22222222", 0)
+        _completar_edades_faltantes([explicita, sin_fuente], [{"rut": "11111111", "edad": 70}])
+
+        self.assertEqual(explicita.edad, 70)
+        self.assertEqual(explicita.categoria, "LUMBAGOS")
+        self.assertEqual(sin_fuente.edad, 0)
+
+    def test_usa_edad_de_paciente_ya_registrado(self):
+        from apps.importar.parser import _completar_edades_faltantes
+
+        Paciente.objects.create(
+            rut="33333333", nombre="Previo", edad=55, diagnostico="LUMBAGO", categoria="LUMBAGOS",
+            prioridad="MEDIANA", fecha_derivacion=date(2026, 1, 5),
+        )
+        nuevo = self._paciente("33333333", 0)
+        _completar_edades_faltantes([nuevo], [])
+        self.assertEqual(nuevo.edad, 55)

@@ -1,4 +1,5 @@
 from django.contrib.auth import login, logout
+from django.utils.crypto import get_random_string
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -80,12 +81,15 @@ class UsuarioViewSet(
 
     @action(detail=True, methods=["post"], url_path="reset-password")
     def reset_password(self, request, pk=None):
-        # Regla operativa actual: la clave temporal se deriva del RUT y fuerza
-        # cambio al siguiente ingreso. No cambiar sin revisar demo/soporte.
         usuario = self.get_object()
-        rut_sin_verificador = usuario.rut[:-1]
-        nueva_password = rut_sin_verificador[-4:]
+        nueva_password = get_random_string(
+            length=10,
+            allowed_chars='abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$%',
+        )
         usuario.set_password(nueva_password)
         usuario.requiere_cambio_password = True
         usuario.save(update_fields=["password", "requiere_cambio_password"])
-        return Response({"detail": "Contraseña restablecida correctamente."})
+        return Response({
+            "detail": "Contraseña restablecida correctamente.",
+            "nueva_password": nueva_password,
+        })

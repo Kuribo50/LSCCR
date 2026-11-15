@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timedelta
 
 from django.db import transaction
@@ -12,19 +13,24 @@ from apps.usuarios.models import Usuario
 
 from .exports import crear_excel_pacientes, excel_response, fecha_archivo_hoy
 from .models import (
+    ActividadGrupal,
     InasistenciaPaciente,
     LlamadoPaciente,
     MovimientoPaciente,
     Paciente,
+    ParticipanteActividad,
     RegistroAgendaPaciente,
 )
 from .permissions import (
     PuedeAsignarPaciente,
     PuedeCambiarEstado,
+    PuedeGestionarActividadGrupal,
     PuedeProgramarAtencion,
     PuedeRegistrarLlamado,
 )
 from .serializers import (
+    ActividadGrupalSerializer,
+    AsistenciaActividadSerializer,
     CambiarEstadoSerializer,
     AgendaFechaSerializer,
     InasistenciaPacienteSerializer,
@@ -46,6 +52,9 @@ from .services import (
     prioridad_normalizada,
     validar_transicion_estado,
 )
+from .utils import normalizar_rut
+
+logger = logging.getLogger(__name__)
 
 
 ORDEN_PRIORIDAD = Case(
@@ -84,6 +93,15 @@ AGENDA_MOVIMIENTO_NOTAS = {
     "Cita eliminada desde calendario.",
 }
 
+
+
+def _q_iexact_varios(campo, valor):
+    """Filtro sin distinguir mayusculas que acepta varios valores separados por coma."""
+    filtro = Q()
+    for item in (v.strip() for v in valor.split(",")):
+        if item:
+            filtro |= Q(**{f"{campo}__iexact": item})
+    return filtro
 
 class PacienteViewSet(viewsets.ModelViewSet):
     """API principal de pacientes.
@@ -237,6 +255,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 hoy = timezone.localdate()
                 inicio = date(hoy.year, hoy.month, 1)
         except ValueError:
+            logger.warning("agenda_resumen: formato de mes invalido — %s", mes_param)
             return Response(
                 {"detail": "El mes debe tener formato YYYY-MM."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -307,21 +326,30 @@ class PacienteViewSet(viewsets.ModelViewSet):
         alerta = params.get("alerta")
 
         if categoria:
-            queryset = queryset.filter(categoria=categoria)
+            # Acepta una categoria o varias separadas por coma (multiseleccion).
+            categorias = [item.strip() for item in categoria.split(",") if item.strip()]
+            queryset = queryset.filter(categoria__in=categorias)
         if sector_cesfam:
-            queryset = queryset.filter(sector_cesfam__iexact=sector_cesfam)
+            queryset = queryset.filter(_q_iexact_varios("sector_cesfam", sector_cesfam))
         if sector_oficial:
-            queryset = queryset.filter(sector_oficial__iexact=sector_oficial)
+            queryset = queryset.filter(_q_iexact_varios("sector_oficial", sector_oficial))
         if prioridad:
-            queryset = queryset.filter(prioridad=prioridad)
+            prioridades = [item.strip() for item in prioridad.split(",") if item.strip()]
+            queryset = queryset.filter(prioridad__in=prioridades)
         if estado:
             estados = [item.strip() for item in estado.split(",") if item.strip()]
             if len(estados) > 1:
                 queryset = queryset.filter(estado__in=estados)
             else:
-                queryset = queryset.filter(estado=estado)
+                queryset = queryset.filter(estado=estados[0])
         if kine:
-            queryset = queryset.filter(kine_asignado_id=kine)
+            # Varios kines separados por coma; "SIN_ASIGNAR" incluye a los sin responsable.
+            valores = [item.strip() for item in kine.split(",") if item.strip()]
+            ids = [v for v in valores if v.isdigit()]
+            filtro_kine = Q(kine_asignado_id__in=ids)
+            if "SIN_ASIGNAR" in valores:
+                filtro_kine |= Q(kine_asignado__isnull=True)
+            queryset = queryset.filter(filtro_kine)
         if importacion:
             queryset = queryset.filter(importacion_origen_id=importacion)
         if alerta in ALERTAS_OPERATIVAS:
@@ -349,7 +377,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             # Busqueda amplia compartida por listado y buscador global:
             # permite encontrar por identidad, diagnostico, sectores,
             # responsable CCR, procedencia y observaciones.
-            search_clean = search.replace(".", "").replace("-", "").upper().strip()
+            search_clean = normalizar_rut(search)
             prioridad_matches = [
                 value
                 for value, label in Paciente.Prioridad.choices
@@ -991,6 +1019,29 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        participaciones = ParticipanteActividad.objects.filter(
+            paciente=paciente
+        ).select_related("actividad", "actividad__responsable")
+        for participacion in participaciones:
+            actividad = participacion.actividad
+            detalle = [f"Asistencia: {participacion.get_asistencia_display()}"]
+            if actividad.estado == ActividadGrupal.Estado.CANCELADA:
+                detalle = ["Actividad cancelada"]
+            if actividad.lugar:
+                detalle.append(actividad.lugar)
+            acciones.append(
+                {
+                    "tipo": "ACTIVIDAD_GRUPAL",
+                    "fecha": actividad.fecha_hora,
+                    "usuario_nombre": actividad.responsable.nombre if actividad.responsable else None,
+                    "titulo": actividad.nombre,
+                    "descripcion": " · ".join(detalle),
+                    "observacion": actividad.descripcion,
+                    "estado_anterior": None,
+                    "estado_nuevo": None,
+                }
+            )
+
         acciones.sort(key=lambda item: item["fecha"], reverse=True)
         return Response(
             {
@@ -1015,6 +1066,92 @@ class PacienteViewSet(viewsets.ModelViewSet):
             {
                 nombre: self._serializar_grupo_alerta(queryset)
                 for nombre, queryset in grupos.items()
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="riesgo-abandono")
+    def riesgo_abandono(self, request):
+        """Score heuristico (0-100) de riesgo de abandono por paciente activo.
+
+        Combina inasistencias, intentos de contacto, estado de rescate, telefono
+        incompleto, meses en espera y antiguedad (>90 dias). KINE ve solo su
+        cartera; admin/administrativo ven a todos. Sin ML.
+        """
+        hoy = timezone.localdate()
+        estados_activos = [
+            Paciente.Estado.PENDIENTE,
+            Paciente.Estado.RESCATE,
+            Paciente.Estado.INGRESADO,
+        ]
+        qs = self.get_queryset().filter(estado__in=estados_activos)
+        if request.user.rol == Usuario.Rol.KINE:
+            qs = qs.filter(kine_asignado=request.user)
+
+        conteo = {"ALTO": 0, "MEDIO": 0, "BAJO": 0}
+        evaluados = []
+        for paciente in qs:
+            score = 0
+            factores = []
+
+            if paciente.n_inasistencias:
+                score += min(paciente.n_inasistencias, 5) * 14
+                factores.append(
+                    f"{paciente.n_inasistencias} inasistencia"
+                    f"{'s' if paciente.n_inasistencias != 1 else ''}"
+                )
+            if paciente.n_intentos_contacto:
+                score += min(paciente.n_intentos_contacto, 4) * 7
+                factores.append(
+                    f"{paciente.n_intentos_contacto} intento"
+                    f"{'s' if paciente.n_intentos_contacto != 1 else ''} de contacto"
+                )
+            if paciente.estado == Paciente.Estado.RESCATE:
+                score += 18
+                factores.append("En rescate")
+            if not (paciente.telefono or paciente.telefono_recados):
+                score += 14
+                factores.append("Sin teléfono")
+            if paciente.n_meses_espera and paciente.n_meses_espera > 1:
+                score += min(paciente.n_meses_espera, 6) * 3
+                factores.append(f"{paciente.n_meses_espera} meses en espera")
+            if paciente.fecha_derivacion:
+                dias_lista = (hoy - paciente.fecha_derivacion).days
+                if dias_lista > 0:
+                    # Antiguedad continua: a mas tiempo esperando, mas riesgo.
+                    score += min(dias_lista // 12, 40)
+                    if dias_lista >= 90:
+                        factores.append(f"{dias_lista} días en lista")
+
+            score = min(score, 100)
+            if score >= 50:
+                nivel = "ALTO"
+            elif score >= 28:
+                nivel = "MEDIO"
+            else:
+                nivel = "BAJO"
+            conteo[nivel] += 1
+            evaluados.append((score, nivel, factores, paciente))
+
+        evaluados.sort(key=lambda item: item[0], reverse=True)
+
+        contexto = self.get_serializer_context()
+        pacientes_data = []
+        for score, nivel, factores, paciente in evaluados[:120]:
+            data = PacienteSerializer(paciente, context=contexto).data
+            data["riesgo_score"] = score
+            data["riesgo_nivel"] = nivel
+            data["riesgo_factores"] = factores
+            pacientes_data.append(data)
+
+        return Response(
+            {
+                "resumen": {
+                    "alto": conteo["ALTO"],
+                    "medio": conteo["MEDIO"],
+                    "bajo": conteo["BAJO"],
+                    "total": len(evaluados),
+                },
+                "pacientes": pacientes_data,
             }
         )
 
@@ -1088,6 +1225,19 @@ class PacienteViewSet(viewsets.ModelViewSet):
         if not data:
             return Response({"detail": "Lista vacía."}, status=status.HTTP_400_BAD_REQUEST)
 
+        MAX_BATCH_SIZE = 500
+        if len(data) > MAX_BATCH_SIZE:
+            return Response(
+                {"detail": f"El máximo de registros por lote es {MAX_BATCH_SIZE}. Se recibieron {len(data)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        logger.info(
+            "ingreso_masivo: usuario=%s inicia lote de %d registros",
+            request.user.username,
+            len(data),
+        )
+
         creados: list[Paciente] = []
         errores: list[dict] = []
         duplicados = 0
@@ -1104,7 +1254,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
         for i, item in enumerate(data):
             try:
-                rut = str(item.get("rut", "")).replace(".", "").replace("-", "").upper().strip()
+                rut = normalizar_rut(str(item.get("rut", "")))
                 nombre = str(item.get("nombre", "")).strip()
                 fecha_str = str(item.get("fecha_derivacion", "")).strip()
                 edad = int(item.get("edad", 0) or 0)
@@ -1171,6 +1321,9 @@ class PacienteViewSet(viewsets.ModelViewSet):
                     )
                 )
             except Exception as exc:
+                logger.warning(
+                    "ingreso_masivo: fila %d fallo — %s", i + 1, exc,
+                )
                 errores.append({"fila": i + 1, "motivo": str(exc)})
 
         importados = 0
@@ -1179,6 +1332,14 @@ class PacienteViewSet(viewsets.ModelViewSet):
             for paciente in nuevos:
                 Paciente.objects.filter(pk=paciente.pk).update(id_ccr=f"CCR-{paciente.pk:04d}")
             importados = len(nuevos)
+
+        logger.info(
+            "ingreso_masivo: completado — %d importados, %d duplicados, %d errores de %d total",
+            importados,
+            duplicados,
+            len(errores),
+            len(data),
+        )
 
         return Response(
             {
@@ -1193,7 +1354,7 @@ from rest_framework.views import APIView
 
 class PerfilPacienteView(APIView):
     def get(self, request, rut):
-        rut = rut.replace(".", "").replace("-", "").upper().strip()
+        rut = normalizar_rut(rut)
         pacientes = Paciente.objects.filter(rut=rut).order_by("-fecha_derivacion")
         if not pacientes.exists():
             return Response({"detail": "Paciente no encontrado."}, status=status.HTTP_404_NOT_FOUND)
@@ -1218,3 +1379,74 @@ class PerfilPacienteView(APIView):
             "mayor_60": latest.mayor_60,
             "derivaciones": derivaciones_data
         })
+
+
+
+class ActividadGrupalViewSet(viewsets.ModelViewSet):
+    """Actividades grupales: una fecha y hora a la que asisten varios pacientes.
+
+    Filtros: `desde` y `hasta` (YYYY-MM-DD), `paciente` (id) y `estado`
+    (uno o varios separados por coma). Un KINE ve las actividades que dirige o
+    donde participa alguno de sus pacientes.
+    """
+
+    serializer_class = ActividadGrupalSerializer
+    permission_classes = [PuedeGestionarActividadGrupal]
+
+    def get_queryset(self):
+        qs = ActividadGrupal.objects.select_related("responsable", "creado_por").prefetch_related(
+            "participantes__paciente"
+        )
+        user = self.request.user
+        if user.rol == Usuario.Rol.KINE:
+            qs = qs.filter(
+                Q(responsable=user) | Q(creado_por=user) | Q(participantes__paciente__kine_asignado=user)
+            ).distinct()
+        params = self.request.query_params
+        desde = params.get("desde")
+        hasta = params.get("hasta")
+        paciente = params.get("paciente")
+        estado = params.get("estado")
+        try:
+            if desde:
+                qs = qs.filter(fecha_hora__date__gte=date.fromisoformat(desde))
+            if hasta:
+                qs = qs.filter(fecha_hora__date__lte=date.fromisoformat(hasta))
+        except ValueError:
+            pass
+        if paciente and paciente.isdigit():
+            qs = qs.filter(participantes__paciente_id=paciente)
+        if estado:
+            qs = qs.filter(estado__in=[e.strip() for e in estado.split(",") if e.strip()])
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        responsable = serializer.validated_data.get("responsable")
+        if user.rol == Usuario.Rol.KINE or responsable is None:
+            responsable = user
+        serializer.save(creado_por=user, responsable=responsable)
+
+    def perform_update(self, serializer):
+        if self.request.user.rol == Usuario.Rol.KINE:
+            serializer.save(responsable=serializer.instance.responsable)
+        else:
+            serializer.save()
+
+    @action(detail=True, methods=["post"], url_path="asistencia")
+    def asistencia(self, request, pk=None):
+        actividad = self.get_object()
+        serializer = AsistenciaActividadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        participante = actividad.participantes.filter(
+            paciente_id=serializer.validated_data["paciente_id"]
+        ).first()
+        if participante is None:
+            return Response(
+                {"error": "El paciente no participa en esta actividad."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        participante.asistencia = serializer.validated_data["asistencia"]
+        participante.save(update_fields=["asistencia"])
+        actividad = self.get_queryset().get(pk=actividad.pk)
+        return Response(self.get_serializer(actividad).data)

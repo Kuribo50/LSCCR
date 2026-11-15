@@ -45,61 +45,11 @@ El servicio backend ejecuta migraciones y carga `backend/fixtures/initial_data.j
 si esta disponible. No borrar ese fixture si se necesita levantar el sistema con
 usuarios y datos iniciales.
 
-## Variables principales
+## Configuracion
 
-Ver `.env.example` para el detalle completo. Las variables minimas son:
-
-- `DJANGO_ENV`
-- `DJANGO_PRODUCTION`
-- `DJANGO_DEBUG`
-- `DJANGO_SECRET_KEY`
-- `DJANGO_ALLOWED_HOSTS`
-- `DJANGO_CSRF_TRUSTED_ORIGINS`
-- `DJANGO_DB_ENGINE`
-- `DJANGO_CACHE_BACKEND`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- `REDIS_HOST`
-- `REDIS_PORT`
-- `NEXT_PUBLIC_API_BASE_URL`
-- `NEXT_API_PROXY_TARGET`
-- `BACKEND_INTERNAL_URL`
-
-## Rutas principales
-
-- `/login`: acceso al sistema. Los accesos demo se mantienen por ahora.
-- `/inicio`: dashboard operativo.
-- `/lista-espera`: pacientes pendientes y rescate.
-- `/mis-pacientes`: ingresados/asignados.
-- `/llamados`: cola de contactabilidad.
-- `/calendario`: agenda e inasistencias.
-- `/importar`: importacion mensual.
-- `/importar/revision`: revision de observaciones de importacion.
-- `/historial-mensual`: cortes e historial de importaciones.
-- `/egresos`: lista de egresados.
-- `/analisis/estadisticas`: reportes operativos.
-- `/usuarios`: administracion de usuarios.
-- `/paciente/[rut]`: perfil longitudinal por RUT.
-
-## Roles
-
-- `ADMIN`: administracion completa, usuarios, reportes, importaciones y vistas globales.
-- `ADMINISTRATIVO`: gestion operativa, importaciones y contactabilidad segun permisos.
-- `KINE`: gestion de su cartera, ingresos, agenda y seguimiento clinico operativo.
-
-## Flujo operativo basico
-
-1. Importar derivaciones mensuales o crear pacientes manualmente.
-2. Revisar lista de espera y priorizacion.
-3. Asignar responsable CCR o tomar paciente.
-4. Registrar llamados y rescates cuando corresponda.
-5. Ingresar paciente y agendar atenciones.
-6. Registrar inasistencias y movimientos.
-7. Egresar con motivo valido y observacion obligatoria cuando aplique.
-8. Revisar reportes mensuales y exportaciones.
+Ver `.env.example` para variables disponibles. En produccion revisar
+especialmente secretos, hosts, CSRF, base de datos, Redis y URL interna del
+backend.
 
 ## Comandos utiles
 
@@ -133,9 +83,6 @@ docker-compose down
 El proyecto esta en preparacion para estreno. La limpieza actual fue conservadora:
 se quitaron artefactos generados, imports/variables sin uso y documentacion
 faltante, sin cambiar reglas de negocio ni accesos demo.
-
-Ver `docs/PENDIENTES.md` para el listado de pendientes antes de estreno y
-produccion.
 
 ## Documentacion para continuar
 

@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from apps.pacientes.exports import excel_response, sanitizar_celda_excel
 from apps.pacientes.models import Paciente
+from apps.pacientes.services import ESTADOS_FINALES
 from apps.usuarios.models import Usuario
 
 
@@ -25,14 +26,6 @@ MESES = {
     10: "Octubre",
     11: "Noviembre",
     12: "Diciembre",
-}
-
-ESTADOS_FINALES = {
-    Paciente.Estado.ALTA_MEDICA,
-    Paciente.Estado.EGRESO_VOLUNTARIO,
-    Paciente.Estado.EGRESO_ADMINISTRATIVO,
-    Paciente.Estado.ABANDONO,
-    Paciente.Estado.DERIVADO,
 }
 
 # Activos para reportes: siguen en gestion operativa y no deben contarse como
@@ -313,7 +306,6 @@ class ResumenReporteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        """Reporte agregado que consume /analisis/estadisticas."""
         mes, anio = obtener_mes_anio(request)
         hoy = date.today()
         corte = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)

@@ -32,8 +32,6 @@ class PuedeCambiarEstado(BasePermission):
 
 
 class PuedeRegistrarLlamado(BasePermission):
-    """Permiso comun para el flujo de contactabilidad."""
-
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
@@ -64,3 +62,25 @@ class PuedeProgramarAtencion(BasePermission):
         if request.user.rol == Usuario.Rol.KINE:
             return obj.kine_asignado_id == request.user.id
         return request.user.rol == Usuario.Rol.ADMIN
+
+
+class PuedeGestionarActividadGrupal(BasePermission):
+    """Todos los usuarios ven actividades; KINE y ADMIN las crean y gestionan.
+
+    Un KINE solo modifica actividades que le pertenecen (responsable o creador).
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        return user.rol in {Usuario.Rol.KINE, Usuario.Rol.ADMIN}
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        if request.user.rol == Usuario.Rol.ADMIN:
+            return True
+        return request.user.id in {obj.responsable_id, obj.creado_por_id}

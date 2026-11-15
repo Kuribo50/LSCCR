@@ -5,6 +5,7 @@ import { FiAlertTriangle, FiCalendar, FiRefreshCw, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
+import CampoFecha, { fechaHoyKey } from "./CampoFecha";
 import type { InasistenciaPaciente, Paciente } from "@/lib/types";
 
 interface RegistrarInasistenciaResponse {
@@ -21,7 +22,7 @@ interface Props {
 }
 
 function fechaHoy() {
-  return new Date().toISOString().slice(0, 10);
+  return fechaHoyKey();
 }
 
 export default function RegistrarInasistenciaModal({
@@ -114,24 +115,19 @@ export default function RegistrarInasistenciaModal({
             </div>
           )}
 
-          <label className="block">
+          <div>
             <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.05em] text-slate-600">
               Fecha
             </span>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className="ccr-control-input w-full px-3 py-2 text-sm"
-            />
-          </label>
+            <CampoFecha compacto label="Fecha de la inasistencia" value={fecha} max={fechaHoy()} opcional={false} onChange={setFecha} />
+          </div>
 
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
               checked={justificada}
               onChange={(e) => setJustificada(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-[#335FDB] focus:ring-[#335FDB]"
+              className="h-4 w-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500"
             />
             Inasistencia justificada
           </label>
@@ -162,7 +158,7 @@ export default function RegistrarInasistenciaModal({
               type="button"
               onClick={() => void handleSubmit()}
               disabled={loading || !fecha}
-              className="inline-flex items-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#284FC0] disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
             >
               {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiCalendar size={13} />}
               {loading ? "Guardando..." : "Registrar"}

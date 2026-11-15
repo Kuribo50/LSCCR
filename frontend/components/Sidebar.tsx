@@ -5,14 +5,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  FiActivity,
   FiAlertTriangle,
   FiBarChart2,
   FiCalendar,
   FiChevronLeft,
   FiClock,
   FiGrid,
+  FiGitCommit,
   FiClipboard,
   FiPhone,
   FiSearch,
@@ -32,7 +33,11 @@ import type {
   Usuario,
 } from "@/lib/types";
 import FichaPaciente from "./FichaPaciente";
-import PacienteSearchBox from "./PacienteSearchBox";
+import CommandPalette from "./CommandPalette";
+
+const BRAND_ALT = "Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes";
+const SIDEBAR_ICON_SRC = "/icon.ico";
+type SidebarBrandMode = "desktop" | "mobile" | "compact";
 
 type CountKey =
   | "total"
@@ -55,34 +60,40 @@ interface Item {
 
 const BASE_ITEMS: Record<Rol, Item[]> = {
   KINE: [
-    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
+    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
     { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
+    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
+    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMINISTRATIVO: [
-    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
+    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-    { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
+    { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
     { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
+    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
+    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMIN: [
-    { href: "/inicio", label: "Dashboard", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Calendario de citas", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
+    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
+    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
     { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
     { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
     { href: "/llamados", label: "Cola de llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-    { href: "/importar/revision", label: "Revisión importación", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
+    { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
     { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
+    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
+    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
     { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
   ],
@@ -99,10 +110,47 @@ function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-function esElementoEditable(target: EventTarget | null) {
+function SidebarBrand({ mode = "desktop" }: { mode?: SidebarBrandMode }) {
+  if (mode === "compact") {
+    return (
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl p-1.5">
+        <Image
+          src={SIDEBAR_ICON_SRC}
+          alt={BRAND_ALT}
+          width={36}
+          height={36}
+          className="h-8 w-8 object-contain"
+          priority
+          unoptimized
+        />
+      </div>
+    );
+  }
+
+  if (mode === "mobile") {
+    return (
+      <div className="flex h-14 min-w-0 flex-1 items-center overflow-hidden">
+        <Image
+          src={logoHorizontal}
+          alt={BRAND_ALT}
+          className="h-14 w-full object-contain object-left"
+          sizes="260px"
+          priority
+        />
+      </div>
+    );
+  }
+
   return (
-    target instanceof HTMLElement &&
-    (target.matches("input, textarea, select") || target.isContentEditable)
+    <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+      <Image
+        src={logoHorizontal}
+        alt={BRAND_ALT}
+        className="h-[72px] w-full object-cover object-left"
+        sizes="(min-width: 1024px) 222px, 272px"
+        priority
+      />
+    </div>
   );
 }
 
@@ -120,18 +168,18 @@ function SearchLauncher({
       aria-label="Abrir buscador de pacientes"
       aria-keyshortcuts="Control+K"
       className={classes(
-        "group flex w-full items-center gap-2 rounded-lg border border-zinc-200 bg-white text-left text-zinc-950 outline-none transition-all hover:border-blue-200 hover:bg-blue-50/40 focus:border-[#335fdb] focus:ring-2 focus:ring-blue-100",
-        size === "mobile" ? "px-3 py-2.5 text-sm" : "px-3 py-2 text-xs",
+        "group flex h-10 w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 text-left text-slate-950 outline-none transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-950/20 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-white dark:hover:bg-ink-black-700",
+        size === "mobile" ? "text-sm" : "text-[13px]",
       )}
     >
       <FiSearch
-        className="shrink-0 text-zinc-500 transition-colors group-hover:text-[#335fdb]"
-        size={15}
+        className="shrink-0 text-slate-500 dark:text-ink-black-300"
+        size={16}
       />
-      <span className="min-w-0 flex-1 truncate text-zinc-500">
-        Buscar RUT, sector o diagnóstico...
+      <span className="min-w-0 flex-1 truncate font-medium text-slate-500 dark:text-ink-black-300">
+        Buscar
       </span>
-      <kbd className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-black text-slate-500 transition group-hover:border-blue-100 group-hover:bg-white group-hover:text-blue-700">
+      <kbd className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 font-sans text-[10px] font-bold text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200">
         Ctrl K
       </kbd>
     </Button>
@@ -152,9 +200,12 @@ function SidebarNav({
   onNavigate?: () => void;
 }) {
   const sectionOrder: Item["section"][] = ["principal", "gestion", "analisis", "admin"];
+  const reduceMotion = useReducedMotion();
+  // Un id por instancia: el menu de escritorio y el movil no comparten indicador.
+  const indicatorId = onNavigate ? "sidebar-active-mobile" : "sidebar-active-desktop";
 
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-4">
+    <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4" aria-label="Navegación principal">
       {sectionOrder.map((section, sectionIndex) => {
         const sectionItems = items.filter((item) => item.section === section);
         if (sectionItems.length === 0) return null;
@@ -163,17 +214,17 @@ function SidebarNav({
           <div
             key={section}
             className={classes(
-              "mb-3 last:mb-0",
-              sectionIndex > 0 && !compact && "mt-2 pt-2",
+              "py-2.5",
+              sectionIndex > 0 && "border-t border-slate-100 dark:border-ink-black-700",
             )}
           >
             {!compact && (
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-500">
+              <p className="mb-1 px-2.5 text-[11px] font-semibold text-slate-400 dark:text-ink-black-300">
                 {SECTION_LABELS[section]}
               </p>
             )}
 
-            <ul className="space-y-1.5">
+            <ul className="space-y-0.5">
               {sectionItems.map((item) => {
                 const Icon = item.icon;
                 const active =
@@ -188,35 +239,41 @@ function SidebarNav({
                       onClick={onNavigate}
                       title={compact ? item.label : undefined}
                       aria-label={compact ? item.label : undefined}
+                      aria-current={active ? "page" : undefined}
                       className={classes(
-                        "group flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition",
-                        compact && "justify-center px-2",
+                        "group relative flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-[13px] outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-slate-950/25 dark:focus-visible:ring-white/30",
+                        compact && "justify-center px-0",
                         active
-                          ? "bg-[#335fdb] text-white shadow-sm"
-                          : "text-zinc-800 hover:bg-[#eceef3] hover:text-zinc-950",
+                          ? "font-bold text-white dark:text-white"
+                          : "font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950 dark:text-ink-black-100 dark:hover:bg-ink-black-700",
                       )}
                     >
-                      <span
+                      {active && (
+                        <motion.span
+                          layoutId={indicatorId}
+                          aria-hidden="true"
+                          className="absolute inset-0 rounded-lg bg-blue-500 dark:bg-blue-500"
+                          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 40 }}
+                        />
+                      )}
+                      <Icon
+                        aria-hidden="true"
                         className={classes(
-                          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[15px]",
-                          active
-                            ? "bg-white/15 text-white"
-                            : "bg-transparent text-zinc-700 group-hover:text-zinc-950",
+                          "relative shrink-0 text-[16px]",
+                          active ? "text-current" : "text-slate-500 group-hover:text-slate-950 dark:text-ink-black-300",
                         )}
-                      >
-                        <Icon />
-                      </span>
+                      />
 
                       {!compact && (
                         <>
-                          <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+                          <span className="relative min-w-0 flex-1 truncate">{item.label}</span>
                           {typeof count === "number" && (
                             <span
                               className={classes(
-                                "rounded-md px-2 py-0.5 text-[11px] font-semibold",
+                                "relative min-w-[2rem] shrink-0 rounded-md px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums",
                                 active
                                   ? "bg-white/20 text-white"
-                                  : "bg-[#e9edf5] text-zinc-700",
+                                  : "bg-slate-100 text-slate-500 dark:bg-ink-black-700 dark:text-ink-black-200",
                               )}
                             >
                               {count}
@@ -344,56 +401,52 @@ export default function Sidebar({
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
-      if (!event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== "k") {
-        return;
-      }
-      if (esElementoEditable(event.target) && !searchOverlayOpen) return;
+      // Cmd+K (Mac) o Ctrl+K (Windows/Linux) abre/cierra la paleta desde cualquier lugar.
+      const isPaletteShortcut =
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "k";
+      if (!isPaletteShortcut) return;
 
       event.preventDefault();
       onMobileOpenChange(false);
-      setSearchOverlayOpen(true);
+      setSearchOverlayOpen((prev) => !prev);
     }
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [onMobileOpenChange, searchOverlayOpen]);
+  }, [onMobileOpenChange]);
 
   return (
     <>
       <aside
         className={classes(
-          "ccr-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col bg-[#f4f4f5] text-zinc-950 transition-all duration-300 lg:flex",
+          "ccr-sidebar-surface sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white text-slate-950 transition-all duration-300 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-white lg:flex",
           compact ? "w-[86px]" : "w-[286px]",
         )}
       >
-        <div className="flex items-center justify-between px-4 py-5">
-          {!compact && (
-            <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-              <Image
-                src={logoHorizontal}
-                alt="Centro Comunitario de Rehabilitación"
-                className="h-16 w-full origin-left scale-125 object-contain object-left"
-                priority
-              />
-            </div>
+        <div
+          className={classes(
+            "flex py-5",
+            compact
+              ? "flex-col items-center gap-3 px-3"
+              : "items-center justify-between gap-2 px-3",
           )}
-          {compact && (
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#335fdb] text-white">
-              <FiActivity size={17} />
-            </div>
-          )}
+        >
+          <SidebarBrand mode={compact ? "compact" : "desktop"} />
 
           <Button
             aria-label={compact ? "Expandir menú" : "Contraer menú"}
             onPress={() => setCompact((prev) => !prev)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 outline-none transition hover:bg-zinc-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-950 outline-none transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-slate-950/25 dark:border-ink-black-600 dark:text-white dark:hover:bg-ink-black-700"
           >
             <FiChevronLeft className={classes("transition-transform duration-300", compact && "rotate-180")} size={14} />
           </Button>
         </div>
 
         {!compact && (
-          <div className="mb-2 px-4 pb-3 pt-1">
+          <div className="border-b border-slate-200 px-3 pb-4 dark:border-ink-black-600">
             <SearchLauncher onOpen={abrirBuscadorCentral} />
           </div>
         )}
@@ -404,31 +457,24 @@ export default function Sidebar({
       <ModalOverlay
         isOpen={mobileOpen}
         onOpenChange={onMobileOpenChange}
-        className="fixed inset-0 z-50 bg-slate-900/30 p-3 backdrop-blur-[1px] lg:hidden"
+        className="fixed inset-0 z-50 bg-slate-900/30 p-0 backdrop-blur-[1px] sm:p-3 lg:hidden"
       >
-        <Modal className="ccr-sidebar-surface h-full w-[92vw] max-w-[320px] rounded-xl bg-[#f4f4f5] text-zinc-950 shadow-2xl outline-none">
-          <Dialog aria-label="Menú principal" className="flex h-full flex-col outline-none">
+        <Modal className="ccr-sidebar-surface h-dvh max-h-dvh w-[92vw] max-w-[360px] rounded-r-2xl bg-white text-slate-950 shadow-2xl outline-none dark:bg-ink-black-800 dark:text-white sm:h-full sm:rounded-2xl">
+          <Dialog aria-label="Menú principal" className="flex h-full min-h-0 flex-col outline-none">
             {({ close }) => (
               <>
-                <div className="flex items-center justify-between px-4 py-5">
-                  <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-                    <Image
-                      src={logoHorizontal}
-                      alt="Centro Comunitario de Rehabilitación"
-                      className="h-16 w-full origin-left scale-125 object-contain object-left"
-                      priority
-                    />
-                  </div>
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200/70 px-3 py-3">
+                  <SidebarBrand mode="mobile" />
                   <Button
                     onPress={close}
                     aria-label="Cerrar menú"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 outline-none transition hover:bg-zinc-100"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 outline-none transition hover:bg-zinc-100 focus:ring-2 focus:ring-blue-100"
                   >
                     <FiX size={16} />
                   </Button>
                 </div>
 
-                <div className="mt-1 px-4 pb-3">
+                <div className="shrink-0 px-3 pb-3 pt-3">
                   <SearchLauncher
                     onOpen={abrirBuscadorMovil}
                     size="mobile"
@@ -442,49 +488,17 @@ export default function Sidebar({
         </Modal>
       </ModalOverlay>
 
-      <ModalOverlay
+      <CommandPalette
         isOpen={searchOverlayOpen}
-        onOpenChange={setSearchOverlayOpen}
-        isDismissable
-        className="fixed inset-0 z-[75] flex items-start justify-center bg-slate-900/45 px-4 pb-6 pt-[9vh] backdrop-blur-sm sm:pt-[8vh]"
-      >
-        <Modal className="w-full max-w-3xl scale-100 opacity-100 outline-none transition duration-150 data-[entering]:scale-95 data-[entering]:opacity-0 data-[exiting]:scale-95 data-[exiting]:opacity-0 motion-reduce:transition-none">
-          <Dialog
-            aria-label="Buscador de pacientes"
-            className="outline-none"
-          >
-            {({ close }) => (
-              <div>
-                <div className="mb-4 flex items-center justify-between px-1 text-white">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-100">
-                      Búsqueda rápida
-                    </p>
-                    <h2 className="text-lg font-black">Buscar paciente</h2>
-                  </div>
-                  <Button
-                    type="button"
-                    onPress={close}
-                    aria-label="Cerrar buscador"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-600 outline-none transition hover:bg-white hover:text-slate-950 focus:ring-2 focus:ring-blue-200"
-                  >
-                    <FiX size={18} />
-                  </Button>
-                </div>
-                <PacienteSearchBox
-                  autoFocus
-                  size="overlay"
-                  onSelect={handleSelectPaciente}
-                  onViewAll={handleViewAllPacientes}
-                />
-              </div>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
+        onClose={() => setSearchOverlayOpen(false)}
+        navItems={items}
+        onSelectPatient={handleSelectPaciente}
+        onViewAllPatients={handleViewAllPacientes}
+      />
 
       {pacienteSeleccionado && (
         <FichaPaciente
+          key={pacienteSeleccionado.id}
           paciente={pacienteSeleccionado}
           usuario={user}
           onClose={() => setPacienteSeleccionado(null)}

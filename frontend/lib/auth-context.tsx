@@ -78,6 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearAuthCookies()
     setMemoryToken(null)
     setUser(null)
+
+    // Limpia datos de pacientes almacenados en localStorage para evitar que
+    // queden accesibles en el navegador despues del cierre de sesion.
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('ccr:paciente-search-history')
+    }
   }
 
   return (

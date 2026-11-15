@@ -13,6 +13,8 @@ import {
 } from "react-icons/fi";
 import {
   CartesianGrid,
+  Bar,
+  BarChart,
   Legend,
   Line,
   LineChart,
@@ -49,12 +51,48 @@ const MESES = [
   { value: 12, label: "Diciembre" },
 ];
 
-const CARD_BORDER = "border-[#D4E4D4]";
+const CARD_BORDER = "border-[#D4E4D4] dark:border-[#2a2a2a]";
+const PANEL_SURFACE = `rounded-xl border ${CARD_BORDER} bg-white shadow-sm dark:bg-[#0f0f10]`;
 const CHART_COLORS = ["#335FDB", "#1B5E3B", "#ED8121", "#B91C1C", "#64748B", "#7C3AED", "#0F766E"];
+const ACTIVITY_COLORS = ["#335FDB", "#0F766E", "#ED8121", "#B91C1C", "#64748B"];
+
+function useIsDarkMode() {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setIsDark(root.classList.contains("dark"));
+    sync();
+
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
+function getChartTheme(isDark: boolean) {
+  return {
+    grid: isDark ? "#334155" : "#E2E8F0",
+    axis: isDark ? "#B5D8E3" : "#64748B",
+    axisLine: isDark ? "#475569" : "#CBD5E1",
+    tooltipBg: isDark ? "#111111" : "#FFFFFF",
+    tooltipBorder: isDark ? "#2a2a2a" : "#D4E4D4",
+    tooltipText: isDark ? "#ECF5F8" : "#0F172A",
+  };
+}
+
+function shortName(name: string | null | undefined) {
+  const value = name?.trim() || "Sin nombre";
+  return value.length > 22 ? `${value.slice(0, 20)}...` : value;
+}
 
 export default function EstadisticasPage() {
   const { error: toastError, info: toastInfo, success: toastSuccess } = useToast();
   const hoy = useMemo(() => new Date(), []);
+  const isDarkMode = useIsDarkMode();
+  const chartTheme = useMemo(() => getChartTheme(isDarkMode), [isDarkMode]);
   const [mes, setMes] = useState(hoy.getMonth() + 1);
   const [anio, setAnio] = useState(hoy.getFullYear());
   const [resumen, setResumen] = useState<ReporteResumenMensual | null>(null);
@@ -110,6 +148,48 @@ export default function EstadisticasPage() {
           color: CHART_COLORS[index % CHART_COLORS.length],
         })) ?? [],
     [resumen],
+  );
+
+  const actividadMesData = useMemo(
+    () =>
+      resumen
+        ? [
+            { name: "Ingresos", value: resumen.actividad_mes.ingresos, color: ACTIVITY_COLORS[0] },
+            { name: "Altas", value: resumen.actividad_mes.altas_medicas, color: ACTIVITY_COLORS[1] },
+            { name: "Egresos", value: resumen.actividad_mes.egresos_total, color: ACTIVITY_COLORS[2] },
+            { name: "Abandonos", value: resumen.actividad_mes.abandonos, color: ACTIVITY_COLORS[3] },
+            { name: "Derivados", value: resumen.actividad_mes.derivados, color: ACTIVITY_COLORS[4] },
+          ]
+        : [],
+    [resumen],
+  );
+
+  const responsablesChartData = useMemo(
+    () =>
+      porResponsable?.responsables
+        .filter(
+          (item) =>
+            item.total_asignados_corte > 0 ||
+            item.ingresos_mes > 0 ||
+            item.egresos_mes > 0 ||
+            item.pendientes > 0 ||
+            item.rescate > 0,
+        )
+        .sort(
+          (a, b) =>
+            b.total_asignados_corte +
+            b.ingresos_mes +
+            b.egresos_mes -
+            (a.total_asignados_corte + a.ingresos_mes + a.egresos_mes),
+        )
+        .slice(0, 8)
+        .map((item) => ({
+          responsable: shortName(item.responsable_nombre),
+          asignados: item.total_asignados_corte,
+          ingresos: item.ingresos_mes,
+          egresos: item.egresos_mes,
+        })) ?? [],
+    [porResponsable],
   );
 
   const exportarCsv = useCallback(() => {
@@ -178,26 +258,26 @@ export default function EstadisticasPage() {
 
   return (
     <main className="ccr-dashboard-content space-y-6">
-      <header className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
+      <header className={`${PANEL_SURFACE} p-5`}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 rounded-full bg-[#E7F3EC] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#1B5E3B]">
+            <p className="inline-flex items-center gap-2 rounded-full bg-[#E7F3EC] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#1B5E3B] dark:bg-blue-400/10 dark:text-blue-200">
               <FiBarChart2 size={12} />
               Reportes operativos
             </p>
-            <h1 className="mt-3 text-3xl font-black text-slate-900">Estadísticas CCR</h1>
-            <p className="mt-1 text-sm font-medium text-slate-600">
+            <h1 className="mt-3 text-3xl font-black text-slate-900 dark:text-white">Estadísticas CCR</h1>
+            <p className="mt-1 text-sm font-medium text-slate-600 dark:text-ink-black-200">
               Reportes operativos por mes y responsable.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-lg border border-[#D4E4D4] bg-[#F6FBF8] p-3 sm:flex-row sm:items-end">
-            <label className="text-xs font-bold text-slate-700">
+          <div className="flex flex-col gap-3 rounded-lg border border-[#D4E4D4] bg-[#F6FBF8] p-3 dark:border-[#2a2a2a] dark:bg-[#151515] sm:flex-row sm:items-end">
+            <label className="text-xs font-bold text-slate-700 dark:text-ink-black-50">
               Mes
               <select
                 value={mes}
                 onChange={(event) => setMes(Number(event.target.value))}
-                className="mt-1 block w-full rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
+                className="mt-1 block w-full rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#0f0f10] dark:text-white dark:focus:ring-blue-500/20"
               >
                 {MESES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -207,20 +287,20 @@ export default function EstadisticasPage() {
               </select>
             </label>
 
-            <label className="text-xs font-bold text-slate-700">
+            <label className="text-xs font-bold text-slate-700 dark:text-ink-black-50">
               Año
               <input
                 type="number"
                 value={anio}
                 onChange={(event) => setAnio(Number(event.target.value))}
-                className="mt-1 block w-28 rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#335FDB] focus:ring-2 focus:ring-blue-100"
+                className="mt-1 block w-28 rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#0f0f10] dark:text-white dark:focus:ring-blue-500/20"
               />
             </label>
 
             <button
               type="button"
               onClick={() => void cargarReportes()}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#335FDB] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#284FC0]"
+              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
             >
               <FiRefreshCw size={14} />
               Actualizar
@@ -230,13 +310,13 @@ export default function EstadisticasPage() {
       </header>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-100">
           {error}
         </div>
       )}
 
       {loading ? (
-        <section className={`rounded-xl border ${CARD_BORDER} bg-white p-10 text-center text-sm font-semibold text-slate-500`}>
+        <section className={`${PANEL_SURFACE} p-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-300`}>
           Cargando estadísticas...
         </section>
       ) : resumen && porResponsable && serie ? (
@@ -295,18 +375,26 @@ export default function EstadisticasPage() {
                             <Cell key={entry.name} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: chartTheme.tooltipBg,
+                            border: `1px solid ${chartTheme.tooltipBorder}`,
+                            borderRadius: 10,
+                            color: chartTheme.tooltipText,
+                          }}
+                          itemStyle={{ color: chartTheme.tooltipText }}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="space-y-2 self-center">
                     {estadoActualData.map((item) => (
-                      <div key={item.name} className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+                      <div key={item.name} className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700 dark:text-ink-black-50">
                         <span className="inline-flex min-w-0 items-center gap-2">
                           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
                           <span className="truncate">{item.name}</span>
                         </span>
-                        <span className="font-black text-slate-950">{item.value}</span>
+                        <span className="font-black text-slate-950 dark:text-white">{item.value}</span>
                       </div>
                     ))}
                   </div>
@@ -325,11 +413,30 @@ export default function EstadisticasPage() {
                 <div className="h-[240px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={tendencia} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                      <CartesianGrid stroke="#E2E8F0" strokeDasharray="4 4" />
-                      <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Legend />
+                      <CartesianGrid stroke={chartTheme.grid} strokeDasharray="4 4" />
+                      <XAxis
+                        dataKey="mes"
+                        tick={{ fontSize: 12, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 12, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          border: `1px solid ${chartTheme.tooltipBorder}`,
+                          borderRadius: 10,
+                          color: chartTheme.tooltipText,
+                        }}
+                        labelStyle={{ color: chartTheme.tooltipText }}
+                        itemStyle={{ color: chartTheme.tooltipText }}
+                      />
+                      <Legend wrapperStyle={{ color: chartTheme.axis }} />
                       <Line type="monotone" dataKey="derivados" name="Derivados" stroke="#335FDB" strokeWidth={3} />
                       <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#1B5E3B" strokeWidth={3} />
                       <Line type="monotone" dataKey="egresos" name="Egresos" stroke="#B91C1C" strokeWidth={3} />
@@ -338,6 +445,104 @@ export default function EstadisticasPage() {
                 </div>
               ) : (
                 <EmptyState text="Sin datos para graficar este año." compact />
+              )}
+            </ChartPanel>
+          </section>
+
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            <ChartPanel
+              title="Flujo operativo del mes"
+              subtitle="Ingresos, egresos y salidas relevantes del periodo."
+              className="xl:col-span-2"
+            >
+              {actividadMesData.some((item) => item.value > 0) ? (
+                <div className="h-[240px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={actividadMesData} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke={chartTheme.grid} strokeDasharray="4 4" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        tick={{ fontSize: 12, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          border: `1px solid ${chartTheme.tooltipBorder}`,
+                          borderRadius: 10,
+                          color: chartTheme.tooltipText,
+                        }}
+                        labelStyle={{ color: chartTheme.tooltipText }}
+                        itemStyle={{ color: chartTheme.tooltipText }}
+                      />
+                      <Bar dataKey="value" name="Total" radius={[6, 6, 0, 0]}>
+                        {actividadMesData.map((item) => (
+                          <Cell key={item.name} fill={item.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Sin actividad registrada en este mes." compact />
+              )}
+            </ChartPanel>
+
+            <ChartPanel
+              title="Carga por responsable"
+              subtitle="Responsables con asignaciones o movimientos en el corte."
+              className="xl:col-span-3"
+            >
+              {responsablesChartData.length > 0 ? (
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={responsablesChartData}
+                      layout="vertical"
+                      margin={{ top: 10, right: 20, left: 16, bottom: 0 }}
+                    >
+                      <CartesianGrid horizontal={false} stroke={chartTheme.grid} strokeDasharray="4 4" />
+                      <XAxis
+                        type="number"
+                        allowDecimals={false}
+                        tick={{ fontSize: 12, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="responsable"
+                        width={132}
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={{ stroke: chartTheme.axisLine }}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          border: `1px solid ${chartTheme.tooltipBorder}`,
+                          borderRadius: 10,
+                          color: chartTheme.tooltipText,
+                        }}
+                        labelStyle={{ color: chartTheme.tooltipText }}
+                        itemStyle={{ color: chartTheme.tooltipText }}
+                      />
+                      <Legend wrapperStyle={{ color: chartTheme.axis }} />
+                      <Bar dataKey="asignados" name="Asignados" fill="#335FDB" radius={[0, 5, 5, 0]} />
+                      <Bar dataKey="ingresos" name="Ingresos" fill="#0F766E" radius={[0, 5, 5, 0]} />
+                      <Bar dataKey="egresos" name="Egresos" fill="#ED8121" radius={[0, 5, 5, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Sin actividad por responsable en este corte." compact />
               )}
             </ChartPanel>
           </section>
@@ -354,11 +559,11 @@ export default function EstadisticasPage() {
             <DistributionCard title="Diagnósticos frecuentes" items={resumen.por_diagnostico ?? []} labelKey="label" />
           </section>
 
-          <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
+          <section className={`${PANEL_SURFACE} p-5`}>
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-black text-slate-900">Actividad del mes</h2>
-                <p className="text-xs font-semibold text-slate-500">{resumen.periodo_label}</p>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">Actividad del mes</h2>
+                <p className="text-xs font-semibold text-slate-500 dark:text-ink-black-200">{resumen.periodo_label}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
@@ -371,15 +576,15 @@ export default function EstadisticasPage() {
             </div>
           </section>
 
-          <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
+          <section className={`${PANEL_SURFACE} p-5`}>
             <div className="mb-4">
-              <h2 className="text-lg font-black text-slate-900">Por responsable</h2>
-              <p className="text-xs font-semibold text-slate-500">
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">Por responsable</h2>
+              <p className="text-xs font-semibold text-slate-500 dark:text-ink-black-200">
                 Incluye responsables sin pacientes asignados durante el corte.
               </p>
             </div>
             <ResponsablesTable responsables={porResponsable.responsables} />
-            <div className="mt-4 rounded-lg border border-[#D4E4D4] bg-[#F6FBF8] p-3 text-xs font-semibold text-slate-700">
+            <div className="mt-4 rounded-lg border border-[#D4E4D4] bg-[#F6FBF8] p-3 text-xs font-semibold text-slate-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-100">
               Sin responsable: {porResponsable.sin_responsable.total_corte} del corte,
               {" "}
               {porResponsable.sin_responsable.pendientes} pendientes,
@@ -410,10 +615,10 @@ function ChartPanel({
   children: ReactNode;
 }) {
   return (
-    <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm ${className}`}>
+    <section className={`${PANEL_SURFACE} p-5 ${className}`}>
       <div className="mb-4">
-        <h2 className="text-lg font-black text-slate-900">{title}</h2>
-        <p className="text-xs font-semibold text-slate-500">{subtitle}</p>
+        <h2 className="text-lg font-black text-slate-900 dark:text-white">{title}</h2>
+        <p className="text-xs font-semibold text-slate-500 dark:text-ink-black-200">{subtitle}</p>
       </div>
       {children}
     </section>
@@ -432,16 +637,16 @@ function KpiCard({
   tone?: "green" | "amber" | "rose";
 }) {
   const toneClasses = {
-    green: "bg-[#E7F3EC] text-[#1B5E3B]",
-    amber: "bg-amber-50 text-amber-700",
-    rose: "bg-rose-50 text-rose-700",
+    green: "bg-[#E7F3EC] text-[#1B5E3B] dark:bg-green-400/10 dark:text-green-200",
+    amber: "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-200",
+    rose: "bg-rose-50 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200",
   };
   return (
-    <article className={`rounded-xl border ${CARD_BORDER} bg-white p-4 shadow-sm`}>
+    <article className={`${PANEL_SURFACE} p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{title}</p>
-          <p className="mt-2 text-3xl font-black text-slate-900">{formatNumber(value)}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-ink-black-200">{title}</p>
+          <p className="mt-2 text-3xl font-black text-slate-900 dark:text-white">{formatNumber(value)}</p>
         </div>
         <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${toneClasses[tone]}`}>
           {icon}
@@ -462,14 +667,14 @@ function DistributionCard<T extends { total: number }>({
 }) {
   const visibles = items.filter((item) => item.total > 0);
   return (
-    <section className={`rounded-xl border ${CARD_BORDER} bg-white p-5 shadow-sm`}>
-      <h2 className="text-base font-black text-slate-900">{title}</h2>
+    <section className={`${PANEL_SURFACE} p-5`}>
+      <h2 className="text-base font-black text-slate-900 dark:text-white">{title}</h2>
       <div className="mt-4 space-y-2">
         {visibles.length > 0 ? (
           visibles.map((item, index) => (
-            <div key={`${String(item[labelKey])}-${index}`} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-              <span className="text-sm font-semibold text-slate-700">{String(item[labelKey])}</span>
-              <span className="rounded-full bg-[#E7F3EC] px-2 py-1 text-xs font-black text-[#1B5E3B]">
+            <div key={`${String(item[labelKey])}-${index}`} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-[#2a2a2a] dark:bg-[#151515]">
+              <span className="text-sm font-semibold text-slate-700 dark:text-ink-black-50">{String(item[labelKey])}</span>
+              <span className="rounded-full bg-[#E7F3EC] px-2 py-1 text-xs font-black text-[#1B5E3B] dark:bg-green-400/10 dark:text-green-200">
                 {item.total}
               </span>
             </div>
@@ -484,9 +689,9 @@ function DistributionCard<T extends { total: number }>({
 
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-      <p className="text-xs font-bold text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-black text-slate-900">{formatNumber(value)}</p>
+    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 dark:border-[#2a2a2a] dark:bg-[#151515]">
+      <p className="text-xs font-bold text-slate-500 dark:text-ink-black-200">{label}</p>
+      <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">{formatNumber(value)}</p>
     </div>
   );
 }
@@ -496,10 +701,10 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
     return <EmptyState text="No hay responsables para mostrar." />;
   }
   return (
-    <div className="ccr-data-table overflow-x-auto rounded-lg border border-slate-100">
-      <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
-        <thead>
-          <tr className="text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+    <div className="ccr-data-table overflow-x-auto rounded-lg border border-slate-100 dark:border-[#2a2a2a]">
+      <table className="min-w-full divide-y divide-slate-100 text-left text-sm dark:divide-[#2a2a2a]">
+        <thead className="bg-slate-50 dark:bg-[#181818]">
+          <tr className="text-xs font-black uppercase tracking-[0.08em] text-slate-500 dark:text-ink-black-200">
             <th className="px-3 py-3">Responsable CCR</th>
             <th className="px-3 py-3">Asignados corte</th>
             <th className="px-3 py-3">Pendientes</th>
@@ -512,21 +717,21 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
             <th className="px-3 py-3">Prom. días</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-[#2a2a2a]">
           {responsables.map((item) => (
-            <tr key={item.responsable_id ?? item.responsable_nombre ?? "sin-responsable"} className="hover:bg-[#F6FBF8]">
-              <td className="whitespace-nowrap px-3 py-3 font-bold text-slate-900">
+            <tr key={item.responsable_id ?? item.responsable_nombre ?? "sin-responsable"} className="bg-white hover:bg-[#F6FBF8] dark:bg-[#111111] dark:hover:bg-[#202020]">
+              <td className="whitespace-nowrap px-3 py-3 font-bold text-slate-900 dark:text-white">
                 {item.responsable_nombre ?? "Sin nombre"}
               </td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.total_asignados_corte}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.pendientes}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.rescate}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.ingresos_mes}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.egresos_mes}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.altas_medicas_mes}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.egresos_administrativos_mes ?? 0}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.abandonos_mes}</td>
-              <td className="px-3 py-3 font-semibold text-slate-700">{item.promedio_dias_hasta_ingreso}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.total_asignados_corte}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.pendientes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.rescate}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.ingresos_mes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.egresos_mes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.altas_medicas_mes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.egresos_administrativos_mes ?? 0}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.abandonos_mes}</td>
+              <td className="px-3 py-3 font-semibold text-slate-700 dark:text-ink-black-50">{item.promedio_dias_hasta_ingreso}</td>
             </tr>
           ))}
         </tbody>
@@ -537,7 +742,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
 
 function EmptyState({ text, compact = false }: { text: string; compact?: boolean }) {
   return (
-    <div className={`rounded-lg border border-dashed border-[#D4E4D4] bg-[#F6FBF8] text-center text-sm font-semibold text-slate-500 ${compact ? "px-3 py-4" : "p-8"}`}>
+    <div className={`rounded-lg border border-dashed border-[#D4E4D4] bg-[#F6FBF8] text-center text-sm font-semibold text-slate-500 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200 ${compact ? "px-3 py-4" : "p-8"}`}>
       {text}
     </div>
   );

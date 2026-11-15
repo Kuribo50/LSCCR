@@ -20,8 +20,6 @@ function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-/* ---------- Primitivos ---------- */
-
 export function SkeletonBlock({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <div
@@ -40,8 +38,6 @@ export function SkeletonText({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const h = size === "sm" ? "h-3" : size === "lg" ? "h-5" : "h-4";
   return <SkeletonBlock className={`${w} ${h}`} />;
 }
-
-/* ---------- Tarjetas ---------- */
 
 export function SkeletonCard() {
   return (
@@ -62,12 +58,9 @@ export function SkeletonCard() {
   );
 }
 
-/* ---------- Dashboard ---------- */
-
 export function DashboardSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Encabezado */}
       <div className="rounded-3xl border border-gray-200 bg-white p-6">
         <div className="flex items-center gap-5">
           <SkeletonBlock className="h-16 w-16 rounded-2xl" />
@@ -80,7 +73,6 @@ export function DashboardSkeleton() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Graficos */}
         <div className="rounded-3xl border border-gray-200 bg-white p-6 lg:col-span-8">
           <div className="mb-6 flex items-center justify-between">
             <SkeletonBlock className="h-5 w-48 rounded-md" />
@@ -96,7 +88,6 @@ export function DashboardSkeleton() {
           </div>
         </div>
 
-        {/* Tarjetas de accion */}
         <div className="lg:col-span-4 grid grid-cols-1 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonBlock key={i} className="h-[88px] w-full rounded-3xl" />
@@ -106,8 +97,6 @@ export function DashboardSkeleton() {
     </div>
   );
 }
-
-/* ---------- Tabla ---------- */
 
 export function TableSkeleton({ rows = 8 }: { rows?: number }) {
   const reduceMotion = useReducedMotion();
@@ -162,8 +151,6 @@ export function TableSkeleton({ rows = 8 }: { rows?: number }) {
     </div>
   );
 }
-
-/* ---------- Ficha (Panel) ---------- */
 
 export function FichaSkeleton() {
   return (

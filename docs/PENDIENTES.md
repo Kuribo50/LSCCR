@@ -67,12 +67,6 @@ razonable de uso funcional.
 
 ## Legacy o deuda detectada
 
-- Habia artefactos Python generados (`__pycache__` y `.pyc`) dentro de
-  `backend`; fueron eliminados porque estan ignorados por Git.
-- El repositorio no tenia README raiz disponible en el worktree; se creo uno
-  nuevo con instrucciones minimas.
 - Hay helpers de busqueda y fechas duplicados entre varias pantallas.
 - Existen componentes y rutas con posible caracter legacy, pero con referencias
   vigentes. Se dejaron documentados para revision posterior.
-- El historial Git local contiene muchos cambios previos no relacionados con
-  esta limpieza; antes de abrir PR conviene revisar el alcance exacto.
