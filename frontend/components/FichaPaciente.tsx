@@ -4,8 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, ModalOverlay, Dialog } from "react-aria-components";
+import Link from "next/link";
 import { api } from "@/lib/api";
+import { useAPI, unwrapResults } from "@/lib/swr";
 import type {
+  GrupoPacientes,
+  PaginatedResponse,
   Estado,
   HistorialAccionesPaciente,
   HistorialAccionPaciente,
@@ -267,6 +271,9 @@ export default function FichaPaciente({
     [acciones, filtroHistorial],
   );
   const kineNombre = paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? null;
+  // Un paciente puede estar en varios grupos a la vez.
+  const { data: dataGrupos } = useAPI<GrupoPacientes[] | PaginatedResponse<GrupoPacientes>>(`/grupos-pacientes/?paciente=${paciente.id}`);
+  const gruposPaciente = unwrapResults(dataGrupos);
   const edadTexto = paciente.edad > 0 ? `${paciente.edad} años` : "Edad sin dato";
 
   const puedeCambiarEstado = useMemo(() => {
@@ -478,6 +485,28 @@ export default function FichaPaciente({
                   }
                 />
                 {motivoUltimaInasistencia && <Field label="Motivo inasistencia" value={motivoUltimaInasistencia} full />}
+                <Field
+                  label="Grupos"
+                  full
+                  value={
+                    gruposPaciente.length > 0 ? (
+                      <span className="flex flex-wrap gap-1.5">
+                        {gruposPaciente.map((g) => (
+                          <Link
+                            key={g.id}
+                            href={`/grupos?id=${g.id}`}
+                            onClick={onClose}
+                            className="rounded-full bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200 px-2 py-0.5 text-[11px] font-semibold hover:bg-slate-200 dark:hover:bg-ink-black-600"
+                          >
+                            {g.nombre}
+                          </Link>
+                        ))}
+                      </span>
+                    ) : (
+                      ""
+                    )
+                  }
+                />
               </Section>
             </div>
 
@@ -641,8 +670,9 @@ export default function FichaPaciente({
         </div>
 
         </Dialog>
-      </Modal>
 
+      {/* Los submodales van dentro de <Modal>: react-aria deja inerte todo lo que
+          queda fuera del modal activo y no se podrian usar ni cerrar. */}
       {mostrarCambioEstado && (
         <CambiarEstadoModal
           paciente={paciente}
@@ -737,6 +767,7 @@ export default function FichaPaciente({
           }}
         />
       )}
+      </Modal>
     </ModalOverlay>
   );
 }

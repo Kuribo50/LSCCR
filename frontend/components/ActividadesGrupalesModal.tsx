@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import {
   FiArrowLeft,
+  FiArrowRight,
   FiCalendar,
   FiCheck,
   FiClock,
   FiEdit2,
   FiMapPin,
   FiPlus,
-  FiSearch,
   FiTrash2,
   FiUsers,
   FiX,
@@ -24,19 +25,26 @@ import { useToast } from "@/lib/toast-context";
 import type {
   ActividadGrupal,
   AsistenciaActividad,
+  GrupoPacientes,
   Paciente,
   PaginatedResponse,
   Usuario,
 } from "@/lib/types";
-import { normalizeRut, normalizeSearchText } from "@/lib/utils";
 import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha, { fechaHoyKey } from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
+import { Bloque, type Candidato, candidatoDe, INPUT, ListaGrupos, nombreLegible, SelectorPacientes, useKines } from "./GruposPacientesVistas";
 
-type Vista = { tipo: "lista" } | { tipo: "form"; actividad?: ActividadGrupal } | { tipo: "detalle"; id: number };
+// Los grupos se administran en /grupos; aqui solo se eligen para citar o para sumar pacientes.
+type Vista =
+  | { tipo: "lista" }
+  | { tipo: "form"; actividad?: ActividadGrupal; grupo?: GrupoPacientes }
+  | { tipo: "detalle"; id: number }
+  | { tipo: "elegirGrupo" };
 
-const INPUT =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
+/** Que hacer con los pacientes seleccionados en la tabla al abrir la ventana. */
+export type AccionSeleccion = "actividad" | "agregar";
+
 
 const HORAS = Array.from({ length: 53 }, (_, i) => {
   const minutos = 7 * 60 + i * 15; // 07:00 a 20:00 cada 15 minutos
@@ -52,8 +60,8 @@ const DURACIONES = [30, 45, 60, 90, 120].map((m) => ({
 
 const ESTADO_TONO: Record<ActividadGrupal["estado"], string> = {
   PROGRAMADA: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200",
-  REALIZADA: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-200",
-  CANCELADA: "bg-slate-100 text-slate-500 dark:bg-ink-black-700 dark:text-ink-black-300",
+  REALIZADA: "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200",
+  CANCELADA: "bg-white text-slate-400 line-through ring-1 ring-inset ring-slate-200 dark:bg-transparent dark:ring-ink-black-600",
 };
 
 function pad(n: number) {
@@ -76,44 +84,78 @@ function fechaLarga(iso: string) {
   return `${texto.charAt(0).toUpperCase()}${texto.slice(1)} · ${horaKey(iso)}`;
 }
 
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
-}
-
 /**
- * Actividades grupales: lista, creacion/edicion y asistencia en una sola ventana.
- * `preseleccion` abre directo el formulario con esos pacientes ya elegidos.
+ * Actividades grupales: lista, creacion/edicion y asistencia.
+ * Los grupos se administran en /grupos; esta ventana solo los usa para citar
+ * a un grupo o para sumar los pacientes marcados en la tabla (`accionSeleccion: "agregar"`).
  */
 export default function ActividadesGrupalesModal({
   usuario,
   pacientesDisponibles,
   preseleccion,
+  accionSeleccion = "actividad",
   actividadInicial,
+  grupoParaCitar,
   onClose,
   onCambio,
 }: {
   usuario: Usuario;
-  /** Pacientes ingresados que se pueden sumar a una actividad. */
+  /** Pacientes ingresados que se pueden sumar a una actividad o grupo. */
   pacientesDisponibles: Paciente[];
   preseleccion?: number[];
+  accionSeleccion?: AccionSeleccion;
   /** Abre directamente el detalle de esta actividad (p. ej. desde la Agenda). */
   actividadInicial?: number;
+  /** Abre directo el formulario para citar a este grupo. */
+  grupoParaCitar?: GrupoPacientes;
   onClose: () => void;
   onCambio?: () => void;
 }) {
-  const [vista, setVista] = useState<Vista>(
-    actividadInicial ? { tipo: "detalle", id: actividadInicial } : preseleccion?.length ? { tipo: "form" } : { tipo: "lista" },
-  );
+  const { toast } = useToast();
+  const router = useRouter();
+  const enPaginaGrupos = usePathname() === "/grupos";
+  const conSeleccion = !!preseleccion?.length;
+  const [vista, setVista] = useState<Vista>(() => {
+    if (actividadInicial) return { tipo: "detalle", id: actividadInicial };
+    if (grupoParaCitar) return { tipo: "form", grupo: grupoParaCitar };
+    if (conSeleccion && accionSeleccion === "agregar") return { tipo: "elegirGrupo" };
+    if (conSeleccion) return { tipo: "form" };
+    return { tipo: "lista" };
+  });
   const { data, isLoading, mutate } = useAPI<ActividadGrupal[] | PaginatedResponse<ActividadGrupal>>("/actividades-grupales/");
   const actividades = unwrapResults(data);
+  const {
+    data: dataGrupos,
+    isLoading: cargandoGrupos,
+    mutate: mutateGrupos,
+  } = useAPI<GrupoPacientes[] | PaginatedResponse<GrupoPacientes>>("/grupos-pacientes/?incluir_inactivos=1");
+  const grupos = unwrapResults(dataGrupos);
 
   async function recargar() {
-    await mutate();
+    await Promise.all([mutate(), mutateGrupos()]);
     onCambio?.();
   }
 
-  const titulo =
-    vista.tipo === "lista" ? "Actividades grupales" : vista.tipo === "form" ? (vista.actividad ? "Editar actividad" : "Nueva actividad grupal") : "Detalle de la actividad";
+  async function agregarSeleccionA(grupo: GrupoPacientes) {
+    try {
+      await api.post(`/grupos-pacientes/${grupo.id}/agregar/`, { paciente_ids: preseleccion });
+      toast.success(`${preseleccion?.length} paciente${preseleccion?.length !== 1 ? "s" : ""} agregado${preseleccion?.length !== 1 ? "s" : ""} a "${grupo.nombre}".`);
+      await recargar();
+      onClose();
+      router.push(`/grupos?id=${grupo.id}`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "No se pudieron agregar los pacientes."));
+    }
+  }
+
+  const titulo = {
+    lista: "Actividades grupales",
+    form: vista.tipo === "form" && vista.actividad ? "Editar actividad" : vista.tipo === "form" && vista.grupo ? `Citar a ${vista.grupo.nombre}` : "Nueva actividad grupal",
+    detalle: "Detalle de la actividad",
+    elegirGrupo: "Agregar a un grupo",
+  }[vista.tipo];
+  // Citar a un grupo o elegir donde agregar son tareas de una sola vista: no hay a donde volver.
+  const esRaiz = vista.tipo === "lista" || vista.tipo === "elegirGrupo" || (vista.tipo === "form" && !!vista.grupo);
 
   return (
     <ModalOverlay
@@ -129,55 +171,68 @@ export default function ActividadesGrupalesModal({
           aria-label={titulo}
           className="flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-ink-black-600 dark:bg-ink-black-800"
         >
-          <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4 dark:border-ink-black-600">
-            <div className="flex min-w-0 items-center gap-3">
-              {vista.tipo !== "lista" && (
-                <button
-                  type="button"
-                  onClick={() => setVista({ tipo: "lista" })}
-                  aria-label="Volver a la lista"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 outline-none transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
-                >
-                  <FiArrowLeft size={17} />
-                </button>
-              )}
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">Gestión de grupos</p>
+          <header className="border-b border-slate-200 px-6 pt-4 dark:border-ink-black-600">
+            <div className="flex items-center justify-between gap-3 pb-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {!esRaiz && (
+                  <button
+                    type="button"
+                    onClick={() => setVista({ tipo: "lista" })}
+                    aria-label="Volver"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 outline-none transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+                  >
+                    <FiArrowLeft size={17} />
+                  </button>
+                )}
                 <h2 className="truncate text-lg font-extrabold text-slate-950 dark:text-ink-black-50">{titulo}</h2>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {vista.tipo === "lista" && (
-                <button type="button" onClick={() => setVista({ tipo: "form" })} className="ccr-control-button-primary">
-                  <FiPlus size={14} aria-hidden="true" />
-                  Nueva actividad
+              <div className="flex items-center gap-2">
+                {vista.tipo === "lista" && (
+                  <button type="button" onClick={() => setVista({ tipo: "form" })} className="ccr-control-button-primary">
+                    <FiPlus size={14} aria-hidden="true" />
+                    Nueva actividad
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Cerrar"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+                >
+                  <FiX size={18} />
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Cerrar"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
-              >
-                <FiX size={18} />
-              </button>
+              </div>
             </div>
+            {vista.tipo === "lista" && !enPaginaGrupos && (
+              <p className="-mt-1 pb-3 text-[12px] font-medium text-slate-500 dark:text-ink-black-300">
+                Para crear o editar grupos de pacientes, ve a{" "}
+                <Link href="/grupos" onClick={onClose} className="inline-flex items-center gap-1 font-bold text-blue-700 hover:underline dark:text-blue-300">
+                  Grupos
+                  <FiArrowRight size={12} aria-hidden="true" />
+                </Link>
+              </p>
+            )}
           </header>
 
           {vista.tipo === "lista" && (
-            <ListaActividades
-              actividades={actividades}
-              cargando={isLoading}
-              onAbrir={(id) => setVista({ tipo: "detalle", id })}
-            />
+            <ListaActividades actividades={actividades} cargando={isLoading} onAbrir={(id) => setVista({ tipo: "detalle", id })} />
           )}
           {vista.tipo === "form" && (
             <FormularioActividad
+              key={vista.grupo?.id ?? vista.actividad?.id ?? "nueva"}
               usuario={usuario}
               actividad={vista.actividad}
+              grupoInicial={vista.grupo}
+              grupos={grupos.filter((gr) => gr.activo)}
               pacientesDisponibles={pacientesDisponibles}
-              preseleccion={vista.actividad ? undefined : preseleccion}
-              onCancelar={() => (vista.actividad ? setVista({ tipo: "detalle", id: vista.actividad.id }) : setVista({ tipo: "lista" }))}
+              preseleccion={vista.actividad || vista.grupo ? undefined : preseleccion}
+              onCancelar={() =>
+                vista.actividad
+                  ? setVista({ tipo: "detalle", id: vista.actividad.id })
+                  : vista.grupo
+                    ? onClose()
+                    : setVista({ tipo: "lista" })
+              }
               onGuardada={async (guardada) => {
                 await recargar();
                 setVista({ tipo: "detalle", id: guardada.id });
@@ -194,6 +249,16 @@ export default function ActividadesGrupalesModal({
                 await recargar();
                 setVista({ tipo: "lista" });
               }}
+            />
+          )}
+          {vista.tipo === "elegirGrupo" && (
+            <ListaGrupos
+              grupos={grupos}
+              cargando={cargandoGrupos}
+              agregando={preseleccion?.length ?? 0}
+              onAbrir={() => undefined}
+              onCitar={() => undefined}
+              onElegirParaAgregar={(gr) => void agregarSeleccionA(gr)}
             />
           )}
         </Dialog>
@@ -270,7 +335,7 @@ function ListaActividades({
                 onClick={() => onAbrir(a.id)}
                 className="flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left outline-none transition-colors hover:border-blue-200 hover:bg-blue-50/40 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-ink-black-600 dark:bg-ink-black-800 dark:hover:bg-blue-500/10"
               >
-                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-100">
                   <span className="text-[10px] font-bold uppercase leading-none">
                     {new Intl.DateTimeFormat("es-CL", { month: "short" }).format(new Date(a.fecha_hora)).replace(".", "")}
                   </span>
@@ -312,21 +377,16 @@ function ListaActividades({
 // Formulario
 // -----------------------------------------------------------------------------
 
-function Bloque({ titulo, descripcion, children }: { titulo: string; descripcion: string; children: ReactNode }) {
-  return (
-    <section className="grid grid-cols-1 gap-3 border-b border-slate-100 py-5 first:pt-0 last:border-b-0 last:pb-0 dark:border-ink-black-700 md:grid-cols-[170px_minmax(0,1fr)] md:gap-6">
-      <div>
-        <h3 className="text-[13px] font-extrabold text-slate-900 dark:text-ink-black-50">{titulo}</h3>
-        <p className="mt-0.5 text-[12px] font-medium leading-snug text-slate-500 dark:text-ink-black-300">{descripcion}</p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>
-    </section>
-  );
+/** Pacientes del grupo que se pueden citar (solo ingresados). */
+function citablesDe(grupo: GrupoPacientes) {
+  return grupo.miembros.filter((m) => m.estado === "INGRESADO").map((m) => m.paciente_id);
 }
 
 function FormularioActividad({
   usuario,
   actividad,
+  grupoInicial,
+  grupos,
   pacientesDisponibles,
   preseleccion,
   onCancelar,
@@ -334,6 +394,8 @@ function FormularioActividad({
 }: {
   usuario: Usuario;
   actividad?: ActividadGrupal;
+  grupoInicial?: GrupoPacientes;
+  grupos: GrupoPacientes[];
   pacientesDisponibles: Paciente[];
   preseleccion?: number[];
   onCancelar: () => void;
@@ -341,7 +403,8 @@ function FormularioActividad({
 }) {
   const { toast } = useToast();
   const esAdmin = usuario.rol === "ADMIN";
-  const [nombre, setNombre] = useState(actividad?.nombre ?? "");
+  const [nombre, setNombre] = useState(actividad?.nombre ?? grupoInicial?.nombre ?? "");
+  const [grupoId, setGrupoId] = useState(String(actividad?.grupo ?? grupoInicial?.id ?? ""));
   const [fecha, setFecha] = useState(actividad ? fechaKey(actividad.fecha_hora) : fechaHoyKey());
   const [hora, setHora] = useState(actividad ? horaKey(actividad.fecha_hora) : "10:00");
   const [duracion, setDuracion] = useState(String(actividad?.duracion_minutos ?? 60));
@@ -349,47 +412,34 @@ function FormularioActividad({
   const [descripcion, setDescripcion] = useState(actividad?.descripcion ?? "");
   const [responsable, setResponsable] = useState(actividad?.responsable ? String(actividad.responsable) : String(usuario.id));
   const [seleccion, setSeleccion] = useState<number[]>(
-    actividad ? actividad.participantes.map((p) => p.paciente_id) : (preseleccion ?? []),
+    actividad ? actividad.participantes.map((p) => p.paciente_id) : grupoInicial ? citablesDe(grupoInicial) : (preseleccion ?? []),
   );
-  const [busqueda, setBusqueda] = useState("");
-  const [kines, setKines] = useState<Usuario[]>([]);
+  const kines = useKines(usuario);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!esAdmin) return;
-    let activo = true;
-    api
-      .get<Usuario[]>("/usuarios/")
-      .then((data) => {
-        if (activo) setKines(unwrapResults<Usuario>(data).filter((u) => u.is_active !== false && (u.rol === "KINE" || u.id === usuario.id)));
-      })
-      .catch(() => undefined);
-    return () => {
-      activo = false;
-    };
-  }, [esAdmin, usuario.id]);
-
-  // Participantes que ya estan en la actividad aunque no figuren en la tabla actual.
+  // Incluye participantes y miembros de grupos aunque no figuren en la tabla actual.
   const candidatos = useMemo(() => {
-    const mapa = new Map<number, { id: number; nombre: string; rut: string; categoria: Paciente["categoria"] }>();
+    const mapa = new Map<number, Candidato>();
     actividad?.participantes.forEach((p) => mapa.set(p.paciente_id, { id: p.paciente_id, nombre: p.nombre, rut: p.rut, categoria: p.categoria }));
-    pacientesDisponibles.forEach((p) => mapa.set(p.id, { id: p.id, nombre: p.nombre, rut: p.rut, categoria: p.categoria }));
+    grupos.forEach((gr) =>
+      gr.miembros
+        .filter((m) => m.estado === "INGRESADO")
+        .forEach((m) => mapa.set(m.paciente_id, { id: m.paciente_id, nombre: m.nombre, rut: m.rut, categoria: m.categoria })),
+    );
+    pacientesDisponibles.forEach((p) => mapa.set(p.id, candidatoDe(p)));
     return Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  }, [actividad, pacientesDisponibles]);
+  }, [actividad, grupos, pacientesDisponibles]);
 
-  const visibles = useMemo(() => {
-    const q = normalizeSearchText(busqueda);
-    const rut = normalizeRut(busqueda);
-    const lista = q
-      ? candidatos.filter((c) => normalizeSearchText(c.nombre).includes(q) || (!!rut && normalizeRut(c.rut).includes(rut)))
-      : candidatos;
-    // Los elegidos primero para verlos de un vistazo.
-    return [...lista].sort((a, b) => Number(seleccion.includes(b.id)) - Number(seleccion.includes(a.id)));
-  }, [busqueda, candidatos, seleccion]);
+  const grupoElegido = grupos.find((gr) => String(gr.id) === grupoId) ?? (grupoInicial && String(grupoInicial.id) === grupoId ? grupoInicial : undefined);
+  const excluidos = grupoElegido ? grupoElegido.total_miembros - citablesDe(grupoElegido).length : 0;
 
-  function alternar(id: number) {
-    setSeleccion((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  function usarGrupo(id: string) {
+    setGrupoId(id);
+    const gr = grupos.find((x) => String(x.id) === id);
+    if (!gr) return;
+    setSeleccion(citablesDe(gr));
+    if (!nombre.trim()) setNombre(gr.nombre);
   }
 
   async function guardar(e: React.FormEvent) {
@@ -407,6 +457,7 @@ function FormularioActividad({
         lugar: lugar.trim(),
         descripcion: descripcion.trim(),
         paciente_ids: seleccion,
+        grupo: grupoId ? Number(grupoId) : null,
         ...(esAdmin ? { responsable: Number(responsable) } : {}),
       };
       const guardada = actividad
@@ -470,52 +521,26 @@ function FormularioActividad({
         </Bloque>
 
         <Bloque titulo="Participantes" descripcion={`${seleccion.length} paciente${seleccion.length !== 1 ? "s" : ""} seleccionado${seleccion.length !== 1 ? "s" : ""}.`}>
-          <div className="sm:col-span-2">
-            <div className="relative">
-              <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} aria-hidden="true" />
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar paciente por nombre o RUT"
-                aria-label="Buscar paciente"
-                className={`${INPUT} pl-9`}
+          {grupos.length > 0 && (
+            <div className="sm:col-span-2">
+              <SelectFiltro
+                label="Usar un grupo guardado"
+                value={grupoId}
+                opciones={[
+                  { value: "", label: "Sin grupo (elegir pacientes)" },
+                  ...grupos.map((gr) => ({ value: String(gr.id), label: `${gr.nombre} · ${gr.total_miembros} pacientes` })),
+                ]}
+                onChange={usarGrupo}
               />
-            </div>
-            <ul className="custom-scrollbar mt-2 max-h-64 overflow-y-auto rounded-lg border border-slate-200 p-1 dark:border-ink-black-600">
-              {visibles.length === 0 && (
-                <li className="px-3 py-4 text-center text-xs font-medium text-slate-400">Sin pacientes para mostrar.</li>
+              {excluidos > 0 && (
+                <p className="mt-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                  {excluidos} paciente{excluidos !== 1 ? "s" : ""} del grupo no se incluye{excluidos !== 1 ? "n" : ""} porque ya no está{excluidos !== 1 ? "n" : ""} ingresado{excluidos !== 1 ? "s" : ""}.
+                </p>
               )}
-              {visibles.map((c) => {
-                const marcado = seleccion.includes(c.id);
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={marcado}
-                      onClick={() => alternar(c.id)}
-                      className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left outline-none transition-colors focus-visible:bg-slate-100 ${
-                        marcado ? "bg-blue-50 dark:bg-blue-500/15" : "hover:bg-slate-50 dark:hover:bg-ink-black-700"
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                          marcado ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 bg-white dark:border-ink-black-500 dark:bg-ink-black-900"
-                        }`}
-                      >
-                        {marcado && <FiCheck size={11} strokeWidth={3} />}
-                      </span>
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${TONO_CATEGORIA[c.categoria]?.dot ?? "bg-slate-400"}`} aria-hidden="true" />
-                      <span className={`min-w-0 flex-1 truncate text-[13px] ${marcado ? "font-bold text-slate-900 dark:text-ink-black-50" : "font-medium text-slate-700 dark:text-ink-black-200"}`}>
-                        {nombreLegible(c.nombre)}
-                      </span>
-                      <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400">{formatearRut(c.rut)}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            </div>
+          )}
+          <div className="sm:col-span-2">
+            <SelectorPacientes candidatos={candidatos} seleccion={seleccion} onChange={setSeleccion} />
           </div>
         </Bloque>
 
@@ -607,8 +632,10 @@ function DetalleActividad({
                 </span>
               )}
             </p>
-            {a.responsable_nombre && (
-              <p className="mt-1 text-[12px] font-medium text-slate-500">Responsable: {a.responsable_nombre}</p>
+            {(a.responsable_nombre || a.grupo_nombre) && (
+              <p className="mt-1 text-[12px] font-medium text-slate-500">
+                {[a.responsable_nombre ? `Responsable: ${a.responsable_nombre}` : "", a.grupo_nombre ? `Grupo: ${a.grupo_nombre}` : ""].filter(Boolean).join(" · ")}
+              </p>
             )}
             {a.descripcion && (
               <p className="mt-3 border-l-2 border-slate-200 pl-3 text-[13px] leading-relaxed text-slate-600 dark:border-ink-black-600 dark:text-ink-black-200">

@@ -85,6 +85,12 @@ export interface Paciente {
   fecha_ingreso: string | null;
   fecha_siguiente_cita: string | null;
   proxima_atencion: string | null;
+  /** Cuando el paciente pidio que lo llamen otro dia. */
+  proximo_llamado?: string | null;
+  /** Llamados sin respuesta en el estado actual. */
+  intentos_estado?: number;
+  /** Intentos sin respuesta que cambian el estado (null si no aplica). */
+  intentos_umbral?: number | null;
   fecha_egreso: string | null;
   creado_en: string;
 }
@@ -120,6 +126,7 @@ export interface LlamadoPaciente {
   resultado_label: string;
   notas: string;
   proxima_accion: string;
+  volver_a_llamar?: string | null;
 }
 
 export interface InasistenciaPaciente {
@@ -229,6 +236,8 @@ export interface DashboardResumenOperativo {
   mios_activos: number;
   rescates_globales: number;
   cola_llamados: number;
+  /** Ingresados sin cita, que tambien se llaman desde la cola. */
+  por_citar?: number;
   egresados: number;
   agenda_hoy: number;
 }
@@ -675,8 +684,64 @@ export interface ActividadGrupal {
   responsable: number | null;
   responsable_nombre: string | null;
   creado_por_nombre: string | null;
+  grupo: number | null;
+  grupo_nombre: string | null;
   participantes: ParticipanteActividad[];
   total_participantes: number;
   total_asistentes: number;
   creado_en: string;
+}
+
+export interface MiembroGrupo {
+  paciente_id: number;
+  nombre: string;
+  rut: string;
+  categoria: Categoria;
+  estado: Estado;
+  telefono: string;
+  edad: number;
+  prioridad: Prioridad;
+  proxima_atencion: string | null;
+  kine_nombre: string | null;
+  agregado_en: string;
+}
+
+/** Grupo guardado de pacientes (permanente o temporal) para citarlos juntos. */
+export interface GrupoPacientes {
+  id: number;
+  nombre: string;
+  descripcion: string;
+  tipo: "PERMANENTE" | "TEMPORAL";
+  tipo_label: string;
+  vigente_hasta: string | null;
+  vencido: boolean;
+  activo: boolean;
+  responsable: number | null;
+  responsable_nombre: string | null;
+  miembros: MiembroGrupo[];
+  total_miembros: number;
+  total_actividades: number;
+  creado_en: string;
+}
+
+export type MovimientoGrupoTipo =
+  | "CREADO"
+  | "EDITADO"
+  | "MIEMBROS_AGREGADOS"
+  | "MIEMBROS_QUITADOS"
+  | "ARCHIVADO"
+  | "REACTIVADO"
+  | "CITADO";
+
+export interface MovimientoGrupo {
+  tipo: MovimientoGrupoTipo;
+  titulo: string;
+  descripcion: string;
+  usuario_nombre: string | null;
+  fecha: string;
+}
+
+export interface HistorialGrupo {
+  movimientos: MovimientoGrupo[];
+  actividades: ActividadGrupal[];
 }

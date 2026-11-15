@@ -541,7 +541,7 @@ export default function CalendarioPage() {
                     <span
                       aria-label="con actividad grupal"
                       title="Actividad grupal"
-                      className={`relative h-2 w-2 rounded-full ${activo ? "bg-white" : "bg-violet-500"}`}
+                      className={`relative h-1.5 w-1.5 rounded-full ${activo ? "bg-white" : "bg-slate-400"}`}
                     />
                   )}
                 </button>
@@ -566,9 +566,7 @@ export default function CalendarioPage() {
           <motion.section variants={itemVariants} className="ccr-panel min-w-0 overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
               <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
-                  <FiUsers size={14} aria-hidden="true" />
-                </span>
+                <FiUsers size={15} className="text-slate-400" aria-hidden="true" />
                 <h2 className="text-base font-bold text-slate-950 dark:text-white">Actividades grupales</h2>
               </div>
               <button type="button" onClick={() => setGrupoAbierto({})} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
@@ -584,10 +582,10 @@ export default function CalendarioPage() {
                     className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
                       a.estado === "CANCELADA"
                         ? "border-slate-200 bg-slate-50 opacity-70 dark:border-ink-black-600 dark:bg-ink-black-900"
-                        : "border-violet-200 bg-violet-50/60 hover:bg-violet-50 dark:border-violet-500/30 dark:bg-violet-500/10"
+                        : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40 dark:border-ink-black-600 dark:bg-ink-black-800 dark:hover:bg-blue-500/10"
                     }`}
                   >
-                    <span className="w-12 shrink-0 text-sm font-extrabold tabular-nums text-violet-800 dark:text-violet-200">
+                    <span className="w-12 shrink-0 text-sm font-extrabold tabular-nums text-slate-900 dark:text-white">
                       {formatTime(a.fecha_hora)}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -598,7 +596,7 @@ export default function CalendarioPage() {
                         {[a.lugar, a.responsable_nombre, a.estado !== "PROGRAMADA" ? a.estado_label : ""].filter(Boolean).join(" · ") || `${a.duracion_minutos} min`}
                       </span>
                     </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-bold tabular-nums text-violet-800 dark:bg-ink-black-800 dark:text-violet-200">
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-600 dark:bg-ink-black-800 dark:text-ink-black-200">
                       <FiUsers size={11} aria-hidden="true" />
                       {a.total_participantes}
                     </span>

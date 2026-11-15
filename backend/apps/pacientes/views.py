@@ -14,6 +14,8 @@ from apps.usuarios.models import Usuario
 from .exports import crear_excel_pacientes, excel_response, fecha_archivo_hoy
 from .models import (
     ActividadGrupal,
+    GrupoPacientes,
+    MovimientoGrupo,
     InasistenciaPaciente,
     LlamadoPaciente,
     MovimientoPaciente,
@@ -31,6 +33,9 @@ from .permissions import (
 from .serializers import (
     ActividadGrupalSerializer,
     AsistenciaActividadSerializer,
+    GrupoPacientesSerializer,
+    MiembrosGrupoSerializer,
+    validar_pacientes_para_grupo,
     CambiarEstadoSerializer,
     AgendaFechaSerializer,
     InasistenciaPacienteSerializer,
@@ -44,7 +49,9 @@ from .serializers import (
     RegistroAgendaPacienteSerializer,
     RegistrarInasistenciaSerializer,
     RegistrarLlamadoSerializer,
+    DeshacerLlamadoSerializer,
 )
+from .llamados import ESTADOS_EN_COLA, deshacer_llamado, registrar_llamado as registrar_llamado_servicio
 from .services import (
     ESTADOS_FINALES,
     categoria_por_diagnostico,
@@ -214,10 +221,14 @@ class PacienteViewSet(viewsets.ModelViewSet):
         )
         activos_mios = Q(kine_asignado=request.user) & ~Q(estado__in=ESTADOS_FINALES)
         cola_base = Q(estado__in=ESTADOS_LISTA_ESPERA)
-        cola_filtro = (
-            cola_base & Q(kine_asignado=request.user)
+        responsable_cola = (
+            Q(kine_asignado=request.user)
             if request.user.rol == Usuario.Rol.KINE
-            else cola_base & Q(kine_asignado__isnull=False)
+            else Q(kine_asignado__isnull=False)
+        )
+        cola_filtro = cola_base & responsable_cola
+        por_citar_filtro = (
+            Q(estado=Paciente.Estado.INGRESADO, proxima_atencion__isnull=True) & responsable_cola
         )
 
         resumen_visible = visible.aggregate(
@@ -241,6 +252,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
             mios_activos=Count("id", filter=activos_mios),
             rescates_globales=Count("id", filter=Q(estado=Paciente.Estado.RESCATE)),
             cola_llamados=Count("id", filter=cola_filtro),
+            por_citar=Count("id", filter=por_citar_filtro),
         )
 
         return Response({**resumen_visible, **resumen_global})
@@ -533,81 +545,55 @@ class PacienteViewSet(viewsets.ModelViewSet):
     )
     def registrar_llamado(self, request, pk=None):
         paciente = self.get_object()
-
-        if paciente.kine_asignado_id is None:
-            return Response(
-                {"detail": "Debe existir un responsable CCR asignado antes del contacto."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if paciente.estado not in {Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE}:
-            return Response(
-                {"detail": "Solo se puede registrar contacto en estado PENDIENTE o RESCATE."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         serializer = RegistrarLlamadoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        contesto = serializer.validated_data["contesto"]
-        notas = serializer.validated_data["notas"]
-        telefono_usado = serializer.validated_data.get("telefono_usado", "")
-        proxima_accion = serializer.validated_data.get("proxima_accion", "")
+        registrar_llamado_servicio(paciente, request.user, serializer.validated_data)
+        # Se vuelve a leer para que ultimo_llamado e intentos reflejen el llamado nuevo.
+        actualizado = self.get_queryset().get(pk=paciente.pk)
+        return Response(PacienteSerializer(actualizado, context=self.get_serializer_context()).data)
 
-        if not contesto and paciente.estado == Paciente.Estado.RESCATE and not notas:
-            return Response(
-                {"detail": "Debe registrar una observación para egreso administrativo."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="deshacer-llamado",
+        permission_classes=[PuedeRegistrarLlamado],
+    )
+    def deshacer_llamado(self, request, pk=None):
+        paciente = self.get_object()
+        serializer = DeshacerLlamadoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        deshacer_llamado(paciente, request.user, serializer.validated_data["llamado_id"])
+        actualizado = self.get_queryset().get(pk=paciente.pk)
+        return Response(PacienteSerializer(actualizado, context=self.get_serializer_context()).data)
 
-        with transaction.atomic():
-            estado_anterior = paciente.estado
-            observacion = notas
-            if not contesto and paciente.estado == Paciente.Estado.PENDIENTE and not observacion:
-                observacion = "Primer contacto sin respuesta. Pasa a RESCATE."
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="cola-llamados",
+        permission_classes=[PuedeRegistrarLlamado],
+    )
+    def cola_llamados(self, request):
+        """Pacientes a llamar, sin paginar: lista de espera y ingresados sin cita.
 
-            # Contactabilidad CCR:
-            # - Si contesta, se confirma ingreso.
-            # - Si no contesta desde PENDIENTE, pasa a RESCATE.
-            # - Si no contesta desde RESCATE, egresa administrativamente con nota.
-            LlamadoPaciente.objects.create(
-                paciente=paciente,
-                usuario=request.user,
-                telefono_usado=telefono_usado or paciente.telefono,
-                resultado=(
-                    LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO
-                    if contesto
-                    else LlamadoPaciente.Resultado.NO_CONTESTA
-                ),
-                notas=observacion,
-                proxima_accion=proxima_accion,
-            )
-
-            paciente._movimiento_usuario = request.user
-            paciente._movimiento_notas = observacion
-
-            if contesto:
-                paciente.estado = Paciente.Estado.INGRESADO
-                paciente.fecha_cambio_estado = timezone.now()
-                campos = ["estado", "fecha_cambio_estado", "actualizado_en"]
-                if paciente.fecha_ingreso is None:
-                    paciente.fecha_ingreso = timezone.localdate()
-                    campos.append("fecha_ingreso")
-            else:
-                paciente.n_intentos_contacto += 1
-                paciente.fecha_cambio_estado = timezone.now()
-                campos = ["n_intentos_contacto", "fecha_cambio_estado", "actualizado_en"]
-                if estado_anterior == Paciente.Estado.PENDIENTE:
-                    paciente.estado = Paciente.Estado.RESCATE
-                    campos.append("estado")
-                elif estado_anterior == Paciente.Estado.RESCATE:
-                    paciente.estado = Paciente.Estado.EGRESO_ADMINISTRATIVO
-                    campos.append("estado")
-                    if paciente.fecha_egreso is None:
-                        paciente.fecha_egreso = timezone.localdate()
-                        campos.append("fecha_egreso")
-
-            paciente.save(update_fields=campos)
-
-        return Response(PacienteSerializer(paciente, context=self.get_serializer_context()).data)
+        Solo pacientes con responsable; un KINE ve solo su cartera.
+        """
+        base = self.get_queryset().filter(kine_asignado__isnull=False)
+        if request.user.rol == Usuario.Rol.KINE:
+            base = base.filter(kine_asignado=request.user)
+        orden = base.annotate(orden_prioridad=ORDEN_PRIORIDAD).order_by("orden_prioridad", "fecha_derivacion")
+        contexto = self.get_serializer_context()
+        return Response(
+            {
+                "por_contactar": PacienteSerializer(
+                    orden.filter(estado__in=ESTADOS_EN_COLA), many=True, context=contexto
+                ).data,
+                "por_citar": PacienteSerializer(
+                    orden.filter(estado=Paciente.Estado.INGRESADO, proxima_atencion__isnull=True),
+                    many=True,
+                    context=contexto,
+                ).data,
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="historial")
     def historial(self, request, pk=None):
@@ -1394,7 +1380,7 @@ class ActividadGrupalViewSet(viewsets.ModelViewSet):
     permission_classes = [PuedeGestionarActividadGrupal]
 
     def get_queryset(self):
-        qs = ActividadGrupal.objects.select_related("responsable", "creado_por").prefetch_related(
+        qs = ActividadGrupal.objects.select_related("responsable", "creado_por", "grupo").prefetch_related(
             "participantes__paciente"
         )
         user = self.request.user
@@ -1425,7 +1411,15 @@ class ActividadGrupalViewSet(viewsets.ModelViewSet):
         responsable = serializer.validated_data.get("responsable")
         if user.rol == Usuario.Rol.KINE or responsable is None:
             responsable = user
-        serializer.save(creado_por=user, responsable=responsable)
+        actividad = serializer.save(creado_por=user, responsable=responsable)
+        if actividad.grupo_id:
+            fecha = timezone.localtime(actividad.fecha_hora)
+            registrar_movimiento_grupo(
+                actividad.grupo,
+                user,
+                MovimientoGrupo.Tipo.CITADO,
+                f"{actividad.nombre} · {fecha:%d-%m-%Y %H:%M} · {actividad.participantes.count()} pacientes",
+            )
 
     def perform_update(self, serializer):
         if self.request.user.rol == Usuario.Rol.KINE:
@@ -1450,3 +1444,154 @@ class ActividadGrupalViewSet(viewsets.ModelViewSet):
         participante.save(update_fields=["asistencia"])
         actividad = self.get_queryset().get(pk=actividad.pk)
         return Response(self.get_serializer(actividad).data)
+
+
+
+def registrar_movimiento_grupo(grupo, usuario, tipo, descripcion=""):
+    MovimientoGrupo.objects.create(grupo=grupo, usuario=usuario, tipo=tipo, descripcion=descripcion)
+
+
+def _nombres_pacientes(ids):
+    nombres = list(Paciente.objects.filter(id__in=ids).order_by("nombre").values_list("nombre", flat=True))
+    texto = ", ".join(n.title() for n in nombres[:4])
+    return f"{texto} y {len(nombres) - 4} más" if len(nombres) > 4 else texto
+
+
+class GrupoPacientesViewSet(viewsets.ModelViewSet):
+    """Grupos guardados de pacientes para citarlos juntos.
+
+    Por defecto lista solo grupos activos; `?incluir_inactivos=1` muestra
+    tambien los archivados. Un KINE ve los grupos que dirige o creo.
+    """
+
+    serializer_class = GrupoPacientesSerializer
+    permission_classes = [PuedeGestionarActividadGrupal]
+
+    def get_queryset(self):
+        qs = GrupoPacientes.objects.select_related("responsable").prefetch_related(
+            "miembros__paciente__kine_asignado"
+        )
+        user = self.request.user
+        if user.rol == Usuario.Rol.KINE:
+            qs = qs.filter(Q(responsable=user) | Q(creado_por=user))
+        params = self.request.query_params
+        if self.action == "list" and params.get("incluir_inactivos") not in {"1", "true"}:
+            qs = qs.filter(activo=True)
+        paciente = params.get("paciente")
+        if paciente and paciente.isdigit():
+            # Un paciente puede estar en varios grupos a la vez.
+            qs = qs.filter(miembros__paciente_id=paciente).distinct()
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        responsable = serializer.validated_data.get("responsable")
+        if user.rol == Usuario.Rol.KINE or responsable is None:
+            responsable = user
+        grupo = serializer.save(creado_por=user, responsable=responsable)
+        total = grupo.miembros.count()
+        registrar_movimiento_grupo(
+            grupo, user, MovimientoGrupo.Tipo.CREADO,
+            f"{grupo.get_tipo_display()} con {total} paciente{'s' if total != 1 else ''}",
+        )
+
+    def perform_update(self, serializer):
+        user = self.request.user
+        grupo = serializer.instance
+        antes = {
+            "nombre": grupo.nombre,
+            "descripcion": grupo.descripcion,
+            "tipo": grupo.get_tipo_display(),
+            "vigente_hasta": grupo.vigente_hasta,
+            "responsable": grupo.responsable.nombre if grupo.responsable else None,
+            "activo": grupo.activo,
+            "miembros": set(grupo.miembros.values_list("paciente_id", flat=True)),
+        }
+        if user.rol == Usuario.Rol.KINE:
+            grupo = serializer.save(responsable=grupo.responsable)
+        else:
+            grupo = serializer.save()
+
+        cambios = []
+        if antes["nombre"] != grupo.nombre:
+            cambios.append(f"nombre: {antes['nombre']} → {grupo.nombre}")
+        if antes["descripcion"] != grupo.descripcion:
+            cambios.append("descripción actualizada")
+        if antes["tipo"] != grupo.get_tipo_display():
+            cambios.append(f"tipo: {antes['tipo']} → {grupo.get_tipo_display()}")
+        if antes["vigente_hasta"] != grupo.vigente_hasta and grupo.vigente_hasta:
+            cambios.append(f"vigente hasta {grupo.vigente_hasta:%d-%m-%Y}")
+        responsable = grupo.responsable.nombre if grupo.responsable else None
+        if antes["responsable"] != responsable:
+            cambios.append(f"responsable: {responsable or 'sin responsable'}")
+        if cambios:
+            registrar_movimiento_grupo(grupo, user, MovimientoGrupo.Tipo.EDITADO, (lambda t: t[:1].upper() + t[1:])("; ".join(cambios)))
+
+        if antes["activo"] != grupo.activo:
+            registrar_movimiento_grupo(
+                grupo, user, MovimientoGrupo.Tipo.REACTIVADO if grupo.activo else MovimientoGrupo.Tipo.ARCHIVADO
+            )
+
+        despues = set(grupo.miembros.values_list("paciente_id", flat=True))
+        if despues - antes["miembros"]:
+            registrar_movimiento_grupo(
+                grupo, user, MovimientoGrupo.Tipo.MIEMBROS_AGREGADOS, _nombres_pacientes(despues - antes["miembros"])
+            )
+        if antes["miembros"] - despues:
+            registrar_movimiento_grupo(
+                grupo, user, MovimientoGrupo.Tipo.MIEMBROS_QUITADOS, _nombres_pacientes(antes["miembros"] - despues)
+            )
+
+    def _respuesta(self, grupo):
+        grupo = self.get_queryset().model.objects.prefetch_related(
+            "miembros__paciente__kine_asignado"
+        ).select_related("responsable").get(pk=grupo.pk)
+        return Response(self.get_serializer(grupo).data)
+
+    @action(detail=True, methods=["post"], url_path="agregar")
+    def agregar(self, request, pk=None):
+        grupo = self.get_object()
+        serializer = MiembrosGrupoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = validar_pacientes_para_grupo(serializer.validated_data["paciente_ids"], request)
+        nuevos = set(ids) - set(grupo.miembros.values_list("paciente_id", flat=True))
+        GrupoPacientesSerializer.guardar_miembros(grupo, ids, reemplazar=False)
+        if nuevos:
+            registrar_movimiento_grupo(grupo, request.user, MovimientoGrupo.Tipo.MIEMBROS_AGREGADOS, _nombres_pacientes(nuevos))
+        return self._respuesta(grupo)
+
+    @action(detail=True, methods=["post"], url_path="quitar")
+    def quitar(self, request, pk=None):
+        grupo = self.get_object()
+        serializer = MiembrosGrupoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        quitar = grupo.miembros.filter(paciente_id__in=serializer.validated_data["paciente_ids"])
+        ids = list(quitar.values_list("paciente_id", flat=True))
+        quitar.delete()
+        if ids:
+            registrar_movimiento_grupo(grupo, request.user, MovimientoGrupo.Tipo.MIEMBROS_QUITADOS, _nombres_pacientes(ids))
+        return self._respuesta(grupo)
+
+    @action(detail=True, methods=["get"], url_path="historial")
+    def historial(self, request, pk=None):
+        """Movimientos del grupo y actividades a las que fue citado (con asistencia)."""
+        grupo = self.get_object()
+        movimientos = [
+            {
+                "tipo": m.tipo,
+                "titulo": m.get_tipo_display(),
+                "descripcion": m.descripcion,
+                "usuario_nombre": m.usuario.nombre if m.usuario else None,
+                "fecha": m.fecha,
+            }
+            for m in grupo.movimientos.select_related("usuario")
+        ]
+        actividades = ActividadGrupal.objects.filter(grupo=grupo).select_related("responsable").prefetch_related(
+            "participantes__paciente"
+        ).order_by("-fecha_hora")
+        return Response(
+            {
+                "movimientos": movimientos,
+                "actividades": ActividadGrupalSerializer(actividades, many=True, context=self.get_serializer_context()).data,
+            }
+        )

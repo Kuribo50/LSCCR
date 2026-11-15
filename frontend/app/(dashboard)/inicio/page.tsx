@@ -99,7 +99,7 @@ const RUTAS_ALERTA: Record<GrupoAlerta, string> = {
   pendientes_con_1_intento: "/lista-espera?alerta=pendientes_con_1_intento",
   rescates_activos: "/lista-espera?alerta=rescates_activos",
   ingresados_sin_proxima_atencion:
-    "/lista-espera?alerta=ingresados_sin_proxima_atencion",
+    "/llamados?seccion=citar",
   posible_abandono: "/lista-espera?alerta=posible_abandono",
   telefonos_incompletos: "/lista-espera?alerta=telefonos_incompletos",
 };

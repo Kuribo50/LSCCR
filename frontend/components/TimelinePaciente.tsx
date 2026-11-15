@@ -24,7 +24,7 @@ const TIPO_META: Record<HistorialAccionTipo, { icon: IconType; tono: Tono; etiqu
   AGENDA_NO_ASISTIO: { icon: FiXCircle, tono: "amber", etiqueta: "No asistió" },
   AGENDA_REAGENDADO: { icon: FiCalendar, tono: "blue", etiqueta: "Reagendada" },
   AGENDA_CANCELADO: { icon: FiTrash2, tono: "red", etiqueta: "Cancelada" },
-  ACTIVIDAD_GRUPAL: { icon: FiUsers, tono: "violet", etiqueta: "Actividad grupal" },
+  ACTIVIDAD_GRUPAL: { icon: FiUsers, tono: "blue", etiqueta: "Actividad grupal" },
 };
 
 type Tono = "slate" | "blue" | "amber" | "green" | "red" | "violet";

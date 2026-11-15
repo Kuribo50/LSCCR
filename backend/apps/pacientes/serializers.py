@@ -5,13 +5,16 @@ from rest_framework import serializers
 from .models import (
     ActividadGrupal,
     DiagnosticoCatalogo,
+    GrupoPacientes,
     InasistenciaPaciente,
     LlamadoPaciente,
+    MiembroGrupo,
     MovimientoPaciente,
     Paciente,
     ParticipanteActividad,
     RegistroAgendaPaciente,
 )
+from .llamados import intentos_en_estado, umbral_intentos
 from .services import ESTADOS_REQUIEREN_NOTA
 
 
@@ -32,6 +35,7 @@ class LlamadoPacienteSerializer(serializers.ModelSerializer):
             "resultado_label",
             "notas",
             "proxima_accion",
+            "volver_a_llamar",
         )
         read_only_fields = ("id", "usuario", "usuario_nombre", "fecha", "resultado_label")
 
@@ -102,6 +106,8 @@ class PacienteSerializer(serializers.ModelSerializer):
     inasistencias_count = serializers.SerializerMethodField()
     ultimo_llamado = serializers.SerializerMethodField()
     ultima_inasistencia = serializers.SerializerMethodField()
+    intentos_estado = serializers.SerializerMethodField()
+    intentos_umbral = serializers.SerializerMethodField()
 
     class Meta:
         model = Paciente
@@ -148,6 +154,9 @@ class PacienteSerializer(serializers.ModelSerializer):
             "fecha_ingreso",
             "fecha_siguiente_cita",
             "proxima_atencion",
+            "proximo_llamado",
+            "intentos_estado",
+            "intentos_umbral",
             "fecha_egreso",
         )
         read_only_fields = (
@@ -167,7 +176,18 @@ class PacienteSerializer(serializers.ModelSerializer):
             "inasistencias_count",
             "ultimo_llamado",
             "ultima_inasistencia",
+            "proximo_llamado",
+            "intentos_estado",
+            "intentos_umbral",
         )
+
+    def get_intentos_estado(self, obj: Paciente) -> int:
+        """Llamados sin respuesta en el estado actual (usa los llamados ya precargados)."""
+        return intentos_en_estado(obj)
+
+    def get_intentos_umbral(self, obj: Paciente) -> int | None:
+        """Intentos sin respuesta que cambian el estado (None si no aplica)."""
+        return umbral_intentos(obj.estado)
 
     def get_dias_en_lista(self, obj: Paciente) -> int:
         today = self.context.get("today") or date.today()
@@ -254,16 +274,34 @@ class ReagendarAtencionSerializer(serializers.Serializer):
 
 
 class RegistrarLlamadoSerializer(serializers.Serializer):
-    """Entrada del flujo de llamados.
+    """Entrada del flujo de llamados. Las reglas viven en `llamados.registrar_llamado`.
 
-    La vista decide el efecto operativo: contesta ingresa; no contesta pasa a
-    RESCATE o EGRESO_ADMINISTRATIVO segun estado actual.
+    `resultado` es el dato principal; `contesto` se mantiene por compatibilidad
+    (true = CONTESTA_CONFIRMADO, false = NO_CONTESTA).
     """
 
-    contesto = serializers.BooleanField()
+    resultado = serializers.ChoiceField(choices=LlamadoPaciente.Resultado.choices, required=False)
+    contesto = serializers.BooleanField(required=False)
     notas = serializers.CharField(required=False, allow_blank=True, default="")
     telefono_usado = serializers.CharField(required=False, allow_blank=True, default="")
     proxima_accion = serializers.CharField(required=False, allow_blank=True, default="")
+    fecha_atencion = serializers.DateTimeField(required=False, allow_null=True)
+    volver_a_llamar = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        if "resultado" not in attrs:
+            if "contesto" not in attrs:
+                raise serializers.ValidationError({"resultado": "Indica el resultado del llamado."})
+            attrs["resultado"] = (
+                LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO
+                if attrs["contesto"]
+                else LlamadoPaciente.Resultado.NO_CONTESTA
+            )
+        return attrs
+
+
+class DeshacerLlamadoSerializer(serializers.Serializer):
+    llamado_id = serializers.IntegerField()
 
 
 class RegistrarInasistenciaSerializer(serializers.Serializer):
@@ -294,6 +332,34 @@ class DiagnosticoCatalogoSerializer(serializers.ModelSerializer):
         model = DiagnosticoCatalogo
         fields = ("id", "categoria", "diagnostico")
 
+
+
+def validar_pacientes_para_grupo(ids, request, permitir_vacio=False):
+    """Valida ids de pacientes para actividades y grupos.
+
+    Deben existir y estar ingresados; un KINE solo puede usar pacientes de su
+    cartera. Devuelve la lista sin duplicados.
+    """
+    ids = list(dict.fromkeys(ids))
+    if not ids:
+        if permitir_vacio:
+            return ids
+        raise serializers.ValidationError({"paciente_ids": "Selecciona al menos un paciente."})
+    pacientes = list(Paciente.objects.filter(id__in=ids))
+    if len(pacientes) != len(ids):
+        raise serializers.ValidationError({"paciente_ids": "Hay pacientes que no existen."})
+    no_ingresados = [p.nombre for p in pacientes if p.estado != Paciente.Estado.INGRESADO]
+    if no_ingresados:
+        raise serializers.ValidationError(
+            {"paciente_ids": f"Solo pacientes ingresados pueden participar: {', '.join(no_ingresados[:3])}."}
+        )
+    user = getattr(request, "user", None)
+    if user is not None and getattr(user, "rol", None) == "KINE":
+        if any(p.kine_asignado_id != user.id for p in pacientes):
+            raise serializers.ValidationError(
+                {"paciente_ids": "Solo puedes agregar pacientes de tu cartera."}
+            )
+    return ids
 
 
 class ParticipanteActividadSerializer(serializers.ModelSerializer):
@@ -333,6 +399,7 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
     estado_label = serializers.CharField(source="get_estado_display", read_only=True)
     responsable_nombre = serializers.CharField(source="responsable.nombre", read_only=True, default=None)
     creado_por_nombre = serializers.CharField(source="creado_por.nombre", read_only=True, default=None)
+    grupo_nombre = serializers.CharField(source="grupo.nombre", read_only=True, default=None)
     total_participantes = serializers.SerializerMethodField()
     total_asistentes = serializers.SerializerMethodField()
 
@@ -350,6 +417,8 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
             "responsable",
             "responsable_nombre",
             "creado_por_nombre",
+            "grupo",
+            "grupo_nombre",
             "participantes",
             "paciente_ids",
             "total_participantes",
@@ -384,26 +453,7 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
             if self.instance is None:
                 raise serializers.ValidationError({"paciente_ids": "Selecciona al menos un paciente."})
             return attrs
-        ids = list(dict.fromkeys(ids))
-        if not ids:
-            raise serializers.ValidationError({"paciente_ids": "Selecciona al menos un paciente."})
-        pacientes = list(Paciente.objects.filter(id__in=ids))
-        if len(pacientes) != len(ids):
-            raise serializers.ValidationError({"paciente_ids": "Hay pacientes que no existen."})
-        no_ingresados = [p.nombre for p in pacientes if p.estado != Paciente.Estado.INGRESADO]
-        if no_ingresados:
-            raise serializers.ValidationError(
-                {"paciente_ids": f"Solo pacientes ingresados pueden participar: {', '.join(no_ingresados[:3])}."}
-            )
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        if user is not None and getattr(user, "rol", None) == "KINE":
-            ajenos = [p.nombre for p in pacientes if p.kine_asignado_id != user.id]
-            if ajenos:
-                raise serializers.ValidationError(
-                    {"paciente_ids": "Solo puedes agregar pacientes de tu cartera."}
-                )
-        attrs["paciente_ids"] = ids
+        attrs["paciente_ids"] = validar_pacientes_para_grupo(ids, self.context.get("request"))
         return attrs
 
     def _guardar_participantes(self, actividad, ids):
@@ -434,3 +484,126 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
 class AsistenciaActividadSerializer(serializers.Serializer):
     paciente_id = serializers.IntegerField()
     asistencia = serializers.ChoiceField(choices=ParticipanteActividad.Asistencia.choices)
+
+
+class MiembroGrupoSerializer(serializers.ModelSerializer):
+    paciente_id = serializers.IntegerField(source="paciente.id", read_only=True)
+    nombre = serializers.CharField(source="paciente.nombre", read_only=True)
+    rut = serializers.CharField(source="paciente.rut", read_only=True)
+    categoria = serializers.CharField(source="paciente.categoria", read_only=True)
+    estado = serializers.CharField(source="paciente.estado", read_only=True)
+    telefono = serializers.CharField(source="paciente.telefono", read_only=True)
+    edad = serializers.IntegerField(source="paciente.edad", read_only=True)
+    prioridad = serializers.CharField(source="paciente.prioridad", read_only=True)
+    proxima_atencion = serializers.DateTimeField(source="paciente.proxima_atencion", read_only=True)
+    kine_nombre = serializers.CharField(source="paciente.kine_asignado.nombre", read_only=True, default=None)
+
+    class Meta:
+        model = MiembroGrupo
+        fields = (
+            "paciente_id",
+            "nombre",
+            "rut",
+            "categoria",
+            "estado",
+            "telefono",
+            "edad",
+            "prioridad",
+            "proxima_atencion",
+            "kine_nombre",
+            "agregado_en",
+        )
+
+
+class GrupoPacientesSerializer(serializers.ModelSerializer):
+    """Grupo guardado. `paciente_ids` reemplaza los miembros al crear o editar."""
+
+    miembros = MiembroGrupoSerializer(many=True, read_only=True)
+    paciente_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    tipo_label = serializers.CharField(source="get_tipo_display", read_only=True)
+    responsable_nombre = serializers.CharField(source="responsable.nombre", read_only=True, default=None)
+    total_miembros = serializers.SerializerMethodField()
+    vencido = serializers.SerializerMethodField()
+    total_actividades = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GrupoPacientes
+        fields = (
+            "id",
+            "nombre",
+            "descripcion",
+            "tipo",
+            "tipo_label",
+            "vigente_hasta",
+            "vencido",
+            "activo",
+            "responsable",
+            "responsable_nombre",
+            "miembros",
+            "paciente_ids",
+            "total_miembros",
+            "total_actividades",
+            "creado_en",
+        )
+        read_only_fields = ("id", "creado_en")
+
+    def get_total_miembros(self, obj):
+        return len(obj.miembros.all())
+
+    def get_vencido(self, obj):
+        return bool(
+            obj.tipo == GrupoPacientes.Tipo.TEMPORAL
+            and obj.vigente_hasta
+            and obj.vigente_hasta < date.today()
+        )
+
+    def get_total_actividades(self, obj):
+        return obj.actividades.count()
+
+    def validate_nombre(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Ingresa un nombre para el grupo.")
+        return value
+
+    def validate(self, attrs):
+        tipo = attrs.get("tipo", getattr(self.instance, "tipo", GrupoPacientes.Tipo.PERMANENTE))
+        vigente = attrs.get("vigente_hasta", getattr(self.instance, "vigente_hasta", None))
+        if tipo == GrupoPacientes.Tipo.TEMPORAL and not vigente:
+            raise serializers.ValidationError({"vigente_hasta": "Indica hasta qué fecha dura el grupo temporal."})
+        if tipo == GrupoPacientes.Tipo.PERMANENTE:
+            attrs["vigente_hasta"] = None
+        if "paciente_ids" in attrs:
+            attrs["paciente_ids"] = validar_pacientes_para_grupo(
+                attrs["paciente_ids"], self.context.get("request"), permitir_vacio=True
+            )
+        return attrs
+
+    @staticmethod
+    def guardar_miembros(grupo, ids, reemplazar=True):
+        actuales = set(grupo.miembros.values_list("paciente_id", flat=True))
+        nuevos = set(ids)
+        if reemplazar:
+            grupo.miembros.filter(paciente_id__in=actuales - nuevos).delete()
+        MiembroGrupo.objects.bulk_create(
+            [MiembroGrupo(grupo=grupo, paciente_id=pid) for pid in nuevos - actuales]
+        )
+
+    def create(self, validated_data):
+        ids = validated_data.pop("paciente_ids", [])
+        grupo = GrupoPacientes.objects.create(**validated_data)
+        self.guardar_miembros(grupo, ids)
+        return grupo
+
+    def update(self, instance, validated_data):
+        ids = validated_data.pop("paciente_ids", None)
+        for campo, valor in validated_data.items():
+            setattr(instance, campo, valor)
+        instance.save()
+        if ids is not None:
+            self.guardar_miembros(instance, ids)
+        return instance
+
+
+class MiembrosGrupoSerializer(serializers.Serializer):
+    paciente_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)

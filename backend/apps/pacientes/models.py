@@ -86,6 +86,8 @@ class Paciente(models.Model):
     fecha_ingreso = models.DateField(null=True, blank=True)
     fecha_siguiente_cita = models.DateField(null=True, blank=True)
     proxima_atencion = models.DateTimeField(null=True, blank=True)
+    # Cuando el paciente pide que lo llamen otro dia: la cola lo muestra desde esa fecha.
+    proximo_llamado = models.DateTimeField(null=True, blank=True)
     fecha_egreso = models.DateField(null=True, blank=True)
     importacion_origen = models.ForeignKey(
         "importar.ImportacionMensual",
@@ -178,6 +180,9 @@ class LlamadoPaciente(models.Model):
     resultado = models.CharField(max_length=30, choices=Resultado.choices)
     notas = models.TextField(blank=True, default="")
     proxima_accion = models.CharField(max_length=160, blank=True, default="")
+    volver_a_llamar = models.DateTimeField(null=True, blank=True)
+    # Estado del paciente antes del llamado, para poder deshacerlo por unos minutos.
+    deshacer = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-fecha", "-id"]
@@ -279,6 +284,13 @@ class ActividadGrupal(models.Model):
     pacientes = models.ManyToManyField(
         Paciente, through="ParticipanteActividad", related_name="actividades_grupales"
     )
+    grupo = models.ForeignKey(
+        "GrupoPacientes",
+        null=True,
+        blank=True,
+        related_name="actividades",
+        on_delete=models.SET_NULL,
+    )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
@@ -315,3 +327,86 @@ class ParticipanteActividad(models.Model):
 
     def __str__(self):
         return f"{self.actividad_id}: {self.paciente_id}"
+
+
+class GrupoPacientes(models.Model):
+    """Grupo guardado de pacientes para citarlos juntos a actividades.
+
+    Puede ser permanente o temporal (con fecha `vigente_hasta`); los miembros
+    se agregan y quitan segun se necesite.
+    """
+
+    class Tipo(models.TextChoices):
+        PERMANENTE = "PERMANENTE", "Permanente"
+        TEMPORAL = "TEMPORAL", "Temporal"
+
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField(blank=True, default="")
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.PERMANENTE)
+    vigente_hasta = models.DateField(null=True, blank=True)
+    activo = models.BooleanField(default=True)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="grupos_pacientes",
+        on_delete=models.SET_NULL,
+    )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        related_name="grupos_pacientes_creados",
+        on_delete=models.SET_NULL,
+    )
+    pacientes = models.ManyToManyField(
+        Paciente, through="MiembroGrupo", related_name="grupos"
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["nombre", "id"]
+
+    def __str__(self):
+        return self.nombre
+
+
+class MiembroGrupo(models.Model):
+    grupo = models.ForeignKey(GrupoPacientes, related_name="miembros", on_delete=models.CASCADE)
+    paciente = models.ForeignKey(Paciente, related_name="membresias_grupo", on_delete=models.CASCADE)
+    agregado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["paciente__nombre"]
+        constraints = [
+            models.UniqueConstraint(fields=["grupo", "paciente"], name="miembro_unico_por_grupo")
+        ]
+
+    def __str__(self):
+        return f"{self.grupo_id}: {self.paciente_id}"
+
+
+class MovimientoGrupo(models.Model):
+    """Historial de cambios de un grupo: creacion, ediciones, miembros y citaciones."""
+
+    class Tipo(models.TextChoices):
+        CREADO = "CREADO", "Grupo creado"
+        EDITADO = "EDITADO", "Grupo editado"
+        MIEMBROS_AGREGADOS = "MIEMBROS_AGREGADOS", "Pacientes agregados"
+        MIEMBROS_QUITADOS = "MIEMBROS_QUITADOS", "Pacientes quitados"
+        ARCHIVADO = "ARCHIVADO", "Grupo archivado"
+        REACTIVADO = "REACTIVADO", "Grupo reactivado"
+        CITADO = "CITADO", "Grupo citado a actividad"
+
+    grupo = models.ForeignKey(GrupoPacientes, related_name="movimientos", on_delete=models.CASCADE)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    tipo = models.CharField(max_length=30, choices=Tipo.choices)
+    descripcion = models.TextField(blank=True, default="")
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self):
+        return f"{self.grupo_id}: {self.tipo}"

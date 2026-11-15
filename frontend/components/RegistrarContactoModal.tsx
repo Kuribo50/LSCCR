@@ -1,314 +1,309 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import {
   FiAlertTriangle,
+  FiCalendar,
   FiCheckCircle,
-  FiMessageSquare,
+  FiClock,
+  FiHelpCircle,
   FiPhone,
-  FiPhoneCall,
   FiPhoneMissed,
+  FiSlash,
+  FiUserX,
   FiX,
+  FiXCircle,
 } from "react-icons/fi";
-import type { Paciente } from "@/lib/types";
+import type { IconType } from "react-icons";
+import type { Paciente, ResultadoLlamado } from "@/lib/types";
+import { ESTADO_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
-import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
+import {
+  aIso,
+  consecuencia,
+  diaHabil,
+  fechaKey,
+  mensajeRegistro,
+  registrarLlamado,
+  resultadosPara,
+} from "@/lib/llamados";
+import CampoFecha from "./CampoFecha";
 
-function fechaHoraLocalDefault() {
-  const now = new Date();
-  now.setMinutes(0, 0, 0);
-  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
+const ICONOS: Record<ResultadoLlamado, IconType> = {
+  CONTESTA_CONFIRMADO: FiCheckCircle,
+  NO_CONTESTA: FiPhoneMissed,
+  REAGENDAR_LLAMADO: FiClock,
+  NUMERO_EQUIVOCADO: FiSlash,
+  RECHAZA_ATENCION: FiUserX,
+  YA_RESUELTO: FiXCircle,
+  OTRO: FiHelpCircle,
+};
+
+const INPUT =
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
+
+function nombreLegible(nombre: string) {
+  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
 }
 
 interface Props {
   paciente: Paciente;
   onClose: () => void;
-  onSuccess: (paciente?: Paciente) => void;
+  /** Recibe el paciente actualizado (con `ultimo_llamado` para poder deshacer). */
+  onSuccess: (paciente?: Paciente, resultado?: ResultadoLlamado) => void;
+  /** Resultado elegido al abrir (p. ej. desde un boton rapido). */
+  resultadoInicial?: ResultadoLlamado;
+  /** Compatibilidad: abre con "Contesta y agenda" elegido. */
   startWithScheduler?: boolean;
 }
 
-export default function RegistrarContactoModal({
-  paciente,
-  onClose,
-  onSuccess,
-  startWithScheduler = false,
-}: Props) {
+/** Registro de un llamado: un solo lugar para elegir el resultado y ver su efecto. */
+export default function RegistrarContactoModal({ paciente, onClose, onSuccess, resultadoInicial, startWithScheduler = false }: Props) {
   const { toast } = useToast();
+  const opciones = resultadosPara(paciente);
+  const [resultado, setResultado] = useState<ResultadoLlamado | null>(
+    resultadoInicial ?? (startWithScheduler ? "CONTESTA_CONFIRMADO" : null),
+  );
   const [notas, setNotas] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [fechaCita, setFechaCita] = useState(() => diaHabil(1));
+  const [horaCita, setHoraCita] = useState("09:00");
+  const [fechaVolver, setFechaVolver] = useState(() => diaHabil(1));
+  const [horaVolver, setHoraVolver] = useState("09:00");
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  
-  const [showScheduler, setShowScheduler] = useState(startWithScheduler);
-  const [fechaHora, setFechaHora] = useState(fechaHoraLocalDefault());
 
-  async function handleSubmit(contesto: boolean) {
-    if (contesto && !fechaHora) {
-      setError("Selecciona fecha y hora para programar la atención.");
-      toast.warning("Selecciona fecha y hora para programar la atención.");
-      return;
-    }
-    if (!contesto && requiereNotaEgreso && !notas.trim()) {
-      setError("Debe registrar una observación para egreso administrativo.");
-      toast.warning("Debe registrar una observación para egreso administrativo.");
-      return;
-    }
+  const efecto = resultado ? consecuencia(paciente, resultado) : null;
+  const faltaNota = !!efecto?.requiereNota && !notas.trim();
+  const faltaCita = !!efecto?.requiereFechaCita && !aIso(fechaCita, horaCita);
+  const faltaVolver = !!efecto?.requiereVolverALlamar && !aIso(fechaVolver, horaVolver);
+  const puedeGuardar = !!resultado && !guardando && !faltaNota && !faltaCita && !faltaVolver;
 
-    setLoading(true);
+  // Atajo: teclas 1..7 eligen el resultado (fuera de los campos de texto).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const n = Number(e.key);
+      if (n >= 1 && n <= opciones.length) setResultado(opciones[n - 1].id);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [opciones]);
+
+  async function guardar() {
+    if (!resultado || !puedeGuardar) return;
+    setGuardando(true);
     setError("");
-    setSuccess("");
     try {
-      let actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
-        contesto,
-        notas,
-        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
+      const actualizado = await registrarLlamado(paciente, {
+        resultado,
+        notas: notas.trim(),
+        fecha_atencion: efecto?.requiereFechaCita ? aIso(fechaCita, horaCita) : null,
+        volver_a_llamar: efecto?.requiereVolverALlamar ? aIso(fechaVolver, horaVolver) : null,
       });
-
-      if (contesto && fechaHora) {
-        const isoValue = new Date(fechaHora).toISOString();
-        actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/programar-atencion/`, {
-          fecha_hora: isoValue,
-        });
-      }
-
-      const mensaje =
-        actualizado.estado === "INGRESADO"
-          ? "Contacto confirmado. Paciente pasa a INGRESADO."
-          : actualizado.estado === "RESCATE"
-            ? "Contacto sin respuesta. Paciente pasa a RESCATE."
-            : actualizado.estado === "EGRESO_ADMINISTRATIVO"
-              ? "Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO."
-            : "Contacto registrado.";
-      setSuccess(mensaje);
-      if (actualizado.estado === "RESCATE") {
-        toast.warning(mensaje);
-      } else if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
-        toast.warning(mensaje, { title: "Egreso administrativo" });
-      } else {
-        toast.success(mensaje);
-      }
-      onSuccess(actualizado);
-      window.setTimeout(onClose, 900);
-    } catch (e: unknown) {
-      const msg = getErrorMessage(e, "Error al registrar contacto");
-      setError(msg);
-      toast.error(msg);
+      const mensaje = mensajeRegistro(paciente, actualizado, resultado);
+      if (efecto?.grave) toast.warning(mensaje);
+      else toast.success(mensaje);
+      onSuccess(actualizado, resultado);
+      onClose();
+    } catch (err) {
+      setError(getErrorMessage(err, "No se pudo registrar el llamado."));
     } finally {
-      setLoading(false);
+      setGuardando(false);
     }
   }
 
-  function aplicarHorarioRapido(hora: string) {
-    const base = fechaHora || fechaHoraLocalDefault();
-    const fecha = base.slice(0, 10);
-    setFechaHora(`${fecha}T${hora}`);
-  }
-
-  const requiereNotaEgreso = paciente.estado === "RESCATE";
-  const intentoUno = paciente.n_intentos_contacto === 1;
+  const hoy = fechaKey(new Date());
+  const horaActual = new Date().getHours();
+  const atajosVolver = [
+    ...(horaActual < 15 ? [{ label: "Hoy 16:00", fecha: hoy, hora: "16:00" }] : []),
+    { label: "Mañana 09:00", fecha: diaHabil(1), hora: "09:00" },
+    { label: "En 2 días", fecha: diaHabil(2), hora: "09:00" },
+    { label: "Próxima semana", fecha: diaHabil(7), hora: "09:00" },
+  ];
+  const telefonos = [
+    { label: "Principal", valor: paciente.telefono },
+    { label: "Recados", valor: paciente.telefono_recados },
+  ].filter((t) => t.valor?.trim());
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm dark:bg-black/70">
-      <div
-        className="ccr-fade-up w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-[#2a2a2a] dark:bg-[#111111]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-5 py-4 dark:border-[#2a2a2a] dark:bg-[#181818]">
-          <div className="flex items-center gap-2 text-blue-500 dark:text-white">
-            <FiPhoneCall className="text-xl" />
-            <h2 className="text-sm font-semibold uppercase tracking-[0.05em]">
-              Registrar Contacto
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-gray-500 transition hover:bg-blue-100 hover:text-gray-900 dark:text-ink-black-200 dark:hover:bg-[#242424] dark:hover:text-white"
-          >
-            <FiX size={18} />
-          </button>
-        </div>
+    <ModalOverlay
+      isOpen
+      isDismissable={!guardando}
+      onOpenChange={(open) => {
+        if (!open && !guardando) onClose();
+      }}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/45 px-4 py-4 backdrop-blur-sm"
+    >
+      <Modal className="w-full max-w-xl">
+        <Dialog
+          aria-label="Registrar llamado"
+          className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-ink-black-600 dark:bg-ink-black-800"
+        >
+          <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-ink-black-600">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">Registrar llamado</p>
+              <h2 className="mt-0.5 truncate text-lg font-extrabold text-slate-950 dark:text-ink-black-50">{nombreLegible(paciente.nombre)}</h2>
+              <p className="mt-0.5 text-[12px] font-medium text-slate-500 dark:text-ink-black-300">
+                {paciente.id_ccr} · {formatearRut(paciente.rut)} · {ESTADO_LABELS[paciente.estado] ?? paciente.estado}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={guardando}
+              aria-label="Cerrar"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+            >
+              <FiX size={18} />
+            </button>
+          </header>
 
-        <div className="p-5">
-          {error && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="mb-4 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
-              {success}
-            </div>
-          )}
-
-          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="truncate font-bold text-gray-900 dark:text-white">
-                  {paciente.nombre}
-                </h3>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-[#a3a3a3]">
-                  {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
-                </p>
+          <div className="custom-scrollbar flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            {telefonos.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {telefonos.map((t) => (
+                  <a
+                    key={t.label}
+                    href={`tel:${t.valor}`}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-[13px] font-bold tabular-nums text-slate-800 transition hover:border-blue-300 hover:text-blue-700 dark:border-ink-black-600 dark:text-ink-black-100"
+                  >
+                    <FiPhone size={13} aria-hidden="true" />
+                    {t.valor}
+                    <span className="text-[10px] font-semibold text-slate-400">{t.label}</span>
+                  </a>
+                ))}
               </div>
-              <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">
-                {paciente.estado}
-              </span>
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-white bg-white px-3 py-2">
-                <p className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                  <FiPhone size={12} />
-                  Teléfono
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {paciente.telefono || "No especificado"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-white bg-white px-3 py-2">
-                <p className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                  <FiMessageSquare size={12} />
-                  Recados
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {paciente.telefono_recados || "No especificado"}
-                </p>
-              </div>
-            </div>
-            {intentoUno && (
-              <p className="mt-3 flex items-center gap-1 text-xs font-semibold text-amber-600 dark:text-amber-300">
-                <FiPhoneMissed size={13} />
-                1 intento previo registrado
+            ) : (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                Este paciente no tiene teléfono registrado.
               </p>
             )}
-            {requiereNotaEgreso && (
-              <p className="mt-3 flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
-                <FiAlertTriangle size={13} />
-                El próximo contacto sin respuesta requiere observación y egresa administrativamente.
-              </p>
-            )}
-          </div>
 
-          {!showScheduler ? (
-            <div className="space-y-4">
+            <fieldset>
+              <legend className="mb-2 text-[12px] font-bold text-slate-700 dark:text-ink-black-100">¿Qué pasó en el llamado?</legend>
+              <div role="radiogroup" className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {opciones.map((op, i) => {
+                  const Icon = ICONOS[op.id];
+                  const activo = resultado === op.id;
+                  return (
+                    <button
+                      key={op.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={activo}
+                      onClick={() => setResultado(op.id)}
+                      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-[13px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                        activo
+                          ? "border-blue-400 bg-blue-50 text-blue-800 dark:border-blue-500/60 dark:bg-blue-500/15 dark:text-blue-100"
+                          : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-ink-black-600 dark:text-ink-black-100 dark:hover:bg-ink-black-700"
+                      }`}
+                    >
+                      <Icon size={15} aria-hidden="true" className={activo ? "text-blue-600 dark:text-blue-300" : "text-slate-400"} />
+                      <span className="flex-1">{op.label}</span>
+                      <kbd className="rounded border border-slate-200 px-1 text-[10px] font-semibold text-slate-400 dark:border-ink-black-600">{i + 1}</kbd>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            {efecto?.requiereFechaCita && (
               <div>
-                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-ink-black-50">
-                  Observación operativa del contacto {requiereNotaEgreso ? "(obligatoria)" : "(opcional)"}
-                </label>
-                <textarea
-                  value={notas}
-                  onChange={(e) => setNotas(e.target.value)}
-                  placeholder="Ej. Dejó mensaje, número equivocado, etc."
-                  rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:placeholder:text-[#6b7280] dark:focus:ring-blue-500/20"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowScheduler(true)}
-                  disabled={loading}
-                  className="rounded-lg bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <FiCheckCircle size={14} />
-                    Contestó
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSubmit(false)}
-                  disabled={loading}
-                  className={`rounded-lg py-2.5 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50 ${
-                    requiereNotaEgreso ? "bg-slate-700 hover:bg-slate-800" : "bg-[#ED8121] hover:bg-[#C96B18]"
-                  }`}
-                >
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <FiPhoneMissed size={14} />
-                    No contestó
-                  </span>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 dark:border-[#2a2a2a] dark:bg-[#181818]">
-                <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-white">Paciente contestó</p>
-                <p className="text-[11px] text-gray-600 dark:text-ink-black-200">Ahora programa la fecha de su atención, el paciente pasará directo a estado INGRESADO.</p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-[#a3a3a3]">
-                  Fecha y hora de atención
-                </label>
-                <input
-                  type="datetime-local"
-                  value={fechaHora}
-                  onChange={(e) => setFechaHora(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white"
-                />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => aplicarHorarioRapido("09:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
-                  >
-                    09:00
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => aplicarHorarioRapido("12:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
-                  >
-                    12:00
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => aplicarHorarioRapido("15:00")}
-                    className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-50 dark:border-white dark:bg-white dark:text-blue-500 dark:hover:bg-blue-50"
-                  >
-                    15:00
-                  </button>
+                <p className="mb-1.5 text-[12px] font-bold text-slate-700 dark:text-ink-black-100">Fecha y hora de la cita</p>
+                <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2">
+                  <CampoFecha label="Fecha de la cita" value={fechaCita} onChange={setFechaCita} opcional={false} compacto altoCompacto="h-10" />
+                  <input type="time" step={900} value={horaCita} onChange={(e) => setHoraCita(e.target.value)} aria-label="Hora de la cita" className={INPUT} />
                 </div>
               </div>
+            )}
 
+            {efecto?.requiereVolverALlamar && (
               <div>
-                <label className="mb-2 block text-xs font-semibold text-gray-700 dark:text-ink-black-50">
-                  Observaciones (opcional)
-                </label>
+                <p className="mb-1.5 text-[12px] font-bold text-slate-700 dark:text-ink-black-100">¿Cuándo volver a llamar?</p>
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {atajosVolver.map((a) => {
+                    const activo = fechaVolver === a.fecha && horaVolver === a.hora;
+                    return (
+                      <button
+                        key={a.label}
+                        type="button"
+                        onClick={() => {
+                          setFechaVolver(a.fecha);
+                          setHoraVolver(a.hora);
+                        }}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                          activo
+                            ? "border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500/60 dark:bg-blue-500/15 dark:text-blue-100"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-ink-black-600 dark:text-ink-black-200"
+                        }`}
+                      >
+                        {a.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2">
+                  <CampoFecha label="Volver a llamar" value={fechaVolver} onChange={setFechaVolver} opcional={false} compacto altoCompacto="h-10" />
+                  <input type="time" step={900} value={horaVolver} onChange={(e) => setHoraVolver(e.target.value)} aria-label="Hora para volver a llamar" className={INPUT} />
+                </div>
+              </div>
+            )}
+
+            {resultado && (
+              <label className="block">
+                <span className="mb-1.5 block text-[12px] font-bold text-slate-700 dark:text-ink-black-100">
+                  Observación {efecto?.requiereNota ? <span className="text-red-600">(obligatoria)</span> : <span className="font-medium text-slate-400">(opcional)</span>}
+                </span>
                 <textarea
                   value={notas}
                   onChange={(e) => setNotas(e.target.value)}
                   rows={2}
-                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-white dark:focus:ring-blue-500/20"
+                  placeholder={efecto?.requiereNota ? "Explica qué pasó; queda en el historial." : "Ej.: dejó recado con la hija."}
+                  className={`${INPUT} h-auto resize-none py-2`}
                 />
-              </div>
+              </label>
+            )}
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowScheduler(false)}
-                  disabled={loading}
-                  className="flex-1 rounded-lg border border-gray-200 bg-white py-2.5 text-sm font-semibold text-gray-600 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-50 dark:hover:bg-[#242424]"
-                >
-                  Atrás
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSubmit(true)}
-                  disabled={loading}
-                  className="flex-1 rounded-lg bg-blue-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {loading ? "Guardando..." : "Confirmar"}
-                </button>
-              </div>
+            {efecto && (
+              <p
+                className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-semibold leading-snug ${
+                  efecto.grave
+                    ? "bg-red-50 text-red-800 dark:bg-red-500/10 dark:text-red-200"
+                    : efecto.cambiaEstado
+                      ? "bg-blue-50 text-blue-800 dark:bg-blue-500/10 dark:text-blue-100"
+                      : "bg-slate-50 text-slate-700 dark:bg-ink-black-900 dark:text-ink-black-200"
+                }`}
+              >
+                {efecto.grave ? <FiAlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" /> : <FiCalendar size={14} className="mt-0.5 shrink-0" aria-hidden="true" />}
+                {efecto.texto}
+              </p>
+            )}
+
+            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-200">{error}</p>}
+          </div>
+
+          <footer className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50/70 px-5 py-3 dark:border-ink-black-600 dark:bg-ink-black-900/60">
+            <p className="hidden text-[11px] font-medium text-slate-500 sm:block">Puedes deshacerlo durante 10 minutos desde la cola.</p>
+            <div className="ml-auto flex gap-2">
+              <button type="button" onClick={onClose} disabled={guardando} className="ccr-control-button">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void guardar()}
+                disabled={!puedeGuardar}
+                className={`ccr-control-button-primary disabled:opacity-50 ${efecto?.grave ? "!bg-red-600 hover:!bg-red-700" : ""}`}
+              >
+                {guardando ? "Guardando…" : "Registrar llamado"}
+              </button>
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </footer>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

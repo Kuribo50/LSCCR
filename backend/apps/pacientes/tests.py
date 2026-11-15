@@ -197,78 +197,173 @@ class PacienteWorkflowTests(APITestCase):
             LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO,
         )
 
-    def test_registrar_llamado_no_contesta_desde_pendiente_pasa_a_rescate(self):
+    def llamar(self, paciente, **datos):
+        return self.client.post(f"/api/pacientes/{paciente.id}/registrar-llamado/", datos, format="json")
+
+    def test_registrar_llamado_no_contesta_pasa_a_rescate_al_tercer_intento(self):
         paciente = self.crear_paciente()
 
-        response = self.client.post(
-            f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": ""},
-            format="json",
-        )
+        for intento in range(1, 3):
+            response = self.llamar(paciente, resultado="NO_CONTESTA")
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data["estado"], Paciente.Estado.PENDIENTE)
+            self.assertEqual(response.data["intentos_estado"], intento)
+            self.assertEqual(response.data["intentos_umbral"], 3)
+
+        response = self.llamar(paciente, contesto=False, notas="")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         paciente.refresh_from_db()
-        self.assertEqual(paciente.n_intentos_contacto, 1)
         self.assertEqual(paciente.estado, Paciente.Estado.RESCATE)
-        self.assertNotEqual(paciente.estado, Paciente.Estado.ABANDONO)
-        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 1)
-        self.assertEqual(MovimientoPaciente.objects.filter(paciente=paciente).count(), 1)
+        self.assertEqual(paciente.n_intentos_contacto, 3)
+        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 3)
         self.assertEqual(
             MovimientoPaciente.objects.get(paciente=paciente).notas,
-            "Primer contacto sin respuesta. Pasa a RESCATE.",
+            "3 llamados sin respuesta. Pasa a RESCATE.",
         )
+        # Al entrar a RESCATE el conteo vuelve a cero.
+        self.assertEqual(response.data["intentos_estado"], 0)
+        self.assertEqual(response.data["intentos_umbral"], 2)
 
-    def test_registrar_llamado_rescate_sin_observacion_no_egresa(self):
-        paciente = self.crear_paciente(
-            estado=Paciente.Estado.RESCATE,
-            n_intentos_contacto=1,
-        )
+    def test_registrar_llamado_rescate_ultimo_intento_exige_observacion(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.RESCATE, fecha_cambio_estado=timezone.now())
+        self.assertEqual(self.llamar(paciente, resultado="NO_CONTESTA").status_code, status.HTTP_200_OK)
 
-        response = self.client.post(
-            f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": ""},
-            format="json",
-        )
+        response = self.llamar(paciente, resultado="NO_CONTESTA", notas="")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         paciente.refresh_from_db()
         self.assertEqual(paciente.estado, Paciente.Estado.RESCATE)
-        self.assertEqual(paciente.n_intentos_contacto, 1)
-        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 0)
+        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 1)
 
     def test_registrar_llamado_rescate_con_observacion_egresa_administrativamente(self):
         paciente = self.crear_paciente(
-            estado=Paciente.Estado.RESCATE,
-            n_intentos_contacto=1,
-            fecha_egreso=None,
+            estado=Paciente.Estado.RESCATE, fecha_cambio_estado=timezone.now(), fecha_egreso=None
         )
+        self.llamar(paciente, resultado="NO_CONTESTA")
 
-        response = self.client.post(
-            f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": "Segundo contacto sin respuesta"},
-            format="json",
-        )
+        response = self.llamar(paciente, resultado="NO_CONTESTA", notas="Segundo intento sin respuesta")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         paciente.refresh_from_db()
-        self.assertEqual(paciente.n_intentos_contacto, 2)
         self.assertEqual(paciente.estado, Paciente.Estado.EGRESO_ADMINISTRATIVO)
         self.assertIsNotNone(paciente.fecha_egreso)
-        self.assertNotEqual(paciente.estado, Paciente.Estado.ABANDONO)
-        self.assertEqual(LlamadoPaciente.objects.filter(paciente=paciente).count(), 1)
         self.assertEqual(MovimientoPaciente.objects.filter(paciente=paciente).count(), 1)
 
-    def test_registrar_llamado_rechaza_paciente_ingresado(self):
-        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+    def test_contesta_con_fecha_ingresa_y_cita_en_un_paso(self):
+        paciente = self.crear_paciente(fecha_ingreso=None)
+        cita = timezone.now() + timedelta(days=3)
 
-        response = self.client.post(
-            f"/api/pacientes/{paciente.id}/registrar-llamado/",
-            {"contesto": False, "notas": "No corresponde"},
-            format="json",
-        )
+        response = self.llamar(paciente, resultado="CONTESTA_CONFIRMADO", fecha_atencion=cita.isoformat())
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         paciente.refresh_from_db()
         self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+        self.assertIsNotNone(paciente.fecha_ingreso)
+        self.assertEqual(paciente.proxima_atencion, cita)
+        self.assertEqual(paciente.fecha_siguiente_cita, timezone.localdate(cita))
+
+    def test_reagendar_llamado_guarda_cuando_volver_a_llamar(self):
+        paciente = self.crear_paciente()
+        volver = timezone.now() + timedelta(days=2)
+
+        sin_fecha = self.llamar(paciente, resultado="REAGENDAR_LLAMADO")
+        self.assertEqual(sin_fecha.status_code, status.HTTP_400_BAD_REQUEST)
+
+        response = self.llamar(paciente, resultado="REAGENDAR_LLAMADO", volver_a_llamar=volver.isoformat())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.proximo_llamado, volver)
+        self.assertEqual(paciente.estado, Paciente.Estado.PENDIENTE)
+        self.assertEqual(paciente.n_intentos_contacto, 0)
+
+        # Cualquier otro resultado limpia la fecha para volver a llamar.
+        self.llamar(paciente, resultado="NUMERO_EQUIVOCADO")
+        paciente.refresh_from_db()
+        self.assertIsNone(paciente.proximo_llamado)
+
+    def test_rechaza_atencion_egresa_voluntariamente_con_observacion(self):
+        paciente = self.crear_paciente()
+
+        self.assertEqual(self.llamar(paciente, resultado="RECHAZA_ATENCION").status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.llamar(paciente, resultado="RECHAZA_ATENCION", notas="Se atiende en otro centro")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.EGRESO_VOLUNTARIO)
+        self.assertIsNotNone(paciente.fecha_egreso)
+
+    def test_llamado_a_ingresado_sin_cita(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+
+        no_contesta = self.llamar(paciente, resultado="NO_CONTESTA")
+        self.assertEqual(no_contesta.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+        self.assertEqual(paciente.n_intentos_contacto, 0)
+
+        sin_fecha = self.llamar(paciente, resultado="CONTESTA_CONFIRMADO")
+        self.assertEqual(sin_fecha.status_code, status.HTTP_400_BAD_REQUEST)
+        resuelto = self.llamar(paciente, resultado="YA_RESUELTO", notas="x")
+        self.assertEqual(resuelto.status_code, status.HTTP_400_BAD_REQUEST)
+
+        cita = timezone.now() + timedelta(days=1)
+        response = self.llamar(paciente, resultado="CONTESTA_CONFIRMADO", fecha_atencion=cita.isoformat())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.proxima_atencion, cita)
+        self.assertEqual(paciente.estado, Paciente.Estado.INGRESADO)
+
+    def test_registrar_llamado_rechaza_paciente_egresado(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.ALTA_MEDICA)
+
+        response = self.llamar(paciente, contesto=False, notas="No corresponde")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_deshacer_llamado_restaura_estado_y_borra_rastro(self):
+        paciente = self.crear_paciente(fecha_ingreso=None)
+        cita = timezone.now() + timedelta(days=3)
+        response = self.llamar(paciente, resultado="CONTESTA_CONFIRMADO", fecha_atencion=cita.isoformat())
+        llamado_id = response.data["ultimo_llamado"]["id"]
+
+        response = self.client.post(
+            f"/api/pacientes/{paciente.id}/deshacer-llamado/", {"llamado_id": llamado_id}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.PENDIENTE)
+        self.assertIsNone(paciente.fecha_ingreso)
+        self.assertIsNone(paciente.proxima_atencion)
+        self.assertFalse(LlamadoPaciente.objects.filter(paciente=paciente).exists())
+        self.assertFalse(MovimientoPaciente.objects.filter(paciente=paciente).exists())
+
+    def test_deshacer_llamado_solo_reciente_y_propio(self):
+        paciente = self.crear_paciente()
+        llamado_id = self.llamar(paciente, resultado="NO_CONTESTA").data["ultimo_llamado"]["id"]
+        url = f"/api/pacientes/{paciente.id}/deshacer-llamado/"
+
+        self.client.force_authenticate(self.kine)
+        otro_usuario = self.client.post(url, {"llamado_id": llamado_id}, format="json")
+        self.assertEqual(otro_usuario.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(self.admin)
+        LlamadoPaciente.objects.filter(pk=llamado_id).update(fecha=timezone.now() - timedelta(minutes=11))
+        vencido = self.client.post(url, {"llamado_id": llamado_id}, format="json")
+        self.assertEqual(vencido.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cola_llamados_separa_por_contactar_y_por_citar(self):
+        pendiente = self.crear_paciente()
+        rescate = self.crear_paciente(estado=Paciente.Estado.RESCATE)
+        por_citar = self.crear_paciente(estado=Paciente.Estado.INGRESADO)
+        self.crear_paciente(estado=Paciente.Estado.INGRESADO, proxima_atencion=timezone.now() + timedelta(days=1))
+        self.crear_paciente(kine_asignado=None)
+
+        response = self.client.get("/api/pacientes/cola-llamados/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual({p["id"] for p in response.data["por_contactar"]}, {pendiente.id, rescate.id})
+        self.assertEqual({p["id"] for p in response.data["por_citar"]}, {por_citar.id})
 
     def test_cambiar_estado_bloquea_abandono_antes_de_ingreso(self):
         for estado_actual in [Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE]:
@@ -1058,3 +1153,94 @@ class ActividadGrupalTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual([p["paciente_id"] for p in response.data["participantes"]], [self.p2.id])
         self.assertEqual(response.data["estado"], "REALIZADA")
+
+
+class GrupoPacientesTests(ActividadGrupalTests):
+    """Reutiliza los usuarios y pacientes de ActividadGrupalTests."""
+
+    def test_kine_crea_grupo_agrega_y_quita_miembros(self):
+        self.client.force_authenticate(self.kine)
+        creado = self.client.post(
+            "/api/grupos-pacientes/",
+            {"nombre": "Columna martes", "tipo": "PERMANENTE", "paciente_ids": [self.p1.id]},
+            format="json",
+        )
+        self.assertEqual(creado.status_code, status.HTTP_201_CREATED, creado.data)
+        grupo_id = creado.data["id"]
+
+        agregado = self.client.post(f"/api/grupos-pacientes/{grupo_id}/agregar/", {"paciente_ids": [self.p2.id]}, format="json")
+        self.assertEqual(agregado.status_code, status.HTTP_200_OK, agregado.data)
+        self.assertEqual(agregado.data["total_miembros"], 2)
+
+        ajeno = self.client.post(f"/api/grupos-pacientes/{grupo_id}/agregar/", {"paciente_ids": [self.ajeno.id]}, format="json")
+        self.assertEqual(ajeno.status_code, status.HTTP_400_BAD_REQUEST)
+
+        quitado = self.client.post(f"/api/grupos-pacientes/{grupo_id}/quitar/", {"paciente_ids": [self.p1.id]}, format="json")
+        self.assertEqual([m["paciente_id"] for m in quitado.data["miembros"]], [self.p2.id])
+
+    def test_grupo_temporal_requiere_fecha_y_marca_vencido(self):
+        self.client.force_authenticate(self.kine)
+        sin_fecha = self.client.post("/api/grupos-pacientes/", {"nombre": "Taller", "tipo": "TEMPORAL"}, format="json")
+        self.assertEqual(sin_fecha.status_code, status.HTTP_400_BAD_REQUEST)
+        ayer = (timezone.localdate() - timedelta(days=1)).isoformat()
+        vencido = self.client.post(
+            "/api/grupos-pacientes/", {"nombre": "Taller", "tipo": "TEMPORAL", "vigente_hasta": ayer}, format="json"
+        )
+        self.assertEqual(vencido.status_code, status.HTTP_201_CREATED, vencido.data)
+        self.assertTrue(vencido.data["vencido"])
+
+    def test_archivar_oculta_grupo_y_otro_kine_no_lo_ve(self):
+        self.client.force_authenticate(self.kine)
+        grupo = self.client.post("/api/grupos-pacientes/", {"nombre": "G1"}, format="json").data
+        self.client.patch(f"/api/grupos-pacientes/{grupo['id']}/", {"activo": False}, format="json")
+        self.assertEqual(self.client.get("/api/grupos-pacientes/").data, [])
+        todos = self.client.get("/api/grupos-pacientes/", {"incluir_inactivos": "1"}).data
+        self.assertEqual(len(todos), 1)
+
+        self.client.force_authenticate(self.otro_kine)
+        self.assertEqual(self.client.get(f"/api/grupos-pacientes/{grupo['id']}/").status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_actividad_creada_desde_grupo_guarda_referencia(self):
+        self.client.force_authenticate(self.kine)
+        grupo = self.client.post(
+            "/api/grupos-pacientes/", {"nombre": "Columna", "paciente_ids": [self.p1.id, self.p2.id]}, format="json"
+        ).data
+        payload = self.payload([self.p1.id, self.p2.id])
+        payload["grupo"] = grupo["id"]
+        actividad = self.client.post("/api/actividades-grupales/", payload, format="json")
+        self.assertEqual(actividad.status_code, status.HTTP_201_CREATED, actividad.data)
+        self.assertEqual(actividad.data["grupo_nombre"], "Columna")
+        detalle = self.client.get(f"/api/grupos-pacientes/{grupo['id']}/").data
+        self.assertEqual(detalle["total_actividades"], 1)
+
+    def test_paciente_puede_estar_en_varios_grupos_y_filtrar_por_paciente(self):
+        self.client.force_authenticate(self.kine)
+        for nombre in ("Columna", "Caminata"):
+            self.client.post("/api/grupos-pacientes/", {"nombre": nombre, "paciente_ids": [self.p1.id]}, format="json")
+        self.client.post("/api/grupos-pacientes/", {"nombre": "Hombros", "paciente_ids": [self.p2.id]}, format="json")
+        data = self.client.get("/api/grupos-pacientes/", {"paciente": self.p1.id}).data
+        self.assertEqual(sorted(g["nombre"] for g in data), ["Caminata", "Columna"])
+
+    def test_historial_registra_cambios_del_grupo_y_citaciones(self):
+        self.client.force_authenticate(self.kine)
+        grupo = self.client.post(
+            "/api/grupos-pacientes/", {"nombre": "Columna", "paciente_ids": [self.p1.id]}, format="json"
+        ).data
+        gid = grupo["id"]
+        self.client.post(f"/api/grupos-pacientes/{gid}/agregar/", {"paciente_ids": [self.p2.id]}, format="json")
+        self.client.post(f"/api/grupos-pacientes/{gid}/quitar/", {"paciente_ids": [self.p1.id]}, format="json")
+        self.client.patch(f"/api/grupos-pacientes/{gid}/", {"nombre": "Columna Martes"}, format="json")
+        payload = self.payload([self.p2.id])
+        payload["grupo"] = gid
+        self.client.post("/api/actividades-grupales/", payload, format="json")
+        self.client.patch(f"/api/grupos-pacientes/{gid}/", {"activo": False}, format="json")
+
+        data = self.client.get(f"/api/grupos-pacientes/{gid}/historial/").data
+        tipos = [m["tipo"] for m in data["movimientos"]]
+        self.assertEqual(
+            tipos,
+            ["ARCHIVADO", "CITADO", "EDITADO", "MIEMBROS_QUITADOS", "MIEMBROS_AGREGADOS", "CREADO"],
+        )
+        editado = next(m for m in data["movimientos"] if m["tipo"] == "EDITADO")
+        self.assertIn("Columna Martes", editado["descripcion"])
+        self.assertEqual(len(data["actividades"]), 1)

@@ -28,6 +28,7 @@ import {
 } from "react-icons/fi";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import SectorBadge from "@/components/SectorBadge";
@@ -64,6 +65,8 @@ const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr:
 const CrearPacienteModal = dynamic(() => import("@/components/CrearPacienteModal"), { ssr: false });
 const ProximaAtencionModal = dynamic(() => import("@/components/ProximaAtencionModal"), { ssr: false });
 const ActividadesGrupalesModal = dynamic(() => import("@/components/ActividadesGrupalesModal"), { ssr: false });
+const GrupoModal = dynamic(() => import("@/components/GruposPacientesVistas").then((m) => m.GrupoModal), { ssr: false });
+type AccionSeleccion = "actividad" | "agregar";
 
 // =============================================================================
 // Tipos, constantes y helpers de tabla
@@ -224,8 +227,11 @@ export default function MisPacientesPage() {
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null);
   const [creando, setCreando] = useState(false);
   const [agendando, setAgendando] = useState<Paciente | null>(null);
-  const [grupos, setGrupos] = useState<{ preseleccion?: number[] } | null>(null);
+  const [grupos, setGrupos] = useState<{ preseleccion?: number[]; accion?: AccionSeleccion } | null>(null);
   const [marcados, setMarcados] = useState<number[]>([]);
+  // "Guardar como grupo" crea el grupo aqui mismo y luego lleva a /grupos.
+  const [nuevoGrupo, setNuevoGrupo] = useState<number[] | null>(null);
+  const router = useRouter();
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [draftFilters, setDraftFilters] = useState<FilterDraftState>({});
   const [filterQueries, setFilterQueries] = useState<FilterQueryState>({});
@@ -874,9 +880,17 @@ export default function MisPacientesPage() {
           <p className="text-xs font-bold text-blue-800 dark:text-blue-100">
             {marcados.length} paciente{marcados.length !== 1 ? "s" : ""} seleccionado{marcados.length !== 1 ? "s" : ""}
           </p>
-          <button type="button" onClick={() => setGrupos({ preseleccion: marcados })} className="ccr-control-button-primary ml-auto">
+          <button type="button" onClick={() => setNuevoGrupo(marcados)} className="ccr-control-button ml-auto">
             <FiUsers size={13} aria-hidden="true" />
-            Crear actividad grupal
+            Guardar como grupo
+          </button>
+          <button type="button" onClick={() => setGrupos({ preseleccion: marcados, accion: "agregar" })} className="ccr-control-button">
+            <FiUserPlus size={13} aria-hidden="true" />
+            Agregar a un grupo
+          </button>
+          <button type="button" onClick={() => setGrupos({ preseleccion: marcados, accion: "actividad" })} className="ccr-control-button-primary">
+            <FiCalendar size={13} aria-hidden="true" />
+            Citar a actividad
           </button>
           <button type="button" onClick={() => setMarcados([])} className="ccr-control-button">
             Quitar selección
@@ -1135,9 +1149,27 @@ export default function MisPacientesPage() {
           usuario={user}
           pacientesDisponibles={pacientes.filter((p) => !esKine || p.kine_asignado === user.id)}
           preseleccion={grupos.preseleccion}
+          accionSeleccion={grupos.accion}
           onClose={() => setGrupos(null)}
           onCambio={() => {
             if (grupos.preseleccion) setMarcados([]);
+          }}
+        />
+      )}
+
+      {nuevoGrupo && (
+        <GrupoModal
+          usuario={user}
+          candidatos={pacientes
+            .filter((p) => p.estado === "INGRESADO" && (!esKine || p.kine_asignado === user.id))
+            .map((p) => ({ id: p.id, nombre: p.nombre, rut: p.rut, categoria: p.categoria }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))}
+          preseleccion={nuevoGrupo}
+          onClose={() => setNuevoGrupo(null)}
+          onGuardado={(guardado) => {
+            setNuevoGrupo(null);
+            setMarcados([]);
+            router.push(`/grupos?id=${guardado.id}`);
           }}
         />
       )}

@@ -15,17 +15,37 @@ responsable, sector, categoria o prioridad solo acotan esa vista.
 
 ## Llamados
 
-La cola de llamados trabaja con pacientes `PENDIENTE` y `RESCATE` que ya tienen
-responsable CCR.
+La pantalla `/llamados` tiene dos secciones, ambas solo con pacientes que ya
+tienen responsable CCR (un KINE ve solo su cartera):
 
-Reglas:
+- **Por contactar**: pacientes `PENDIENTE` y `RESCATE`.
+- **Ingresados por citar**: `INGRESADO` sin `proxima_atencion`.
 
-- Si un `PENDIENTE` contesta, pasa a `INGRESADO`.
-- Si un `PENDIENTE` no contesta, pasa a `RESCATE`.
-- Si un `RESCATE` no contesta, puede pasar a `EGRESO_ADMINISTRATIVO` con
-  observacion obligatoria.
+Cada seccion se agrupa en "Para llamar", "Reprogramados" (pidieron que los
+llamen otro dia, `Paciente.proximo_llamado`) y "Sin telefono". Los datos vienen
+de `GET /pacientes/cola-llamados/`.
 
-Los llamados quedan guardados en `LlamadoPaciente`.
+Cada llamado registra su resultado real (`LlamadoPaciente.Resultado`). Reglas
+(en `apps/pacientes/llamados.py`):
+
+- **Contesta y agenda**: un `PENDIENTE`/`RESCATE` pasa a `INGRESADO` y queda
+  citado en el mismo paso; un ingresado queda citado (fecha obligatoria).
+- **No contesta**: suma un intento. Con `CCR_INTENTOS_PARA_RESCATE` (3) intentos
+  en `PENDIENTE` pasa a `RESCATE`; con `CCR_INTENTOS_RESCATE_PARA_EGRESO` (2)
+  intentos en `RESCATE` pasa a `EGRESO_ADMINISTRATIVO` con observacion
+  obligatoria. Los intentos se cuentan desde que entro a su estado actual. En
+  ingresados solo se registra.
+- **Volver a llamar**: guarda la fecha en `proximo_llamado`; no cuenta como
+  intento. Cualquier otro resultado limpia esa fecha.
+- **Numero equivocado**: solo se registra; hay que corregir el telefono.
+- **Rechaza la atencion**: `EGRESO_VOLUNTARIO`, con observacion.
+- **Ya lo resolvio** (solo lista de espera): `EGRESO_ADMINISTRATIVO`, con
+  observacion.
+- **Otro**: solo se registra, con observacion.
+
+Quien registro un llamado puede deshacerlo durante 10 minutos
+(`POST /pacientes/{id}/deshacer-llamado/`): se restaura el paciente y se borran
+el llamado y el movimiento de estado que genero.
 
 ## Rescate
 

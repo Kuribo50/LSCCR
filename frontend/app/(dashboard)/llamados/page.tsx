@@ -1,1298 +1,778 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Modal, ModalOverlay, Dialog } from "react-aria-components";
+import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  FiAlertTriangle,
+  FiArrowLeft,
   FiCheckCircle,
-  FiChevronRight,
   FiClock,
+  FiCopy,
   FiEdit2,
   FiEye,
-  FiFilter,
-  FiMessageSquare,
-  FiMapPin,
+  FiMoreHorizontal,
   FiPhone,
   FiPhoneCall,
   FiPhoneMissed,
   FiPrinter,
   FiRefreshCw,
+  FiRotateCcw,
   FiSearch,
-  FiSend,
-  FiUser,
-  FiX,
 } from "react-icons/fi";
+import BadgePrioridad from "@/components/BadgePrioridad";
+import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import {
+  consecuencia,
+  deshacerLlamado,
+  enCola,
+  META_RESULTADO,
+  MINUTOS_PARA_DESHACER,
+  mensajeRegistro,
+  registrarLlamado,
+} from "@/lib/llamados";
 import { formatearRut } from "@/lib/rut";
+import { useAPI } from "@/lib/swr";
 import { useToast } from "@/lib/toast-context";
-import { unwrapResults } from "@/lib/swr";
-import type { Paciente, PaginatedResponse } from "@/lib/types";
+import type { LlamadoPaciente, Paciente, ResultadoLlamado } from "@/lib/types";
 import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import dynamic from "next/dynamic";
-import BadgeEstado from "@/components/BadgeEstado";
+import { formatearFecha, formatearFechaHoraCorta, normalizeRut, normalizeSearchText } from "@/lib/utils";
 
-// Heavy modals / slide-overs not needed on initial render — lazy-loaded.
-const EditarPacienteModal = dynamic(() => import("@/components/EditarPacienteModal"), {
-  ssr: false,
-});
-const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), {
-  ssr: false,
-});
+const RegistrarContactoModal = dynamic(() => import("@/components/RegistrarContactoModal"), { ssr: false });
+const EditarPacienteModal = dynamic(() => import("@/components/EditarPacienteModal"), { ssr: false });
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr: false });
 
-// =============================================================================
-// Helpers de busqueda, fechas y orden de contactabilidad
-// =============================================================================
+type Cola = { por_contactar: Paciente[]; por_citar: Paciente[] };
+type Seccion = "contactar" | "citar";
+type Grupo = { id: string; titulo: string; ayuda: string; pacientes: Paciente[] };
+type UltimoRegistro = { paciente: Paciente; llamadoId: number; resultado: ResultadoLlamado; en: number };
 
-function normalizeRut(value: string) {
-  return value.toLowerCase().replace(/[^0-9k]/g, "");
+function nombreLegible(nombre: string) {
+  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
 }
 
-function normalizeSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase("es-CL")
-    .trim();
+function tieneTelefono(p: Paciente) {
+  return !!(p.telefono?.trim() || p.telefono_recados?.trim());
 }
 
-function calcularDiasDesde(fecha: string | null | undefined) {
-  if (!fecha) return null;
-  const inicio = new Date(`${fecha}T00:00:00`);
-  if (Number.isNaN(inicio.getTime())) return null;
-
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  const diffMs = hoy.getTime() - inicio.getTime();
-  if (diffMs < 0) return 0;
-  return Math.floor(diffMs / 86400000);
+function finDeHoy() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
 }
 
-function diasEnLlamados(paciente: Paciente) {
-  return calcularDiasDesde(paciente.fecha_cambio_estado) ?? paciente.dias_en_lista;
+function haceDias(iso: string) {
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (dias <= 0) return "hoy";
+  if (dias === 1) return "ayer";
+  return `hace ${dias} días`;
 }
 
-function formatearFechaImpresion() {
-  return new Date().toLocaleString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+/** Pidio que lo llamen mas adelante (fecha futura). */
+function reprogramadoAFuturo(p: Paciente) {
+  return !!p.proximo_llamado && new Date(p.proximo_llamado).getTime() > Date.now();
+}
+
+/** Separa la seccion en: para llamar hoy, reprogramados a futuro y sin telefono. */
+function agrupar(pacientes: Paciente[]): Grupo[] {
+  const limite = finDeHoy();
+  const reprogramados: Paciente[] = [];
+  const sinTelefono: Paciente[] = [];
+  const vencidos: Paciente[] = [];
+  const resto: Paciente[] = [];
+  pacientes.forEach((p) => {
+    const cuando = p.proximo_llamado ? new Date(p.proximo_llamado).getTime() : null;
+    if (cuando !== null && cuando > limite) reprogramados.push(p);
+    else if (!tieneTelefono(p)) sinTelefono.push(p);
+    else if (cuando !== null) vencidos.push(p);
+    else resto.push(p);
   });
+  const porFecha = (a: Paciente, b: Paciente) => (a.proximo_llamado ?? "").localeCompare(b.proximo_llamado ?? "");
+  return [
+    { id: "hoy", titulo: "Para llamar", ayuda: "Por prioridad y antigüedad. Primero los que pidieron que los llamaran hoy.", pacientes: [...vencidos.sort(porFecha), ...resto] },
+    { id: "reprogramados", titulo: "Reprogramados", ayuda: "Pidieron que los llamaran otro día.", pacientes: reprogramados.sort(porFecha) },
+    { id: "sin-telefono", titulo: "Sin teléfono", ayuda: "Hay que conseguir un número antes de llamar.", pacientes: sinTelefono },
+  ].filter((g) => g.pacientes.length > 0);
 }
 
-function formatearFechaHora(fecha: string | null | undefined) {
-  if (!fecha) return "Sin registro";
-  const parsed = new Date(fecha);
-  if (Number.isNaN(parsed.getTime())) return "Sin registro";
-  return parsed.toLocaleString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function fechaHoraLocalDefault() {
-  const now = new Date();
-  now.setMinutes(0, 0, 0);
-  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function responsablePaciente(paciente: Paciente) {
-  return paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable";
-}
-
-function sectorLabel(value: string | null | undefined) {
-  return value?.trim() || "-";
-}
-
-function phoneLabel(value: string | null | undefined) {
-  return value?.trim() || "Sin teléfono";
-}
-
-function accionSugerida(paciente: Paciente) {
-  // Refleja la regla backend: primer no contesta pasa a RESCATE; segundo no
-  // contesta desde RESCATE permite egreso administrativo con observacion.
-  if (paciente.estado === "RESCATE") {
-    return "Registrar segundo contacto con observación si no contesta.";
-  }
-  return "Registrar contacto; si no contesta pasa a RESCATE.";
-}
-
-type AccionContacto = "CONTESTO" | "NO_CONTESTO";
-const SEGUNDOS_CANCELAR_REGISTRO = 4;
-
-const PRIORIDAD_ORDER: Record<string, number> = {
-  ALTA: 1,
-  MEDIANA: 2,
-  MODERADA: 3,
-  LICENCIA_MEDICA: 4,
-};
-
-interface ConfirmacionContacto {
-  paciente: Paciente;
-  accion: AccionContacto;
-}
-
-interface RegistroPendienteContacto {
-  id: string;
-  pacienteOriginal: Paciente;
-  accion: AccionContacto;
-  observacion: string;
-  fechaAtencion: string;
-}
-
-function ordenarPacientesContactabilidad(pacientes: Paciente[], ordering: string) {
-  // La cola prioriza urgencia operativa antes que antiguedad.
-  return [...pacientes].sort((a, b) => {
-    const pA = PRIORIDAD_ORDER[a.prioridad] ?? 99;
-    const pB = PRIORIDAD_ORDER[b.prioridad] ?? 99;
-    if (pA !== pB) return pA - pB;
-    if (ordering === "dias") {
-      return diasEnLlamados(a) - diasEnLlamados(b);
-    }
-    return diasEnLlamados(b) - diasEnLlamados(a);
-  });
+/** ¿El paciente sigue perteneciendo a esta seccion despues de un cambio? */
+function perteneceA(seccion: Seccion, p: Paciente) {
+  return seccion === "contactar" ? enCola(p) : p.estado === "INGRESADO" && !p.proxima_atencion;
 }
 
 export default function LlamadosPage() {
-  const { user } = useAuth();
-  const { toast, error: toastError, info: toastInfo } = useToast();
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [observacionContacto, setObservacionContacto] = useState("");
-  const [fechaAtencion, setFechaAtencion] = useState(fechaHoraLocalDefault());
-  const [confirmacionContacto, setConfirmacionContacto] = useState<ConfirmacionContacto | null>(null);
-  const [registroPendiente, setRegistroPendiente] = useState<RegistroPendienteContacto | null>(null);
-  const [segundosCancelar, setSegundosCancelar] = useState(SEGUNDOS_CANCELAR_REGISTRO);
-  const [accionLoading, setAccionLoading] = useState("");
-  const [pacienteFicha, setPacienteFicha] = useState<Paciente | null>(null);
-  const [pacienteEdicion, setPacienteEdicion] = useState<Paciente | null>(null);
-  const timeoutRegistroRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const intervalRegistroRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [prioridadFilter, setPrioridadFilter] = useState("TODAS");
-  const [estadoFilter, setEstadoFilter] = useState("TODOS");
-  const [ordering, setOrdering] = useState("-dias");
-
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      // KINE recibe solo su cartera desde el backend (evita traer la cola global
-      // topada en 50 y filtrarla despues en cliente, que dejaba fuera a sus pacientes).
-      const scope = user?.rol === "KINE" ? "&solo_mios=1" : "";
-      const [pendientes, rescate] = await Promise.all([
-        api.get<Paciente[] | PaginatedResponse<Paciente>>(`/pacientes/?estado=PENDIENTE${scope}`),
-        api.get<Paciente[] | PaginatedResponse<Paciente>>(`/pacientes/?estado=RESCATE${scope}`),
-      ]);
-      const todos = [...unwrapResults(pendientes), ...unwrapResults(rescate)].filter((p) => {
-        // Lista de llamados solo incluye pacientes con responsable. KINE ve su
-        // cartera; administrativos/admin ven la cola completa asignada.
-        if (p.kine_asignado === null) return false;
-        if (user?.rol === "KINE" && p.kine_asignado !== user.id) return false;
-        return true;
-      });
-      
-      setPacientes(ordenarPacientesContactabilidad(todos, ordering));
-    } catch (error) {
-      setPacientes([]);
-      const message = getErrorMessage(error, "No se pudo cargar la cola de llamados.");
-      setError(message);
-      toastError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [user, ordering, toastError]);
-
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
-
-  const pacientesFiltrados = useMemo(() => {
-    return pacientes.filter((p) => {
-      if (searchQuery) {
-        const queryText = normalizeSearchText(searchQuery);
-        const queryRut = normalizeRut(searchQuery);
-        const matchesText = [
-          p.nombre,
-          p.id_ccr,
-          p.diagnostico,
-          p.sector_cesfam,
-          p.sector_oficial,
-          responsablePaciente(p),
-          p.observaciones,
-          p.telefono,
-          p.telefono_recados,
-        ]
-          .map((value) => normalizeSearchText(String(value ?? "")))
-          .join(" ")
-          .includes(queryText);
-        const matchesRut = Boolean(queryRut) && normalizeRut(p.rut).includes(queryRut);
-        if (!matchesText && !matchesRut) return false;
-      }
-
-      if (prioridadFilter !== "TODAS" && p.prioridad !== prioridadFilter) {
-        return false;
-      }
-
-      if (estadoFilter !== "TODOS" && p.estado !== estadoFilter) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [pacientes, searchQuery, prioridadFilter, estadoFilter]);
-
-  useEffect(() => {
-    if (pacientesFiltrados.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !pacientesFiltrados.some((paciente) => paciente.id === selectedId)) {
-      setSelectedId(pacientesFiltrados[0].id);
-    }
-  }, [pacientesFiltrados, selectedId]);
-
-  const pacienteSeleccionado =
-    pacientesFiltrados.find((paciente) => paciente.id === selectedId) ?? pacientesFiltrados[0] ?? null;
-
-  const resumenContactabilidad = useMemo(
-    () => ({
-      total: pacientes.length,
-      pendientes: pacientes.filter((p) => p.estado === "PENDIENTE").length,
-      rescate: pacientes.filter((p) => p.estado === "RESCATE").length,
-      sinTelefono: pacientes.filter((p) => !p.telefono && !p.telefono_recados).length,
-    }),
-    [pacientes],
+  return (
+    <Suspense fallback={null}>
+      <Llamados />
+    </Suspense>
   );
+}
 
-  function clearFilters() {
-    setSearchQuery("");
-    setPrioridadFilter("TODAS");
-    setEstadoFilter("TODOS");
-    setOrdering("-dias");
-  }
+function Llamados() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const reducir = useReducedMotion();
+  const searchParams = useSearchParams();
+  const esKine = user?.rol === "KINE";
 
-  function aplicarPacienteContactabilidad(actualizado: Paciente) {
-    const sigueEnCola = actualizado.estado === "PENDIENTE" || actualizado.estado === "RESCATE";
-    setPacientes((prev) =>
-      sigueEnCola
-        ? prev.map((item) => (item.id === actualizado.id ? actualizado : item))
-        : prev.filter((item) => item.id !== actualizado.id),
-    );
-    if (!sigueEnCola) {
-      setSelectedId((actual) => (actual === actualizado.id ? null : actual));
-    }
-  }
+  const { data, isLoading, error, mutate } = useAPI<Cola>(user ? "/pacientes/cola-llamados/" : null);
+  const [seccion, setSeccion] = useState<Seccion>(searchParams.get("seccion") === "citar" ? "citar" : "contactar");
+  const [busqueda, setBusqueda] = useState("");
+  const [estados, setEstados] = useState<string[]>([]);
+  const [prioridades, setPrioridades] = useState<string[]>([]);
+  const [responsables, setResponsables] = useState<string[]>([]);
+  const [seleccionId, setSeleccionId] = useState<number | null>(null);
+  const [verDetalleMovil, setVerDetalleMovil] = useState(false);
+  const [modal, setModal] = useState<{ paciente: Paciente; resultado?: ResultadoLlamado } | null>(null);
+  const [ultimo, setUltimo] = useState<UltimoRegistro | null>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [ficha, setFicha] = useState<Paciente | null>(null);
+  const [edicion, setEdicion] = useState<Paciente | null>(null);
 
-  const limpiarTemporizadoresRegistro = useCallback(() => {
-    if (timeoutRegistroRef.current) {
-      clearTimeout(timeoutRegistroRef.current);
-      timeoutRegistroRef.current = null;
-    }
-    if (intervalRegistroRef.current) {
-      clearInterval(intervalRegistroRef.current);
-      intervalRegistroRef.current = null;
-    }
-  }, []);
+  const porContactar = useMemo(() => data?.por_contactar ?? [], [data]);
+  const porCitar = useMemo(() => data?.por_citar ?? [], [data]);
+  const base = seccion === "contactar" ? porContactar : porCitar;
 
+  const opcionesResponsable = useMemo(() => {
+    const mapa = new Map<string, { label: string; total: number }>();
+    base.forEach((p) => {
+      if (!p.kine_asignado) return;
+      const k = String(p.kine_asignado);
+      mapa.set(k, { label: p.responsable_nombre ?? "Sin nombre", total: (mapa.get(k)?.total ?? 0) + 1 });
+    });
+    return Array.from(mapa.entries()).map(([value, v]) => ({ value, ...v })).sort((a, b) => a.label.localeCompare(b.label, "es"));
+  }, [base]);
+
+  const visibles = useMemo(() => {
+    const q = normalizeSearchText(busqueda);
+    const rut = normalizeRut(busqueda);
+    return base.filter((p) => {
+      if (seccion === "contactar" && estados.length && !estados.includes(p.estado)) return false;
+      if (prioridades.length && !prioridades.includes(p.prioridad)) return false;
+      if (responsables.length && !responsables.includes(String(p.kine_asignado))) return false;
+      if (!q) return true;
+      const texto = normalizeSearchText([p.nombre, p.id_ccr, p.diagnostico, p.sector_cesfam, p.telefono, p.telefono_recados].join(" "));
+      return texto.includes(q) || (!!rut && normalizeRut(p.rut).includes(rut));
+    });
+  }, [base, busqueda, estados, prioridades, responsables, seccion]);
+
+  const grupos = useMemo(() => agrupar(visibles), [visibles]);
+  const orden = useMemo(() => grupos.flatMap((g) => g.pacientes), [grupos]);
+  const seleccionado = orden.find((p) => p.id === seleccionId) ?? orden[0] ?? null;
+
+  const paraHoy = (lista: Paciente[]) => agrupar(lista).find((g) => g.id === "hoy")?.pacientes.length ?? 0;
+
+  // El "deshacer" vence a los 10 minutos.
   useEffect(() => {
-    return () => limpiarTemporizadoresRegistro();
-  }, [limpiarTemporizadoresRegistro]);
+    if (!ultimo) return;
+    const resta = ultimo.en + MINUTOS_PARA_DESHACER * 60_000 - Date.now();
+    const t = window.setTimeout(() => setUltimo(null), Math.max(0, resta));
+    return () => window.clearTimeout(t);
+  }, [ultimo]);
 
-  function restaurarPacienteEnCola(paciente: Paciente) {
-    setPacientes((prev) => {
-      const sinDuplicado = prev.filter((item) => item.id !== paciente.id);
-      return ordenarPacientesContactabilidad([paciente, ...sinDuplicado], ordering);
-    });
-    setSelectedId(paciente.id);
+  // Flechas arriba/abajo para recorrer la lista.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (modal || ficha || edicion) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      const i = seleccionado ? orden.findIndex((p) => p.id === seleccionado.id) : -1;
+      const sig = orden[Math.min(orden.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))];
+      if (sig) setSeleccionId(sig.id);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [edicion, ficha, modal, orden, seleccionado]);
+
+  /** Aplica el paciente actualizado a la cola y deja seleccionado al siguiente. */
+  function aplicarRegistro(antes: Paciente, despues: Paciente, resultado: ResultadoLlamado) {
+    const i = orden.findIndex((p) => p.id === antes.id);
+    const siguiente = orden.filter((p) => p.id !== antes.id)[Math.max(0, i)] ?? null;
+    void mutate(
+      (d) =>
+        d && {
+          por_contactar: d.por_contactar.flatMap((p) => (p.id !== despues.id ? [p] : enCola(despues) ? [despues] : [])),
+          por_citar: d.por_citar.flatMap((p) => (p.id !== despues.id ? [p] : perteneceA("citar", despues) ? [despues] : [])),
+        },
+      { revalidate: true },
+    );
+    // Tras registrar se pasa al siguiente de la lista, como en una bandeja de trabajo.
+    setSeleccionId(siguiente?.id ?? null);
+    if (despues.ultimo_llamado) setUltimo({ paciente: antes, llamadoId: despues.ultimo_llamado.id, resultado, en: Date.now() });
   }
 
-  function aplicarRegistroVisualPendiente(registro: RegistroPendienteContacto) {
-    const paciente = registro.pacienteOriginal;
-
-    if (registro.accion === "NO_CONTESTO" && paciente.estado === "PENDIENTE") {
-      const pacienteVisual: Paciente = {
-        ...paciente,
-        estado: "RESCATE",
-        n_intentos_contacto: paciente.n_intentos_contacto + 1,
-        fecha_cambio_estado: new Date().toISOString(),
-      };
-      setPacientes((prev) =>
-        prev.map((item) => (item.id === paciente.id ? pacienteVisual : item)),
-      );
-      setSelectedId(paciente.id);
+  async function noContestaRapido(p: Paciente) {
+    const efecto = consecuencia(p, "NO_CONTESTA");
+    if (efecto.requiereNota) {
+      setModal({ paciente: p, resultado: "NO_CONTESTA" });
       return;
     }
-
-    setPacientes((prev) => prev.filter((item) => item.id !== paciente.id));
-    setSelectedId((actual) => (actual === paciente.id ? null : actual));
-  }
-
-  function abrirConfirmacionContacto(paciente: Paciente, accion: AccionContacto) {
-    if (registroPendiente) {
-      toast.warning("Hay un registro pendiente. Cancélelo o espere que termine la cuenta regresiva.");
-      return;
-    }
-    setConfirmacionContacto({ paciente, accion });
-    setObservacionContacto("");
-    setFechaAtencion(fechaHoraLocalDefault());
-  }
-
-  function cerrarConfirmacionContacto() {
-    if (accionLoading) return;
-    setConfirmacionContacto(null);
-    setObservacionContacto("");
-    setFechaAtencion(fechaHoraLocalDefault());
-  }
-
-  async function registrarNoContesto(paciente: Paciente, observacion: string) {
-    const notas = observacion.trim();
-    if (paciente.estado === "RESCATE" && !notas) {
-      toast.warning("Debe registrar una observación para egreso administrativo.");
-      return false;
-    }
-
-    setAccionLoading(`no-contesto-${paciente.id}`);
+    setOcupado(true);
     try {
-      const actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
-        contesto: false,
-        notas,
-        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
-      });
-
-      aplicarPacienteContactabilidad(actualizado);
-      if (actualizado.estado === "EGRESO_ADMINISTRATIVO") {
-        toast.warning("Segundo contacto sin respuesta. Paciente pasa a EGRESO ADMINISTRATIVO.");
-      } else if (actualizado.estado === "RESCATE") {
-        toast.warning("Contacto sin respuesta. Paciente pasa a RESCATE.");
-      } else {
-        toast.warning("Contacto sin respuesta registrado.");
-      }
-      return true;
-    } catch (error) {
-      toast.error(getErrorMessage(error, "No se pudo registrar el contacto."));
-      return false;
+      const despues = await registrarLlamado(p, { resultado: "NO_CONTESTA" });
+      aplicarRegistro(p, despues, "NO_CONTESTA");
+      const mensaje = mensajeRegistro(p, despues, "NO_CONTESTA");
+      if (despues.estado !== p.estado) toast.warning(mensaje);
+      else toast.info(mensaje);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "No se pudo registrar el llamado."));
     } finally {
-      setAccionLoading("");
+      setOcupado(false);
     }
   }
 
-  async function registrarContesto(paciente: Paciente, observacion: string, fechaHora: string) {
-    const notas = observacion.trim();
-    if (!fechaHora) {
-      toast.warning("Seleccione fecha y hora para programar la atención.");
-      return false;
-    }
-
-    setAccionLoading(`contesto-${paciente.id}`);
+  async function deshacer() {
+    if (!ultimo) return;
+    setOcupado(true);
     try {
-      await api.post<Paciente>(`/pacientes/${paciente.id}/registrar-llamado/`, {
-        contesto: true,
-        notas,
-        telefono_usado: paciente.telefono || paciente.telefono_recados || "",
-      });
-
-      const actualizado = await api.post<Paciente>(`/pacientes/${paciente.id}/programar-atencion/`, {
-        fecha_hora: new Date(fechaHora).toISOString(),
-      });
-
-      aplicarPacienteContactabilidad(actualizado);
-      toast.success("Contacto confirmado y atención programada.");
-      return true;
-    } catch (error) {
-      toast.error(getErrorMessage(error, "No se pudo confirmar el contacto."));
-      return false;
+      await deshacerLlamado(ultimo.paciente.id, ultimo.llamadoId);
+      await mutate();
+      setSeccion(enCola(ultimo.paciente) ? "contactar" : "citar");
+      setSeleccionId(ultimo.paciente.id);
+      toast.info(`Se deshizo el llamado a ${nombreLegible(ultimo.paciente.nombre)}.`);
+      setUltimo(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "No se pudo deshacer el llamado."));
     } finally {
-      setAccionLoading("");
+      setOcupado(false);
     }
-  }
-
-  async function ejecutarRegistroPendiente(registro: RegistroPendienteContacto) {
-    limpiarTemporizadoresRegistro();
-    setSegundosCancelar(0);
-    const guardado =
-      registro.accion === "NO_CONTESTO"
-        ? await registrarNoContesto(registro.pacienteOriginal, registro.observacion)
-        : await registrarContesto(registro.pacienteOriginal, registro.observacion, registro.fechaAtencion);
-
-    if (!guardado) {
-      restaurarPacienteEnCola(registro.pacienteOriginal);
-    }
-    setRegistroPendiente((actual) => (actual?.id === registro.id ? null : actual));
-    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
-  }
-
-  function programarRegistroPendiente(registro: RegistroPendienteContacto) {
-    limpiarTemporizadoresRegistro();
-    setRegistroPendiente(registro);
-    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
-    aplicarRegistroVisualPendiente(registro);
-    setConfirmacionContacto(null);
-    setObservacionContacto("");
-    setFechaAtencion(fechaHoraLocalDefault());
-    toast.info(`Registro pendiente. Puede cancelarlo durante ${SEGUNDOS_CANCELAR_REGISTRO} segundos.`);
-
-    const creadoEn = Date.now();
-    intervalRegistroRef.current = setInterval(() => {
-      const restantes = Math.max(
-        0,
-        SEGUNDOS_CANCELAR_REGISTRO - Math.floor((Date.now() - creadoEn) / 1000),
-      );
-      setSegundosCancelar(restantes);
-    }, 250);
-
-    timeoutRegistroRef.current = setTimeout(() => {
-      void ejecutarRegistroPendiente(registro);
-    }, SEGUNDOS_CANCELAR_REGISTRO * 1000);
-  }
-
-  function cancelarRegistroPendiente() {
-    if (!registroPendiente || accionLoading) return;
-    limpiarTemporizadoresRegistro();
-    restaurarPacienteEnCola(registroPendiente.pacienteOriginal);
-    setRegistroPendiente(null);
-    setSegundosCancelar(SEGUNDOS_CANCELAR_REGISTRO);
-    toast.info("Registro cancelado. Paciente vuelve a la cola de llamados.");
-  }
-
-  function confirmarContacto() {
-    if (!confirmacionContacto) return;
-    if (registroPendiente) {
-      toast.warning("Hay un registro pendiente. Cancélelo o espere que termine la cuenta regresiva.");
-      return;
-    }
-
-    const { paciente, accion } = confirmacionContacto;
-    if (accion === "NO_CONTESTO" && paciente.estado === "RESCATE" && !observacionContacto.trim()) {
-      toast.warning("Debe registrar una observación para egreso administrativo.");
-      return;
-    }
-    if (accion === "CONTESTO" && !fechaAtencion) {
-      toast.warning("Seleccione fecha y hora para programar la atención.");
-      return;
-    }
-
-    programarRegistroPendiente({
-      id: `${accion}-${paciente.id}-${Date.now()}`,
-      pacienteOriginal: paciente,
-      accion,
-      observacion: observacionContacto,
-      fechaAtencion,
-    });
   }
 
   if (!user) return null;
 
+  const filtrosActivos = busqueda || estados.length || prioridades.length || responsables.length;
+
   return (
-    <div className="space-y-3 text-[13px]">
-      <header className="ccr-panel rounded-2xl p-4">
-        <div className="space-y-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-                  <FiPhoneCall size={18} />
-                </span>
-                <div className="min-w-0">
-                  <h1 className="text-lg font-black text-slate-950">Cola de llamados</h1>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                    Bandeja para registrar si el paciente contestó o no contestó.
-                  </p>
-                </div>
-              </div>
+    <div className="flex flex-col gap-3 text-[13px] lg:h-[max(560px,calc(100dvh-64px-2rem))]">
+      <header className="ccr-panel shrink-0 rounded-2xl px-5 py-4 print:hidden">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-slate-950 dark:text-white">Llamados</h1>
+            <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
+              <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{paraHoy(porContactar) + paraHoy(porCitar)}</span> para llamar hoy
+              {" · "}
+              {porContactar.length} en lista de espera · {porCitar.length} ingresado{porCitar.length !== 1 ? "s" : ""} sin cita
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar">
+              <FiRefreshCw size={13} aria-hidden="true" />
+              Actualizar
+            </button>
+            <button type="button" onClick={() => window.print()} className="ccr-control-button">
+              <FiPrinter size={13} aria-hidden="true" />
+              Imprimir
+            </button>
+          </div>
+        </div>
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <ContactStat icon={<FiPhoneCall size={13} />} label="Cola" value={resumenContactabilidad.total} tone="blue" />
-                <ContactStat icon={<FiMessageSquare size={13} />} label="Pendientes" value={resumenContactabilidad.pendientes} tone="slate" />
-                <ContactStat icon={<FiPhoneMissed size={13} />} label="Rescate" value={resumenContactabilidad.rescate} tone="orange" />
-                <ContactStat icon={<FiPhoneMissed size={13} />} label="Sin teléfono" value={resumenContactabilidad.sinTelefono} tone="red" />
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 xl:justify-end">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900" role="tablist" aria-label="Sección">
+            {(
+              [
+                ["contactar", "Por contactar", porContactar.length],
+                ["citar", "Ingresados por citar", porCitar.length],
+              ] as const
+            ).map(([id, label, total]) => (
               <button
+                key={id}
                 type="button"
-                onClick={() => void cargar()}
-                className="ccr-button-refresh inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[11px] font-bold"
-              >
-                <FiRefreshCw size={13} />
-                Recargar
-              </button>
-              <button
-                type="button"
+                role="tab"
+                aria-selected={seccion === id}
                 onClick={() => {
-                  toastInfo("Preparando impresión de cola de llamados.");
-                  window.print();
+                  setSeccion(id);
+                  setSeleccionId(null);
+                  setEstados([]);
                 }}
-                className="ccr-control-button inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[11px] font-bold"
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                  seccion === id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+                }`}
               >
-                <FiPrinter size={13} />
-                Imprimir
+                {label}
+                <span className="rounded-full bg-slate-200/70 px-1.5 text-[10px] tabular-nums leading-4 text-slate-600 dark:bg-ink-black-600 dark:text-ink-black-200">{total}</span>
               </button>
-            </div>
+            ))}
           </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-[#2a2a2a] dark:bg-[#111111]">
-            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700 dark:text-ink-black-300">
-                <FiFilter size={13} />
-                Filtros y orden
-              </p>
-              <span className="text-[11px] font-bold text-slate-500 dark:text-ink-black-200">
-                {pacientesFiltrados.length} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_170px_180px_190px_auto]">
-              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
-                Buscar
-                <span className="relative mt-1 block">
-                  <FiSearch
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
-                    size={14}
-                  />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.preventDefault();
-                    }}
-                    placeholder="Nombre, RUT, sector o diagnóstico"
-                    className="ccr-control-input h-9 w-full px-9 text-xs"
-                    aria-label="Buscar pacientes"
-                  />
-                </span>
-              </label>
-
-              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
-                Estado
-                <select
-                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
-                  value={estadoFilter}
-                  onChange={(event) => setEstadoFilter(event.target.value)}
-                >
-                  <option value="TODOS">Todos los estados</option>
-                  <option value="PENDIENTE">Pendientes</option>
-                  <option value="RESCATE">Rescates</option>
-                </select>
-              </label>
-
-              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
-                Prioridad
-                <select
-                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
-                  value={prioridadFilter}
-                  onChange={(event) => setPrioridadFilter(event.target.value)}
-                >
-                  <option value="TODAS">Todas las prioridades</option>
-                  <option value="ALTA">Alta</option>
-                  <option value="MEDIANA">Mediana</option>
-                  <option value="MODERADA">Moderada</option>
-                  <option value="LICENCIA_MEDICA">Lic. médica</option>
-                </select>
-              </label>
-
-              <label className="block rounded-lg border border-slate-200 bg-white p-2 text-[11px] font-bold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#151515] dark:text-ink-black-200">
-                Orden
-                <select
-                  className="ccr-control-input mt-1 h-9 w-full px-3 text-xs"
-                  value={ordering}
-                  onChange={(event) => setOrdering(event.target.value)}
-                >
-                  <option value="-dias">Más antiguos primero</option>
-                  <option value="dias">Más recientes primero</option>
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="ccr-control-button inline-flex h-full min-h-[62px] items-center justify-center whitespace-nowrap px-3 text-[11px]"
-              >
-                Limpiar
-              </button>
-            </div>
+          <div className="relative min-w-0 flex-1 sm:max-w-xs">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} aria-hidden="true" />
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="ccr-control-input w-full pl-9 pr-3"
+              placeholder="Nombre, RUT, teléfono o diagnóstico"
+              aria-label="Buscar paciente"
+            />
           </div>
-
-          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-800">
-            <span className="inline-flex items-center gap-1.5"><FiPhoneMissed size={13} /> Pendiente sin respuesta pasa a Rescate</span>
-            <span className="inline-flex items-center gap-1.5"><FiMessageSquare size={13} /> Rescate requiere observación</span>
-            <span className="inline-flex items-center gap-1.5"><FiCheckCircle size={13} /> Contestó pasa a agenda</span>
-          </p>
+          {seccion === "contactar" && (
+            <MultiSelectFiltro
+              label="Estado"
+              textoTodos
+              values={estados}
+              opciones={[
+                { value: "PENDIENTE", label: "Pendiente", total: porContactar.filter((p) => p.estado === "PENDIENTE").length },
+                { value: "RESCATE", label: "Rescate", total: porContactar.filter((p) => p.estado === "RESCATE").length },
+              ]}
+              onChange={setEstados}
+            />
+          )}
+          <MultiSelectFiltro
+            label="Prioridad"
+            values={prioridades}
+            opciones={(["ALTA", "MEDIANA", "MODERADA", "LICENCIA_MEDICA"] as const).map((v) => ({
+              value: v,
+              label: PRIORIDAD_LABELS[v],
+              total: base.filter((p) => p.prioridad === v).length,
+            }))}
+            onChange={setPrioridades}
+          />
+          {!esKine && opcionesResponsable.length > 1 && (
+            <MultiSelectFiltro label="Responsable" textoTodos values={responsables} opciones={opcionesResponsable} onChange={setResponsables} />
+          )}
+          {filtrosActivos ? (
+            <button
+              type="button"
+              onClick={() => {
+                setBusqueda("");
+                setEstados([]);
+                setPrioridades([]);
+                setResponsables([]);
+              }}
+              className="text-xs font-bold text-slate-500 hover:text-slate-900 hover:underline dark:text-ink-black-300"
+            >
+              Limpiar
+            </button>
+          ) : null}
         </div>
       </header>
 
+      <AnimatePresence initial={false}>
+        {ultimo && (
+          <motion.div
+            initial={reducir ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reducir ? undefined : { opacity: 0, y: -6 }}
+            role="status"
+            className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm print:hidden dark:border-ink-black-600 dark:bg-ink-black-800"
+          >
+            <FiCheckCircle size={15} className="shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
+            <p className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700 dark:text-ink-black-100">
+              {META_RESULTADO[ultimo.resultado].corto}: <span className="font-bold">{nombreLegible(ultimo.paciente.nombre)}</span>
+            </p>
+            <button type="button" disabled={ocupado} onClick={() => void deshacer()} className="ccr-control-button disabled:opacity-50">
+              <FiRotateCcw size={13} aria-hidden="true" />
+              Deshacer
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
-          {error}
-        </div>
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 print:hidden">
+          {getErrorMessage(error, "No se pudo cargar la cola de llamados.")}
+        </p>
       )}
 
-      {registroPendiente && (
-        <RegistroPendienteBanner
-          registro={registroPendiente}
-          segundos={segundosCancelar}
-          loading={Boolean(accionLoading)}
-          onConfirmNow={() => void ejecutarRegistroPendiente(registroPendiente)}
-          onCancel={cancelarRegistroPendiente}
-        />
-      )}
-
-      {loading ? (
-        <div
-          className="ccr-panel rounded-2xl p-12 text-center text-sm text-gray-400 animate-pulse"
-          style={{ border: "0.5px solid #a8d4f0" }}
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 print:hidden lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+        {/* Lista */}
+        <section
+          aria-label="Pacientes por llamar"
+          className={`ccr-panel min-h-0 flex-col overflow-hidden rounded-2xl ${verDetalleMovil ? "hidden lg:flex" : "flex"}`}
         >
-          Cargando…
-        </div>
-      ) : (
-        <section className="grid min-h-[620px] grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_430px]">
-          {pacientesFiltrados.length === 0 ? (
-            <div className="ccr-panel rounded-2xl p-10 text-center text-sm font-semibold text-slate-500 xl:col-span-2">
-              Sin pacientes para los filtros seleccionados.
-            </div>
-          ) : (
-            <>
-              <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
-                <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                  <div>
-                    <h2 className="text-lg font-black text-slate-950 dark:text-white">Pacientes por contactar</h2>
-                    <p className="text-xs font-semibold text-slate-500">
-                      {pacientesFiltrados.length} paciente{pacientesFiltrados.length !== 1 ? "s" : ""} visible{pacientesFiltrados.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:border-blue-500/40 dark:bg-[#181818] dark:text-white">
-                    Registro de contacto
-                  </span>
-                </div>
-                <div className="custom-scrollbar max-h-[560px] space-y-2 overflow-y-auto pr-1">
-                  {pacientesFiltrados.map((paciente) => (
-                    <ContactabilidadListItem
-                      key={paciente.id}
-                      paciente={paciente}
-                      selected={pacienteSeleccionado?.id === paciente.id}
-                      onSelect={() => {
-                        setSelectedId(paciente.id);
-                        setObservacionContacto("");
-                        setFechaAtencion(fechaHoraLocalDefault());
-                      }}
-                    />
-                  ))}
-                </div>
+          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+            {isLoading ? (
+              <div className="space-y-2 p-1">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-[58px] animate-pulse rounded-xl bg-slate-100 dark:bg-ink-black-700" />
+                ))}
               </div>
-
-              {pacienteSeleccionado && (
-                <ContactabilidadDetail
-                  paciente={pacienteSeleccionado}
-                  loadingNoContesto={accionLoading === `no-contesto-${pacienteSeleccionado.id}`}
-                  loadingContesto={accionLoading === `contesto-${pacienteSeleccionado.id}`}
-                  registroPendienteActivo={Boolean(registroPendiente)}
-                  onContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "CONTESTO")}
-                  onNoContesto={() => abrirConfirmacionContacto(pacienteSeleccionado, "NO_CONTESTO")}
-                  onEditarContacto={() => setPacienteEdicion(pacienteSeleccionado)}
-                  onVerFicha={() => setPacienteFicha(pacienteSeleccionado)}
-                />
-              )}
-            </>
+            ) : orden.length === 0 ? (
+              <div className="px-4 py-12 text-center">
+                <FiPhoneCall className="mx-auto text-slate-300" size={26} aria-hidden="true" />
+                <p className="mt-2 text-sm font-bold text-slate-700 dark:text-ink-black-100">
+                  {filtrosActivos ? "Nadie coincide con los filtros" : seccion === "contactar" ? "No hay pacientes por contactar" : "Todos los ingresados tienen cita"}
+                </p>
+              </div>
+            ) : (
+              grupos.map((g) => (
+                <div key={g.id} className="mb-2 last:mb-0">
+                  <p className="sticky top-0 z-10 bg-white/95 px-2 pb-1 pt-1.5 text-[11px] font-bold text-slate-500 backdrop-blur dark:bg-ink-black-800/95 dark:text-ink-black-300" title={g.ayuda}>
+                    {g.titulo} <span className="tabular-nums text-slate-400">{g.pacientes.length}</span>
+                  </p>
+                  <ul className="space-y-1">
+                    {g.pacientes.map((p) => (
+                      <li key={p.id}>
+                        <ItemLista
+                          paciente={p}
+                          activo={seleccionado?.id === p.id}
+                          onClick={() => {
+                            setSeleccionId(p.id);
+                            setVerDetalleMovil(true);
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            )}
+          </div>
+          {orden.length > 0 && (
+            <p className="hidden shrink-0 border-t border-slate-100 px-4 py-2 text-[11px] font-medium text-slate-400 dark:border-ink-black-700 lg:block">
+              {orden.length} paciente{orden.length !== 1 ? "s" : ""} · usa ↑ ↓ para moverte
+            </p>
           )}
         </section>
-      )}
 
-      {pacienteFicha && (
-        <FichaPaciente
-          paciente={pacienteFicha}
-          usuario={user}
-          onClose={() => setPacienteFicha(null)}
-          onRefresh={() => {
-            void cargar();
-            setPacienteFicha(null);
+        {/* Detalle */}
+        <section
+          aria-label="Paciente seleccionado"
+          className={`ccr-panel min-h-0 flex-col rounded-2xl lg:overflow-hidden ${verDetalleMovil ? "flex" : "hidden lg:flex"}`}
+        >
+          {seleccionado ? (
+            <Detalle
+              key={seleccionado.id}
+              paciente={seleccionado}
+              mostrarResponsable={!esKine}
+              ocupado={ocupado}
+              onVolver={() => setVerDetalleMovil(false)}
+              onResultado={(resultado) => setModal({ paciente: seleccionado, resultado })}
+              onNoContesta={() => void noContestaRapido(seleccionado)}
+              onEditar={() => setEdicion(seleccionado)}
+              onFicha={() => setFicha(seleccionado)}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+              <FiPhoneCall className="text-slate-300" size={30} aria-hidden="true" />
+              <p className="mt-2 text-sm font-bold text-slate-700 dark:text-ink-black-100">Sin paciente seleccionado</p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {modal && (
+        <RegistrarContactoModal
+          paciente={modal.paciente}
+          resultadoInicial={modal.resultado}
+          onClose={() => setModal(null)}
+          onSuccess={(despues, resultado) => {
+            if (despues && resultado) aplicarRegistro(modal.paciente, despues, resultado);
           }}
         />
       )}
 
-      {confirmacionContacto && (
-        <ConfirmarContactoModal
-          paciente={confirmacionContacto.paciente}
-          accion={confirmacionContacto.accion}
-          observacion={observacionContacto}
-          fechaAtencion={fechaAtencion}
-          loading={
-            accionLoading ===
-            `${confirmacionContacto.accion === "NO_CONTESTO" ? "no-contesto" : "contesto"}-${confirmacionContacto.paciente.id}`
-          }
-          onObservacionChange={setObservacionContacto}
-          onFechaAtencionChange={setFechaAtencion}
-          onCancel={cerrarConfirmacionContacto}
-          onConfirm={() => void confirmarContacto()}
-        />
-      )}
-
-      {pacienteEdicion && (
+      {edicion && (
         <EditarPacienteModal
-          paciente={pacienteEdicion}
+          paciente={edicion}
           mode="contact-only"
-          onClose={() => setPacienteEdicion(null)}
-          onGuardado={(actualizado) => {
-            setPacientes((prev) =>
-              prev.map((item) => (item.id === actualizado.id ? actualizado : item)),
-            );
-            setPacienteEdicion(null);
+          onClose={() => setEdicion(null)}
+          onGuardado={() => {
+            setEdicion(null);
+            void mutate();
           }}
         />
       )}
-      <section className="ccr-llamados-print hidden">
-        <h1>Cola de llamados CCR</h1>
-        <p>Fecha de impresión: {formatearFechaImpresion()}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Nombre</th>
-              <th>RUT</th>
-              <th>Prioridad</th>
-              <th>Responsable CCR</th>
-              <th>Sector CESFAM</th>
-              <th>Sector oficial</th>
-              <th>Diagnóstico</th>
-              <th>Teléfono</th>
-              <th>Intentos contacto</th>
-              <th>Estado</th>
-              <th>Observación breve</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pacientesFiltrados.map((paciente) => (
-              <tr key={paciente.id}>
-                <td>{paciente.nombre}</td>
-                <td>{paciente.rut}</td>
-                <td>{PRIORIDAD_LABELS[paciente.prioridad]}</td>
-                <td>{paciente.responsable_nombre ?? paciente.kine_asignado_nombre ?? "Sin responsable"}</td>
-                <td>{sectorLabel(paciente.sector_cesfam)}</td>
-                <td>{sectorLabel(paciente.sector_oficial)}</td>
-                <td>{paciente.diagnostico || "Sin diagnóstico"}</td>
-                <td>{paciente.telefono || paciente.telefono_recados || "Sin teléfono"}</td>
-                <td>{paciente.n_intentos_contacto}</td>
-                <td>{ESTADO_LABELS[paciente.estado]}</td>
-                <td>{paciente.observaciones || paciente.ultimo_llamado?.notas || ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          .ccr-llamados-print,
-          .ccr-llamados-print * {
-            visibility: visible !important;
-          }
-          .ccr-llamados-print {
-            display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            padding: 16px !important;
-            background: white !important;
-            color: #111827 !important;
-          }
-          .ccr-llamados-print h1 {
-            font-size: 18px !important;
-            font-weight: 700 !important;
-            margin-bottom: 6px !important;
-          }
-          .ccr-llamados-print p {
-            font-size: 11px !important;
-            margin-bottom: 12px !important;
-          }
-          .ccr-llamados-print table {
-            width: 100% !important;
-            border-collapse: collapse !important;
-            table-layout: fixed !important;
-            font-size: 9px !important;
-          }
-          .ccr-llamados-print th,
-          .ccr-llamados-print td {
-            border: 1px solid #d1d5db !important;
-            padding: 3px 4px !important;
-            text-align: left !important;
-            vertical-align: top !important;
-            word-break: break-word !important;
-          }
-          .ccr-llamados-print th {
-            background: #e7f3ec !important;
-            font-weight: 700 !important;
-          }
-        }
-      `}</style>
+
+      {ficha && <FichaPaciente paciente={ficha} usuario={user} onClose={() => setFicha(null)} onRefresh={() => void mutate()} />}
+
+      <TablaImpresion titulo={seccion === "contactar" ? "Pacientes por contactar" : "Ingresados por citar"} pacientes={orden} />
     </div>
   );
 }
 
-function ContactStat({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number;
-  tone: "blue" | "slate" | "orange" | "red";
-}) {
-  const tones = {
-    blue: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-[#172554] dark:text-blue-100",
-    slate: "border-slate-100 bg-slate-50 text-slate-700 dark:border-[#2a2a2a] dark:bg-[#181818] dark:text-ink-black-50",
-    orange: "border-orange-100 bg-orange-50 text-orange-700 dark:border-orange-400/35 dark:bg-orange-400/10 dark:text-orange-100",
-    red: "border-red-100 bg-red-50 text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-100",
-  };
+// -----------------------------------------------------------------------------
+// Lista
+// -----------------------------------------------------------------------------
 
+function Intentos({ paciente }: { paciente: Paciente }) {
+  const umbral = paciente.intentos_umbral;
+  if (!umbral) return null;
+  const hechos = Math.min(paciente.intentos_estado ?? 0, umbral);
   return (
-    <div className={`inline-flex h-7 items-center gap-2 rounded-full border px-2.5 ${tones[tone]}`}>
-      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.08em]">
-        {icon}
-        {label}
-      </span>
-      <strong className="text-xs">{value}</strong>
-    </div>
+    <span className="inline-flex items-center gap-0.5" title={`${hechos} de ${umbral} intentos sin respuesta`} aria-label={`${hechos} de ${umbral} intentos sin respuesta`}>
+      {Array.from({ length: umbral }).map((_, i) => (
+        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i < hechos ? "bg-amber-500" : "bg-slate-200 dark:bg-ink-black-600"}`} />
+      ))}
+    </span>
   );
 }
 
-function ContactabilidadListItem({
-  paciente,
-  selected,
-  onSelect,
-}: {
-  paciente: Paciente;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const telefonoRecados = phoneLabel(paciente.telefono_recados);
-  const telefonoVisible = phoneLabel(paciente.telefono || paciente.telefono_recados);
-  const ultimoContacto = paciente.ultimo_llamado;
-  const sectorCesfam = sectorLabel(paciente.sector_cesfam);
-  const sectorOficial = sectorLabel(paciente.sector_oficial);
-
+function ItemLista({ paciente: p, activo, onClick }: { paciente: Paciente; activo: boolean; onClick: () => void }) {
+  const ultimo = p.ultimo_llamado;
+  const reprogramado = reprogramadoAFuturo(p);
   return (
     <button
       type="button"
-      onClick={onSelect}
-      className={`w-full rounded-xl border bg-white p-3 text-left transition dark:bg-[#151515] ${
-        selected
-          ? "border-blue-500 shadow-[0_0_0_2px_rgba(51,95,219,0.18)] dark:bg-[#172554]/40"
-          : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/30 dark:border-[#2a2a2a] dark:hover:border-blue-500 dark:hover:bg-[#181818]"
+      onClick={onClick}
+      aria-current={activo ? "true" : undefined}
+      className={`w-full rounded-xl border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+        activo
+          ? "border-blue-300 bg-blue-50/70 dark:border-blue-500/50 dark:bg-blue-500/10"
+          : "border-transparent hover:border-slate-200 hover:bg-slate-50 dark:hover:border-ink-black-600 dark:hover:bg-ink-black-700"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-black text-slate-950 dark:text-white">
-            {paciente.nombre}
-          </h2>
-          <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
-              {paciente.id_ccr}
-            </span>
-            <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-blue-700 dark:border-blue-500/40 dark:bg-[#181818] dark:text-white">
-              Tel. {telefonoVisible}
-            </span>
-            {paciente.telefono_recados && (
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
-                Recados {telefonoRecados}
-              </span>
-            )}
-          </div>
-          <p className="mt-2 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
-            {paciente.diagnostico || "Sin diagnóstico"}
-          </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
-            Sector CESFAM: {sectorCesfam} · Sector oficial: {sectorOficial}
-          </p>
-          <p className="mt-1 truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
-            {ultimoContacto ? ultimoContacto.resultado_label : "Sin contactos registrados"}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-              paciente.estado === "RESCATE"
-                ? "bg-orange-50 text-orange-700 dark:bg-orange-400/10 dark:text-orange-100"
-                : "bg-blue-50 text-blue-700 dark:bg-blue-500 dark:text-white"
-            }`}
-          >
-            {ESTADO_LABELS[paciente.estado]}
-          </span>
-          <FiChevronRight className={selected ? "text-blue-500" : "text-slate-300"} size={16} />
-        </div>
-      </div>
+      <span className="flex items-center justify-between gap-2">
+        <span className="truncate text-[13px] font-extrabold text-slate-900 dark:text-ink-black-50">{nombreLegible(p.nombre)}</span>
+        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{p.dias_en_lista} d</span>
+      </span>
+      <span className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.prioridad === "ALTA" ? "bg-red-500" : p.prioridad === "MEDIANA" ? "bg-amber-500" : p.prioridad === "MODERADA" ? "bg-emerald-500" : "bg-slate-400"}`} aria-hidden="true" />
+        {p.estado === "RESCATE" && <span className="rounded bg-amber-50 px-1 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">Rescate</span>}
+        <Intentos paciente={p} />
+        <span className="min-w-0 truncate">
+          {reprogramado
+            ? `Llamar ${formatearFechaHoraCorta(p.proximo_llamado)}`
+            : ultimo
+              ? `${META_RESULTADO[ultimo.resultado]?.corto ?? ultimo.resultado_label} ${haceDias(ultimo.fecha)}`
+              : "Sin llamados"}
+        </span>
+      </span>
     </button>
   );
 }
 
-function ContactabilidadDetail({
-  paciente,
-  loadingNoContesto,
-  loadingContesto,
-  registroPendienteActivo,
-  onContesto,
-  onNoContesto,
-  onEditarContacto,
-  onVerFicha,
-}: {
-  paciente: Paciente;
-  loadingNoContesto: boolean;
-  loadingContesto: boolean;
-  registroPendienteActivo: boolean;
-  onContesto: () => void;
-  onNoContesto: () => void;
-  onEditarContacto: () => void;
-  onVerFicha: () => void;
-}) {
-  const telefonoPrincipal = phoneLabel(paciente.telefono);
-  const telefonoRecados = phoneLabel(paciente.telefono_recados);
-  const ultimoContacto = paciente.ultimo_llamado;
-  const accionBloqueada = loadingNoContesto || loadingContesto || registroPendienteActivo;
-  const sectorCesfam = sectorLabel(paciente.sector_cesfam);
-  const sectorOficial = sectorLabel(paciente.sector_oficial);
+// -----------------------------------------------------------------------------
+// Detalle
+// -----------------------------------------------------------------------------
 
+function Telefono({ etiqueta, numero }: { etiqueta: string; numero: string }) {
+  const { toast } = useToast();
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-blue-500 dark:bg-[#0f0f10]">
-      <div className="border-b border-slate-200 px-4 py-3 dark:border-[#2a2a2a]">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700 dark:text-ink-black-300">Paciente seleccionado</p>
-        <div className="mt-1 flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="break-words text-base font-black leading-snug text-slate-950 dark:text-white">
-              {paciente.nombre}
-            </h2>
-            <p className="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-ink-black-200">
-              {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
-            </p>
-          </div>
-          <div className="shrink-0">
-            <BadgeEstado estado={paciente.estado} />
-          </div>
-        </div>
+    <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 dark:border-ink-black-600">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold text-slate-500">{etiqueta}</p>
+        <p className="truncate text-[15px] font-extrabold tabular-nums text-slate-900 dark:text-ink-black-50">{numero}</p>
       </div>
-
-      <div className="space-y-3 p-4">
-        <p className="flex gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold leading-5 text-orange-800 dark:border-orange-400/30 dark:bg-orange-400/10 dark:text-orange-100">
-          <FiAlertTriangle className="mt-0.5 shrink-0" />
-          {accionSugerida(paciente)}
-        </p>
-
-        <section className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 dark:border-blue-500/40 dark:bg-[#172554]/30">
-          <p className="text-[10px] font-black uppercase tracking-wide text-blue-700 dark:text-ink-black-300">
-            Números de contacto
-          </p>
-          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="rounded-lg border border-blue-100 bg-white px-3 py-2 dark:border-[#2a2a2a] dark:bg-[#111111]">
-              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-ink-black-300">
-                <FiPhone size={12} />
-                Principal
-              </span>
-              <strong className="mt-1 block break-words text-sm text-slate-950 dark:text-white">
-                {telefonoPrincipal}
-              </strong>
-            </div>
-            <div className="rounded-lg border border-blue-100 bg-white px-3 py-2 dark:border-[#2a2a2a] dark:bg-[#111111]">
-              <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-ink-black-300">
-                <FiPhoneCall size={12} />
-                Recados
-              </span>
-              <strong className="mt-1 block break-words text-sm text-slate-950 dark:text-white">
-                {telefonoRecados}
-              </strong>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-slate-100 py-3 text-xs dark:border-[#2a2a2a]">
-          <p className="min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiPhoneMissed size={12} />
-              Intentos
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{paciente.n_intentos_contacto}</strong>
-          </p>
-          <p className="min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiUser size={12} />
-              Responsable
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{responsablePaciente(paciente)}</strong>
-          </p>
-          <p className="min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiMapPin size={12} />
-              Sector CESFAM
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{sectorCesfam}</strong>
-          </p>
-          <p className="min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiMapPin size={12} />
-              Sector oficial
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">{sectorOficial}</strong>
-          </p>
-          <p className="col-span-2 min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiMessageSquare size={12} />
-              Diagnóstico
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">
-              {paciente.diagnostico || "Sin diagnóstico"}
-            </strong>
-          </p>
-          <p className="col-span-2 min-w-0">
-            <span className="flex items-center gap-1.5 font-bold uppercase tracking-wide text-slate-500">
-              <FiClock size={12} />
-              Último contacto
-            </span>
-            <strong className="mt-0.5 block break-words text-slate-900 dark:text-white">
-              {ultimoContacto
-                ? `${formatearFechaHora(ultimoContacto.fecha)} · ${ultimoContacto.resultado_label}`
-                : "Sin contactos registrados"}
-            </strong>
-          </p>
-        </div>
-
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600 dark:border-[#2a2a2a] dark:bg-[#111111] dark:text-ink-black-200">
-          El resultado se confirma en el siguiente paso. Luego tendrá {SEGUNDOS_CANCELAR_REGISTRO} segundos para cancelar el registro.
-        </p>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={onNoContesto}
-            disabled={accionBloqueada}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#ED4E1D] px-3 py-2.5 text-xs font-black text-white transition hover:bg-[#C93F16] disabled:opacity-50"
-          >
-            {loadingNoContesto ? <FiRefreshCw className="animate-spin" size={14} /> : <FiPhoneMissed size={14} />}
-            No contestó
-          </button>
-          <button
-            type="button"
-            onClick={onContesto}
-            disabled={accionBloqueada}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 py-2.5 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loadingContesto ? <FiRefreshCw className="animate-spin" size={14} /> : <FiCheckCircle size={14} />}
-            Contestó / agendar
-          </button>
-          <button
-            type="button"
-            onClick={onEditarContacto}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-          >
-            <FiEdit2 size={14} />
-            Editar contacto
-          </button>
-          <button
-            type="button"
-            onClick={onVerFicha}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-green-700 bg-white px-3 py-2 text-xs font-bold text-green-800 transition hover:bg-green-50"
-          >
-            <FiEye size={14} />
-            Ver ficha
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function RegistroPendienteBanner({
-  registro,
-  segundos,
-  loading,
-  onConfirmNow,
-  onCancel,
-}: {
-  registro: RegistroPendienteContacto;
-  segundos: number;
-  loading: boolean;
-  onConfirmNow: () => void;
-  onCancel: () => void;
-}) {
-  const esNoContesto = registro.accion === "NO_CONTESTO";
-  const accionLabel = esNoContesto ? "No contestó" : "Contestó / agendar";
-
-  return (
-    <div
-      role="status"
-      className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm"
-    >
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">
-            Registro pendiente
-          </p>
-          <p className="mt-1 break-words text-sm font-bold text-slate-900">
-            {accionLabel}: {registro.pacienteOriginal.nombre}
-          </p>
-          <p className="mt-0.5 text-xs font-semibold text-slate-600">
-            Se guardará automáticamente en {segundos}s. Si cancela, el paciente vuelve a la cola de llamados.
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onConfirmNow}
-            disabled={loading}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-500 px-3 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? <FiRefreshCw className="animate-spin" size={13} /> : <FiSend size={13} />}
-            Confirmar envío
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-blue-300 bg-white px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
-          >
-            <FiX size={13} />
-            Cancelar ({segundos}s)
-          </button>
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => {
+          void navigator.clipboard?.writeText(numero).then(() => toast.info("Número copiado."));
+        }}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-ink-black-700"
+        aria-label={`Copiar ${numero}`}
+        title="Copiar"
+      >
+        <FiCopy size={14} />
+      </button>
+      <a href={`tel:${numero}`} className="ccr-control-button" aria-label={`Llamar al ${numero}`}>
+        <FiPhone size={13} aria-hidden="true" />
+        Llamar
+      </a>
     </div>
   );
 }
 
-function ConfirmarContactoModal({
-  paciente,
-  accion,
-  observacion,
-  fechaAtencion,
-  loading,
-  onObservacionChange,
-  onFechaAtencionChange,
-  onCancel,
-  onConfirm,
+function Dato({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold text-slate-500">{label}</dt>
+      <dd className="mt-0.5 break-words text-[13px] font-bold text-slate-800 dark:text-ink-black-100">{children}</dd>
+    </div>
+  );
+}
+
+function Detalle({
+  paciente: p,
+  mostrarResponsable,
+  ocupado,
+  onVolver,
+  onResultado,
+  onNoContesta,
+  onEditar,
+  onFicha,
 }: {
   paciente: Paciente;
-  accion: AccionContacto;
-  observacion: string;
-  fechaAtencion: string;
-  loading: boolean;
-  onObservacionChange: (value: string) => void;
-  onFechaAtencionChange: (value: string) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
+  mostrarResponsable: boolean;
+  ocupado: boolean;
+  onVolver: () => void;
+  onResultado: (resultado?: ResultadoLlamado) => void;
+  onNoContesta: () => void;
+  onEditar: () => void;
+  onFicha: () => void;
 }) {
-  const esNoContesto = accion === "NO_CONTESTO";
-  const requiereObservacion = esNoContesto && paciente.estado === "RESCATE";
-  const confirmDisabled = loading || (requiereObservacion && !observacion.trim()) || (!esNoContesto && !fechaAtencion);
-  const titulo = esNoContesto ? "Confirmar no contestó" : "Confirmar contacto";
-  const descripcion = esNoContesto
-    ? paciente.estado === "RESCATE"
-      ? "Se registrará un segundo contacto sin respuesta y el paciente pasará a EGRESO ADMINISTRATIVO."
-      : "Se registrará contacto sin respuesta y el paciente pasará a RESCATE."
-    : "Se confirmará que el paciente contestó y se programará su atención.";
+  const { data: historial } = useAPI<{ llamados: LlamadoPaciente[] }>(`/pacientes/${p.id}/historial-completo/`);
+  const llamados = historial?.llamados ?? [];
+  const efectoNo = consecuencia(p, "NO_CONTESTA");
+  const reprogramado = reprogramadoAFuturo(p);
+  const telefonos = [
+    { etiqueta: "Principal", numero: p.telefono?.trim() },
+    { etiqueta: "Recados", numero: p.telefono_recados?.trim() },
+  ].filter((t): t is { etiqueta: string; numero: string } => !!t.numero);
 
   return (
-    <ModalOverlay
-      isOpen
-      onOpenChange={(open) => { if (!open && !loading) onCancel(); }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-    >
-      <Modal className="w-full max-w-lg">
-        <Dialog aria-label={titulo} className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl outline-none">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="custom-scrollbar min-h-0 flex-1 space-y-4 px-5 pb-36 pt-4 lg:overflow-y-auto lg:pb-4">
+        <button type="button" onClick={onVolver} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 lg:hidden">
+          <FiArrowLeft size={13} aria-hidden="true" /> Volver a la lista
+        </button>
+
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Confirmación</p>
-            <h2 className="mt-1 text-base font-black text-slate-950">{titulo}</h2>
-            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{descripcion}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
-            aria-label="Cancelar"
-          >
-            <FiX size={16} />
-          </button>
-        </header>
-
-        <div className="space-y-3 px-5 py-4">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="break-words text-sm font-black text-slate-950">{paciente.nombre}</p>
-            <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-              {paciente.id_ccr} · RUT {formatearRut(paciente.rut)}
+            <h2 className="text-lg font-extrabold text-slate-950 dark:text-ink-black-50">{nombreLegible(p.nombre)}</h2>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] font-medium text-slate-500">
+              <span className="tabular-nums">{p.id_ccr} · {formatearRut(p.rut)}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.estado === "RESCATE" ? "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200" : "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200"}`}>
+                {ESTADO_LABELS[p.estado] ?? p.estado}
+              </span>
+              <BadgePrioridad prioridad={p.prioridad} />
             </p>
           </div>
-
-          <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-            Observación {requiereObservacion ? "obligatoria" : "opcional"}
-            <textarea
-              autoFocus
-              value={observacion}
-              onChange={(event) => onObservacionChange(event.target.value)}
-              rows={3}
-              placeholder={
-                requiereObservacion
-                  ? "Ingrese la observación antes de confirmar."
-                  : "Ingrese una observación si corresponde."
-              }
-              className="ccr-control-input mt-1 w-full resize-none px-3 py-2 text-xs normal-case tracking-normal"
-            />
-          </label>
-
-          {!esNoContesto && (
-            <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
-              Fecha y hora de atención
-              <input
-                type="datetime-local"
-                value={fechaAtencion}
-                onChange={(event) => onFechaAtencionChange(event.target.value)}
-                className="ccr-control-input mt-1 h-9 w-full px-3 text-xs normal-case tracking-normal"
-              />
-            </label>
-          )}
-
-          {requiereObservacion && (
-            <p className="rounded-lg border border-orange-100 bg-orange-50 px-3 py-2 text-[11px] font-semibold text-orange-800">
-              Para RESCATE la observación es obligatoria antes de confirmar.
-            </p>
-          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={onEditar} className="ccr-control-button">
+              <FiEdit2 size={13} aria-hidden="true" />
+              Editar contacto
+            </button>
+            <button type="button" onClick={onFicha} className="ccr-control-button">
+              <FiEye size={13} aria-hidden="true" />
+              Ficha
+            </button>
+          </div>
         </div>
 
-        <footer className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={loading}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
-          >
-            Cancelar
+        {telefonos.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+            {telefonos.map((t) => (
+              <Telefono key={t.etiqueta} etiqueta={t.etiqueta} numero={t.numero} />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 px-4 py-3 dark:bg-amber-500/10">
+            <p className="min-w-0 flex-1 text-[12.5px] font-semibold text-amber-900 dark:text-amber-100">Sin teléfono registrado. Consíguelo antes de llamar (CESFAM, ficha clínica).</p>
+            <button type="button" onClick={onEditar} className="ccr-control-button">
+              Agregar teléfono
+            </button>
+          </div>
+        )}
+
+        {(p.intentos_umbral || reprogramado) && (
+          <p className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 dark:bg-ink-black-900 dark:text-ink-black-200">
+            {reprogramado ? (
+              <>
+                <FiClock size={14} className="text-blue-600" aria-hidden="true" />
+                Pidió que lo llamaran el {formatearFechaHoraCorta(p.proximo_llamado)}.
+              </>
+            ) : (
+              <>
+                <Intentos paciente={p} />
+                {p.intentos_estado ?? 0} de {p.intentos_umbral} intentos sin respuesta en {p.estado === "RESCATE" ? "Rescate" : "Pendiente"}.
+              </>
+            )}
+          </p>
+        )}
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+          <Dato label="Diagnóstico">{p.diagnostico || "—"}</Dato>
+          {p.estado === "INGRESADO" ? (
+            <Dato label="Ingresó">{formatearFecha(p.fecha_ingreso) || "—"}</Dato>
+          ) : (
+            <Dato label="En lista">{p.dias_en_lista} días</Dato>
+          )}
+          <Dato label="Sector">{p.sector_cesfam || p.sector_oficial || "—"}</Dato>
+          {mostrarResponsable && <Dato label="Responsable">{p.responsable_nombre ?? "—"}</Dato>}
+          <Dato label="Edad">{p.edad ? `${p.edad} años` : "—"}</Dato>
+        </dl>
+        {p.observaciones && (
+          <p className="rounded-xl border border-slate-100 px-4 py-2.5 text-[12.5px] leading-relaxed text-slate-600 dark:border-ink-black-700 dark:text-ink-black-200">{p.observaciones}</p>
+        )}
+
+        <section>
+          <h3 className="mb-2 text-[12px] font-bold text-slate-700 dark:text-ink-black-100">Llamados anteriores</h3>
+          {llamados.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-center text-xs font-medium text-slate-400 dark:border-ink-black-600">Todavía no se le ha llamado.</p>
+          ) : (
+            <ol className="space-y-1.5">
+              {llamados.slice(0, 8).map((ll) => (
+                <li key={ll.id} className="flex gap-3 rounded-lg border border-slate-100 px-3 py-2 dark:border-ink-black-700">
+                  <span className="w-[92px] shrink-0 text-[11px] font-semibold tabular-nums text-slate-500">{formatearFechaHoraCorta(ll.fecha)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12.5px] font-bold text-slate-800 dark:text-ink-black-100">
+                      {META_RESULTADO[ll.resultado]?.label ?? ll.resultado_label}
+                      {ll.volver_a_llamar ? ` · ${formatearFechaHoraCorta(ll.volver_a_llamar)}` : ""}
+                    </span>
+                    {ll.notas && <span className="block text-[12px] text-slate-600 dark:text-ink-black-200">{ll.notas}</span>}
+                  </span>
+                  <span className="hidden shrink-0 text-[11px] font-medium text-slate-400 sm:block">{ll.usuario_nombre ?? ""}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      </div>
+
+      {/* En movil la barra queda fija al pie de la pantalla para tenerla siempre a mano. */}
+      <footer className="fixed inset-x-0 bottom-0 z-30 shrink-0 border-t shadow-[0_-8px_24px_-16px_rgba(15,23,42,0.35)] lg:shadow-none border-slate-200 bg-slate-50 px-5 py-3 dark:border-ink-black-600 dark:bg-ink-black-900 lg:static lg:bg-slate-50/70 lg:dark:bg-ink-black-900/60">
+        {efectoNo.cambiaEstado && (
+          <p className={`mb-2 text-[11.5px] font-semibold ${efectoNo.grave ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
+            Si no contesta: {efectoNo.texto.replace(/^Intento \d+ de \d+( sin respuesta| en Rescate)?: /, "").toLowerCase()}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={ocupado} onClick={() => onResultado("CONTESTA_CONFIRMADO")} className="ccr-control-button-primary flex-1 justify-center disabled:opacity-50 sm:flex-none">
+            <FiCheckCircle size={14} aria-hidden="true" />
+            Contesta y agenda
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={confirmDisabled}
-            className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-xs font-black text-white transition disabled:opacity-50 ${
-              esNoContesto ? "bg-[#ED4E1D] hover:bg-[#C93F16]" : "bg-blue-500 hover:bg-blue-700"
-            }`}
-          >
-            {loading && <FiRefreshCw className="animate-spin" size={14} />}
-            {esNoContesto ? "Confirmar no contestó" : "Confirmar y agendar"}
+          <button type="button" disabled={ocupado} onClick={onNoContesta} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
+            <FiPhoneMissed size={14} aria-hidden="true" />
+            No contesta
           </button>
-        </footer>
-        </Dialog>
-      </Modal>
-    </ModalOverlay>
+          <button type="button" disabled={ocupado} onClick={() => onResultado("REAGENDAR_LLAMADO")} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
+            <FiClock size={14} aria-hidden="true" />
+            Volver a llamar
+          </button>
+          <button type="button" disabled={ocupado} onClick={() => onResultado()} className="ccr-control-button justify-center disabled:opacity-50 sm:ml-auto">
+            <FiMoreHorizontal size={14} aria-hidden="true" />
+            Otro resultado
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Impresion
+// -----------------------------------------------------------------------------
+
+function TablaImpresion({ titulo, pacientes }: { titulo: string; pacientes: Paciente[] }) {
+  return (
+    <section className="ccr-llamados-print hidden">
+      {/* Al imprimir solo se ve esta tabla, no el resto de la app. */}
+      <style>{`@media print {
+        body * { visibility: hidden !important; }
+        .ccr-llamados-print, .ccr-llamados-print * { visibility: visible !important; }
+        .ccr-llamados-print { display: block !important; position: absolute; left: 0; top: 0; width: 100%; padding: 16px; background: white; color: #111827; }
+      }`}</style>
+      <h1 className="text-lg font-bold">{titulo}</h1>
+      <p className="mb-3 text-[11px]">Impreso el {new Date().toLocaleString("es-CL")}</p>
+      <table className="w-full border-collapse text-[9px]">
+        <thead>
+          <tr>
+            {["Nombre", "RUT", "Prioridad", "Estado", "Responsable", "Teléfono", "Recados", "Intentos", "Último llamado", "Anotar resultado"].map((h) => (
+              <th key={h} className="border border-slate-300 bg-slate-100 px-1 py-0.5 text-left">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {pacientes.map((p) => (
+            <tr key={p.id}>
+              <td className="border border-slate-300 px-1 py-0.5">{p.nombre}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{formatearRut(p.rut)}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{PRIORIDAD_LABELS[p.prioridad]}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{ESTADO_LABELS[p.estado]}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{p.responsable_nombre ?? ""}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{p.telefono}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{p.telefono_recados}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{p.intentos_umbral ? `${p.intentos_estado ?? 0}/${p.intentos_umbral}` : ""}</td>
+              <td className="border border-slate-300 px-1 py-0.5">{p.ultimo_llamado ? `${p.ultimo_llamado.resultado_label} ${formatearFechaHoraCorta(p.ultimo_llamado.fecha)}` : ""}</td>
+              <td className="w-[18%] border border-slate-300 px-1 py-0.5" />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }
