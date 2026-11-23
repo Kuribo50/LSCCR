@@ -184,4 +184,7 @@ class ReportesOperativosTests(APITestCase):
         ws = workbook.active
         self.assertEqual(ws["A1"].value, "Reporte por responsable CCR")
         self.assertIn("Responsable CCR", [cell.value for cell in ws[5]])
-        self.assertEqual(ws["A6"].value, "'=Responsable")
+        # El orden por nombre depende del collation de la base (SQLite vs PostgreSQL):
+        # se busca la fila en vez de asumir su posición.
+        nombres = [fila[0].value for fila in ws.iter_rows(min_row=6)]
+        self.assertIn("'=Responsable", nombres)
