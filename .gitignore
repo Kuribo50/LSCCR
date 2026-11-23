@@ -104,3 +104,10 @@ desktop.ini
 
 # Archivos de bloqueo de Office
 ~$*
+
+# Archivos locales y manuales sueltos
+.claude/
+Anexo_I_formulario_limpio.pdf
+docs/MANUAL_*.docx
+docs/MANUAL_*.pdf
+docs/manual-usuario/
