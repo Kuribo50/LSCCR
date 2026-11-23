@@ -15,6 +15,7 @@ import { formatearRut } from "@/lib/rut";
 import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
+import { puedeCorregirDatos } from "@/lib/roles";
 
 interface Props {
   paciente: Paciente;
@@ -139,14 +140,14 @@ export default function EditarPacienteModal({
   const [error, setError] = useState("");
   const [kines, setKines] = useState<Usuario[]>([]);
   const isContactOnly = mode === "contact-only";
-  const puedeAsignarKine = !isContactOnly && user?.rol === "ADMIN";
+  const puedeAsignarKine = !isContactOnly && puedeCorregirDatos(user);
 
-  // La lista de usuarios solo esta disponible para administradores.
+  // Profesionales activos: Administrador y encargados pueden asignar responsable.
   useEffect(() => {
     if (!puedeAsignarKine) return;
     let activo = true;
     api
-      .get<Usuario[]>("/usuarios/")
+      .get<Usuario[]>("/usuarios/profesionales/")
       .then((data) => {
         if (!activo) return;
         const lista = unwrapResults<Usuario>(data).filter((u) => u.rol === "KINE" && u.is_active !== false);
@@ -206,7 +207,8 @@ export default function EditarPacienteModal({
       const payload: Record<string, string | number | null> = {};
 
       if (isContactOnly) {
-        payload.categoria = form.categoria;
+        // Solo contacto: la categoria se cambia desde la ficha completa para
+        // que no se modifique por error mientras se llama.
         payload.telefono = form.telefono.trim();
         payload.telefono_recados = form.telefono_recados.trim();
         payload.email = form.email.trim();
@@ -216,7 +218,7 @@ export default function EditarPacienteModal({
           payload,
         );
         onGuardado(actualizado);
-        toast.success("Contacto y categoría actualizados correctamente.");
+        toast.success("Contacto actualizado correctamente.");
         return;
       }
 
@@ -231,7 +233,8 @@ export default function EditarPacienteModal({
       payload.telefono = form.telefono.trim();
       payload.telefono_recados = form.telefono_recados.trim();
       payload.email = form.email.trim();
-      payload.observaciones = form.observaciones.trim();
+      // La observación nueva se agrega a la lista de observaciones (no reemplaza las anteriores).
+      const nuevaObservacion = form.observaciones.trim();
 
       for (const key of DATE_FIELDS) {
         payload[key] = form[key] || null;
@@ -242,10 +245,14 @@ export default function EditarPacienteModal({
         payload.kine_asignado = form.kine_asignado ? Number(form.kine_asignado) : null;
       }
 
-      const actualizado = await api.patch<Paciente>(
+      let actualizado = await api.patch<Paciente>(
         `/pacientes/${paciente.id}/`,
         payload,
       );
+      if (nuevaObservacion) {
+        await api.post("/observaciones-paciente/", { paciente: paciente.id, texto: nuevaObservacion, tipo: "GENERAL" });
+        actualizado = await api.get<Paciente>(`/pacientes/${paciente.id}/`);
+      }
       onGuardado(actualizado);
       toast.success("Paciente actualizado correctamente.");
     } catch (e: unknown) {
@@ -301,7 +308,7 @@ export default function EditarPacienteModal({
         <header className="ccr-edit-patient-modal-header flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-ink-black-600">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">
-              {isContactOnly ? "Editar contacto y categoría" : "Editar paciente"}
+              {isContactOnly ? "Editar contacto" : "Editar paciente"}
             </p>
             <h2 className="mt-0.5 truncate text-lg font-extrabold text-slate-950 dark:text-ink-black-50">{paciente.nombre}</h2>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] font-medium text-slate-500 dark:text-ink-black-300">
@@ -328,14 +335,9 @@ export default function EditarPacienteModal({
           className="ccr-edit-patient-modal-body custom-scrollbar flex-1 overflow-y-auto px-6 py-5"
         >
           {isContactOnly ? (
-            <>
-              <Bloque titulo="Clasificación" descripcion="Grupo de atención del paciente.">
-                <div className="sm:col-span-2">{selectCategoria}</div>
-              </Bloque>
-              <Bloque titulo="Contacto" descripcion="Datos para llamar o escribir al paciente.">
-                {camposContacto}
-              </Bloque>
-            </>
+            <Bloque titulo="Contacto" descripcion="Datos para llamar o escribir al paciente.">
+              {camposContacto}
+            </Bloque>
           ) : (
             <>
               <Bloque titulo="Datos personales" descripcion="La edad se calcula sola al ingresar la fecha de nacimiento.">
@@ -389,10 +391,10 @@ export default function EditarPacienteModal({
               </Bloque>
 
               {puedeAsignarKine && (
-                <Bloque titulo="Responsable" descripcion="Kinesiólogo a cargo del seguimiento.">
+                <Bloque titulo="Responsable" descripcion="Profesional a cargo del seguimiento.">
                   <div className="sm:col-span-2">
                     <SelectFiltro
-                      label="Kine asignado"
+                      label="Profesional asignado"
                       value={form.kine_asignado}
                       opciones={opcionesKine}
                       onChange={(v) => set("kine_asignado", v)}

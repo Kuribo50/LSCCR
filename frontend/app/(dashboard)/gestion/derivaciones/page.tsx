@@ -8,7 +8,7 @@ export default function DerivacionesPage() {
 
   if (!user) return null
 
-  if (!['ADMIN', 'ADMINISTRATIVO'].includes(user.rol)) {
+  if (!['ADMIN', 'MEDICO'].includes(user.rol)) {
     return (
       <div className="max-w-xl rounded-xl border border-cornflower-ocean-200 bg-white p-6">
         <h1 className="text-base font-bold text-gray-800">Derivaciones</h1>

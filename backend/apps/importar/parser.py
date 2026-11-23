@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 
 from apps.pacientes.models import Paciente
 from apps.pacientes.services import categoria_por_diagnostico, prioridad_normalizada
+from apps.pacientes.telefonos import normalizar_telefono
 from apps.usuarios.models import Usuario
 
 CENTROS_VALIDOS = {
@@ -42,11 +43,10 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     "desde":        ["PERCÁPITA / DESDE", "PERCAPITA / DESDE", "PERCAPITA/DESDE",
                      "PERCAPITA DESDE", "DESDE", "PERCAPITA", "CENTRO ORIGEN"],
     "sector_oficial": [
-        "SECTOR OFICIAL", "SECTOR", "Sector", "SECTOR ORIGEN",
-        "SECTOR TERRITORIAL", "TERRITORIO",
+        "SECTOR OFICIAL", "SECTOR ORIGEN", "SECTOR TERRITORIAL", "TERRITORIO",
     ],
     "sector_cesfam": [
-        "SectorCesfam", "SECTOCESFAM", "SECTOR CESFAM", "SECTOR/CESFAM",
+        "SECTOR", "Sector", "SectorCesfam", "SECTOCESFAM", "SECTOR CESFAM", "SECTOR/CESFAM",
         "CLASIFICACION CESFAM", "CLASIFICACIÓN CESFAM", "COLOR CESFAM",
     ],
     "diagnostico":  ["DIAGNÓSTICO", "DIAGNOSTICO MEDICO", "DIAGNOSTICO", "DX"],
@@ -76,6 +76,18 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     "asignado_historico": [
         "ASIGNADO HISTORICO", "ASIGNADO HISTÓRICO", "PREORDEN",
         "PREORDEN HISTORICO", "PREORDEN HISTÓRICO",
+    ],
+    # Opcionales: las planillas actuales no los traen, pero si vienen se cargan.
+    "telefono": [
+        "TELEFONO", "TELÉFONO", "FONO", "CELULAR", "MOVIL", "MÓVIL",
+        "TELEFONO PACIENTE", "TELÉFONO PACIENTE", "FONO PACIENTE",
+        "TELEFONO CONTACTO", "TELÉFONO CONTACTO", "FONO CONTACTO",
+        "TELEFONO 1", "TELÉFONO 1", "FONO 1",
+    ],
+    "telefono_recados": [
+        "TELEFONO RECADOS", "TELÉFONO RECADOS", "FONO RECADOS", "RECADOS",
+        "TELEFONO 2", "TELÉFONO 2", "FONO 2",
+        "TELEFONO ALTERNATIVO", "TELÉFONO ALTERNATIVO", "OTRO TELEFONO", "OTRO TELÉFONO",
     ],
 }
 
@@ -187,7 +199,7 @@ def _normalizar_sector_oficial(valor: str) -> str:
 def _normalizar_sector_cesfam(valor: str) -> tuple[str, str]:
     normalizado = _normalizar(valor)
     if not normalizado or normalizado in {"SIN SECTOR", "NO ENCONTRADO", "NO IDENTIFICADO", "NO IDENTIFICABLE"}:
-        return "NO IDENTIFICABLE", "SectorCesfam vacío o no identificable."
+        return "NO IDENTIFICABLE", "Sector vacío o no identificable."
     mapping = {
         "AZUL": "AZUL",
         "SECTOR AZUL": "AZUL",
@@ -408,9 +420,9 @@ def _armar_observaciones(
     if base:
         partes.append(f"Observación original: {base}")
     if sector_oficial:
-        partes.append(f"Sector oficial: {sector_oficial}")
+        partes.append(f"Sector territorial: {sector_oficial}")
     if sector_cesfam:
-        partes.append(f"SectorCesfam: {sector_cesfam}")
+        partes.append(f"Sector: {sector_cesfam}")
     if recepcion_original:
         partes.append(f"Recepción original: {recepcion_original}")
     if kine_detectado:
@@ -598,6 +610,8 @@ def _registro_preview(
     advertencias: list[str] | None = None,
     es_duplicado: bool = False,
     error: str = "",
+    telefono: str = "",
+    telefono_recados: str = "",
 ) -> dict:
     """Construye la fila que ve el frontend antes de importar.
 
@@ -641,6 +655,8 @@ def _registro_preview(
         "motivo_revision": motivo_revision,
         "advertencias": advertencias,
         "es_duplicado": es_duplicado,
+        "telefono": telefono,
+        "telefono_recados": telefono_recados,
         "estado": estado,
         "error": error,
         "tipo_revision": tipo_revision,
@@ -702,6 +718,14 @@ def _procesar_hoja(
         asignado_historico = _normalizar_asignado_historico(valores["asignado_historico"])
         estado_sugerido_raw = _cs(valores["estado_sugerido"])
         estado_sugerido, estado_motivo = _normalizar_estado_sugerido(estado_sugerido_raw)
+        # Valor crudo: Excel guarda los números como float (912345678.0).
+        telefono = normalizar_telefono(ws.cell(row_idx, columnas["telefono"]).value) if "telefono" in columnas else ""
+        telefono_recados = (
+            normalizar_telefono(ws.cell(row_idx, columnas["telefono_recados"]).value)
+            if "telefono_recados" in columnas else ""
+        )
+        if telefono_recados == telefono:
+            telefono_recados = ""
         fecha_derivacion = None
         edad = 0
         mayor_60 = False
@@ -757,7 +781,7 @@ def _procesar_hoja(
             if estado_motivo:
                 motivos_revision.append(estado_motivo)
             if not sector_oficial:
-                motivos_revision.append("Sector oficial vacío.")
+                motivos_revision.append("Sector territorial vacío.")
             if sector_cesfam_motivo:
                 motivos_revision.append(sector_cesfam_motivo)
             if categoria_motivo:
@@ -810,6 +834,8 @@ def _procesar_hoja(
                     motivo_revision=" ".join(motivos_revision),
                     advertencias=motivos_revision,
                     es_duplicado=True,
+                    telefono=telefono,
+                    telefono_recados=telefono_recados,
                 ))
                 continue
 
@@ -835,6 +861,8 @@ def _procesar_hoja(
                 estado=estado_sugerido,
                 fecha_cambio_estado=fecha_cambio_estado,
                 asignado_historico=asignado_historico,
+                telefono=telefono,
+                telefono_recados=telefono_recados,
             )
             paciente._importacion_estado_sugerido = estado_sugerido
             paciente._importacion_kine_detectado = kine_info["kine_detectado"]
@@ -855,6 +883,8 @@ def _procesar_hoja(
                 asignado_historico=asignado_historico,
                 motivo_revision=" ".join(motivos_revision),
                 advertencias=motivos_revision,
+                telefono=telefono,
+                telefono_recados=telefono_recados,
             ))
         except Exception as exc:
             error_msg = str(exc)
@@ -931,12 +961,56 @@ def _mes_desde_fechas(fechas: list[date]) -> str | None:
     return None
 
 
+CAMPOS_EDITABLES = {
+    "fecha", "nombre", "rut", "edad", "desde", "sector_oficial", "sector_cesfam",
+    "diagnostico", "profesional", "prioridad", "observaciones",
+}
+
+
+def _aplicar_correcciones(wb, correcciones: list[dict] | None) -> None:
+    """Aplica ediciones hechas en la previsualizacion sobre las celdas del libro.
+
+    Cada correccion: {"hoja", "fila", "campos": {campo: valor}, "descartar": bool}.
+    Descartar vacia la fila completa para que el parser la ignore.
+    """
+    if not correcciones:
+        return
+    por_hoja: dict[str, list[dict]] = {}
+    for item in correcciones:
+        if isinstance(item, dict) and item.get("hoja") in wb.sheetnames:
+            por_hoja.setdefault(item["hoja"], []).append(item)
+
+    for sheet_name, items in por_hoja.items():
+        ws = wb[sheet_name]
+        col_info = _detectar_columnas_dinamicas(ws)
+        if col_info is None:
+            continue
+        col_info.pop("header_row")
+        for item in items:
+            try:
+                fila = int(item.get("fila"))
+            except (TypeError, ValueError):
+                continue
+            if fila < 1 or fila > ws.max_row:
+                continue
+            if item.get("descartar"):
+                for col in range(1, ws.max_column + 1):
+                    ws.cell(fila, col).value = None
+                continue
+            for campo, valor in (item.get("campos") or {}).items():
+                if campo in CAMPOS_EDITABLES and campo in col_info:
+                    ws.cell(fila, col_info[campo]).value = valor
+
+
 def _procesar_derivaciones(
     archivo,
     mes_objetivo: int | None = None,
     anio_objetivo: int | None = None,
+    periodo_forzado: tuple[int, int] | None = None,
+    correcciones: list[dict] | None = None,
 ) -> dict:
     wb = load_workbook(filename=archivo, data_only=True)
+    _aplicar_correcciones(wb, correcciones)
 
     total = 0
     duplicados = 0
@@ -1015,6 +1089,18 @@ def _procesar_derivaciones(
                 periodos_detectados[periodo] = periodos_detectados.get(periodo, 0) + 1
 
     _completar_edades_faltantes(pacientes_a_crear, registros)
+
+    if periodo_forzado:
+        # El usuario eligio a que mes pertenece el corte: todo el archivo se
+        # asigna a ese periodo, sin alterar las fechas reales de derivacion.
+        mes_f, anio_f = periodo_forzado
+        clave = f"{anio_f}-{mes_f:02d}"
+        leidos = sum(periodos_detectados.values()) or sum(meses_detectados.values()) or total
+        periodos_detectados = {clave: leidos} if leidos else {}
+        nombre_mes = next((nm for nm, num in MESES_NUM.items() if num == mes_f), None)
+        meses_detectados = {nombre_mes: leidos} if nombre_mes and leidos else {}
+        for item in (*registros, *errores):
+            item["periodo_corte"] = clave
 
     return {
         "total": total,
@@ -1128,11 +1214,15 @@ def previsualizar_derivaciones(
     archivo,
     mes_objetivo: int | None = None,
     anio_objetivo: int | None = None,
+    periodo_forzado: tuple[int, int] | None = None,
+    correcciones: list[dict] | None = None,
 ) -> dict:
     procesado = _procesar_derivaciones(
         archivo,
         mes_objetivo=mes_objetivo,
         anio_objetivo=anio_objetivo,
+        periodo_forzado=periodo_forzado,
+        correcciones=correcciones,
     )
     errores_count = len(procesado["errores"])
     resumen_oficial = _resumen_registros_oficiales(procesado["registros"])
@@ -1155,11 +1245,15 @@ def parsear_derivaciones(
     archivo,
     mes_objetivo: int | None = None,
     anio_objetivo: int | None = None,
+    periodo_forzado: tuple[int, int] | None = None,
+    correcciones: list[dict] | None = None,
 ) -> dict:
     procesado = _procesar_derivaciones(
         archivo,
         mes_objetivo=mes_objetivo,
         anio_objetivo=anio_objetivo,
+        periodo_forzado=periodo_forzado,
+        correcciones=correcciones,
     )
     errores_count = len(procesado["errores"])
     resumen_oficial = _resumen_registros_oficiales(procesado["registros"])

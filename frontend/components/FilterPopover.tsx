@@ -9,6 +9,7 @@ import type { Column } from "@tanstack/react-table";
 import type { Prioridad, Estado } from "@/lib/types";
 import { PRIORIDAD_LABELS, ESTADO_LABELS } from "@/lib/types";
 import { normalizeRut, normalizeSearchText } from "@/lib/utils";
+import FondoPestana from "./FondoPestana";
 
 // =============================================================================
 // Shared types
@@ -186,9 +187,9 @@ export default function FilterPopover<TData>({
   }
 
   const botonOrden = (activo: boolean) =>
-    `inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-[11px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+    `relative inline-flex h-8 flex-1 items-center justify-center rounded-md text-[11px] font-bold outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
       activo
-        ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200"
+        ? "text-blue-700 dark:text-blue-200"
         : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300 dark:hover:text-ink-black-50"
     }`;
 
@@ -223,12 +224,18 @@ export default function FilterPopover<TData>({
         {column.getCanSort() && (
           <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900">
             <button type="button" onClick={onSortAsc} aria-pressed={sortState === "asc"} className={botonOrden(sortState === "asc")}>
-              <FiArrowUp size={12} aria-hidden="true" />
-              {meta.kind === "number" ? "Menor a mayor" : "A a la Z"}
+              {sortState === "asc" && <FondoPestana id={`orden-${column.id}`} />}
+              <span className="relative z-10 inline-flex items-center gap-1.5">
+                <FiArrowUp size={12} aria-hidden="true" />
+                {meta.kind === "number" ? "Menor a mayor" : "A a la Z"}
+              </span>
             </button>
             <button type="button" onClick={onSortDesc} aria-pressed={sortState === "desc"} className={botonOrden(sortState === "desc")}>
-              <FiArrowDown size={12} aria-hidden="true" />
-              {meta.kind === "number" ? "Mayor a menor" : "Z a la A"}
+              {sortState === "desc" && <FondoPestana id={`orden-${column.id}`} />}
+              <span className="relative z-10 inline-flex items-center gap-1.5">
+                <FiArrowDown size={12} aria-hidden="true" />
+                {meta.kind === "number" ? "Mayor a menor" : "Z a la A"}
+              </span>
             </button>
             {sortState && (
               <button

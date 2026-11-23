@@ -128,3 +128,80 @@ def prioridad_normalizada(valor: str) -> str:
         "LICENCIA_MEDICA": Paciente.Prioridad.LICENCIA_MEDICA,
     }
     return mapping.get(limpio, Paciente.Prioridad.MODERADA)
+
+
+# ---------------------------------------------------------------------------
+# Observaciones como lista (ObservacionPaciente)
+# ---------------------------------------------------------------------------
+
+_CLAVES_CARGA = (
+    "SectorCesfam", "Sector oficial", "Sector territorial", "Sector", "Responsable detectado",
+    "Estado sugerido inválido", "Estado sugerido", "Categoría", "Kine no confirmado detectado", "Revisión",
+)
+
+
+def separar_observaciones(texto: str) -> list[tuple[str, str, bool]]:
+    """Convierte el texto antiguo de observaciones en entradas (tipo, texto, fijada).
+
+    - "Observación original: X" -> GENERAL con X (la nota real de la planilla).
+    - "| FALLECIDO (...)" y otras notas agregadas con " | " -> ADMINISTRATIVA (fallecido, fijada).
+    - Datos automáticos de la carga (sector, categoría, estado sugerido...) -> IMPORTACION.
+    - Texto libre sin formato de carga -> GENERAL.
+    """
+    import re
+
+    texto = (texto or "").strip()
+    if not texto:
+        return []
+    entradas: list[tuple[str, str, bool]] = []
+    claves = "|".join(re.escape(k) for k in _CLAVES_CARGA)
+
+    # Notas agregadas al final con " | " (fallecido, edad completada, etc.)
+    partes = [p.strip() for p in re.split(r"\s+\|\s+(?=FALLECIDO|Edad tomada)", texto) if p.strip()]
+    principal, agregadas = partes[0], partes[1:]
+
+    original = re.search(rf"Observación original:\s*(.*?)(?:\.\s+(?={claves}\s*:)|$)", principal, re.S)
+    if original:
+        nota = original.group(1).strip().rstrip(".")
+        if nota:
+            entradas.append(("GENERAL", nota, False))
+        principal = (principal[: original.start()] + principal[original.end():]).strip()
+
+    if principal:
+        if re.search(rf"(?:^|\.\s+)(?:{claves})\s*:", principal):
+            carga = re.sub(r"\bSectorCesfam\b", "Sector", principal)
+            carga = re.sub(r"\bSector oficial\b", "Sector territorial", carga)
+            # Lo de "Revisión: ..." ya se gestiona en Revisión de carga: no se repite aquí.
+            carga = re.sub(r"\s*Revisión:.*$", "", carga, flags=re.S).strip()
+            if carga:
+                entradas.append(("IMPORTACION", f"Datos de la carga: {carga}", False))
+        else:
+            entradas.append(("GENERAL", principal, False))
+
+    for nota in agregadas:
+        fallecido = nota.upper().startswith("FALLECIDO")
+        entradas.append(("ADMINISTRATIVA" if fallecido else "IMPORTACION", nota, fallecido))
+    return entradas
+
+
+def sincronizar_observaciones(paciente) -> str:
+    """Reescribe Paciente.observaciones (resumen para exportar y buscar) desde la lista."""
+    textos = [n.texto for n in paciente.notas.all().order_by("-fijada", "creado_en", "id")]
+    resumen = " | ".join(textos)
+    type(paciente).objects.filter(pk=paciente.pk).update(observaciones=resumen)
+    paciente.observaciones = resumen
+    return resumen
+
+
+def crear_observaciones_iniciales(pacientes, autor=None) -> int:
+    """Crea la lista de observaciones de pacientes nuevos a partir de su texto."""
+    from .models import ObservacionPaciente
+
+    nuevas = []
+    for paciente in pacientes:
+        if paciente.notas.exists():
+            continue
+        for tipo, texto, fijada in separar_observaciones(paciente.observaciones):
+            nuevas.append(ObservacionPaciente(paciente=paciente, tipo=tipo, texto=texto, fijada=fijada, autor=autor))
+    ObservacionPaciente.objects.bulk_create(nuevas, batch_size=500)
+    return len(nuevas)

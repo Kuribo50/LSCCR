@@ -49,7 +49,9 @@ razonable de uso funcional.
 - Revisar politicas de retencion para importaciones mensuales y registros de
   contacto.
 - Revisar limites de subida y tamano de archivos Excel.
-- Revisar permisos de `ADMINISTRATIVO` versus `ADMIN` en acciones sensibles.
+- Revisar permisos de `MEDICO`, profesional encargado y `ADMIN` en acciones
+  sensibles (ver "Roles y permisos" en `FLUJO_OPERATIVO.md`). El rol
+  `ADMINISTRATIVO` se reemplazo por `MEDICO`.
 - Revisar monitoreo de errores y logs de Nginx/backend/frontend.
 - Preparar checklist de rollback para el primer despliegue.
 

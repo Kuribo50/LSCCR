@@ -76,6 +76,8 @@ class Paciente(models.Model):
     motivo_ultima_inasistencia = models.TextField(blank=True, default="")
     n_meses_espera = models.PositiveIntegerField(default=1, help_text="Veces que ha aparecido en listas mensuales")
     observaciones = models.TextField(blank=True)
+    # Observación o incongruencia que una persona debe revisar (se muestra como chip azul).
+    alerta = models.TextField(blank=True, default="")
     # Datos de contacto y seguimiento operativo: los llamados, agenda y reportes
     # dependen de estos campos, por eso deben mantenerse sincronizados con vistas
     # de contacto y calendario.
@@ -189,6 +191,37 @@ class LlamadoPaciente(models.Model):
 
     def __str__(self):
         return f"{self.paciente_id}: {self.resultado}"
+
+
+class ObservacionPaciente(models.Model):
+    """Observación del paciente como entrada independiente: tipo, fijada, editable y borrable.
+
+    `Paciente.observaciones` queda como texto resumen (exportaciones y búsqueda) y se
+    reescribe desde esta lista con `services.sincronizar_observaciones`.
+    """
+
+    class Tipo(models.TextChoices):
+        GENERAL = "GENERAL", "General"
+        CLINICA = "CLINICA", "Clínica"
+        CONTACTO = "CONTACTO", "Contacto"
+        ADMINISTRATIVA = "ADMINISTRATIVA", "Administrativa"
+        IMPORTACION = "IMPORTACION", "Importación"
+
+    paciente = models.ForeignKey(Paciente, related_name="notas", on_delete=models.CASCADE)
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.GENERAL)
+    texto = models.TextField()
+    fijada = models.BooleanField(default=False)
+    autor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fijada", "-creado_en", "-id"]
+
+    def __str__(self):
+        return f"{self.paciente_id} [{self.tipo}] {self.texto[:40]}"
 
 
 class InasistenciaPaciente(models.Model):

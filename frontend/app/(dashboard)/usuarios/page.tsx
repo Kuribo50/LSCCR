@@ -28,10 +28,10 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 const ROL_BADGE_CLASSES: Record<Rol, string> = {
   ADMIN: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
   KINE: "border-green-100 bg-green-50 text-green-700 dark:border-green-400/30 dark:bg-green-400/10 dark:text-green-100",
-  ADMINISTRATIVO: "border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100",
+  MEDICO: "border-amber-100 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100",
 };
 
-const ROLES_NUEVOS: Rol[] = ["KINE", "ADMIN"];
+const ROLES_NUEVOS: Rol[] = ["KINE", "MEDICO", "ADMIN"];
 const ROLES_SELECCIONABLES = ROLES_NUEVOS.map((rol) => ({
   value: rol,
   label: ROL_LABELS[rol],
@@ -50,7 +50,6 @@ function normalizarRut(value: string) {
 }
 
 function etiquetaRolTabla(rol: Rol) {
-  if (rol === "ADMINISTRATIVO") return "Administrativo/a · Rol heredado";
   return ROL_LABELS[rol];
 }
 
@@ -125,7 +124,7 @@ export default function UsuariosPage() {
       setDeleteTarget(null);
     } catch (error) {
       toast.error(
-        getErrorMessage(error, "No se pudo eliminar el usuario. Es posible que tenga registros asociados."),
+        getErrorMessage(error, "No se pudo eliminar el usuario. Puede tener registros asociados."),
       );
     } finally {
       setDeleteLoading(false);
@@ -270,7 +269,7 @@ export default function UsuariosPage() {
                     <th className="w-[300px] text-right text-xs font-bold text-slate-600 dark:text-ink-black-100">Acciones</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="ccr-stagger">
                 {usuariosFiltrados.map((usuario) => (
                   <tr key={usuario.id} className="ccr-table-row bg-white dark:bg-[#151515]">
                     <td className="font-bold text-slate-900 dark:text-white">{usuario.nombre}</td>
@@ -283,6 +282,11 @@ export default function UsuariosPage() {
                       >
                         {etiquetaRolTabla(usuario.rol)}
                       </span>
+                      {usuario.es_encargado && (
+                        <span className="ml-1.5 inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100">
+                          Encargado
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span
@@ -375,8 +379,8 @@ export default function UsuariosPage() {
           if (claveTemporal) {
             void navigator.clipboard
               ?.writeText(claveTemporal.clave)
-              .then(() => toast.success("Clave copiada al portapapeles."))
-              .catch(() => toast.error("No se pudo copiar. Anótela manualmente."));
+              .then(() => toast.success("Clave copiada."))
+              .catch(() => toast.error("No se pudo copiar la clave."));
           }
           setClaveTemporal(null);
         }}
@@ -491,7 +495,6 @@ function UsuarioModal({
 }) {
   const { toast } = useToast();
   const editando = usuario !== null;
-  const rolHeredado = usuario?.rol === "ADMINISTRATIVO";
   const subtituloDetalle = usuario ? `${usuario.nombre} · ${formatearRut(usuario.rut)}` : "";
   const [form, setForm] = useState({
     nombre: usuario?.nombre ?? "",
@@ -500,6 +503,7 @@ function UsuarioModal({
     password: "",
     confirmPassword: "",
     is_active: usuario?.is_active ?? true,
+    es_encargado: usuario?.es_encargado ?? false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -507,7 +511,7 @@ function UsuarioModal({
 
   function set<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
-    if (field !== "is_active") {
+    if (field !== "is_active" && field !== "es_encargado") {
       setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
     }
   }
@@ -548,6 +552,8 @@ function UsuarioModal({
         nombre: form.nombre.trim(),
         rol: form.rol,
         is_active: form.is_active,
+        // Solo un profesional puede ser encargado (el backend también lo exige).
+        es_encargado: form.rol === "KINE" && form.es_encargado,
       };
       if (form.password) body.password = form.password;
 
@@ -674,17 +680,6 @@ function UsuarioModal({
                   </p>
                 </div>
 
-                {rolHeredado && (
-                  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 dark:border-amber-400/30 dark:bg-amber-400/10">
-                    <p className="text-xs font-black text-amber-900 dark:text-amber-100">
-                      Administrativo/a (rol heredado)
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-amber-800 dark:text-amber-200">
-                      Este rol existe por compatibilidad. Para nuevos usuarios use Kinesiólogo/a o
-                      Administrador/a.
-                    </p>
-                  </div>
-                )}
 
                 <FormField label="Rol *" error={fieldErrors.rol}>
                   <select
@@ -692,11 +687,6 @@ function UsuarioModal({
                     onChange={(event) => set("rol", event.target.value as Rol)}
                     className="ccr-control-input w-full px-3 py-2.5 text-sm"
                   >
-                    {rolHeredado && form.rol === "ADMINISTRATIVO" && (
-                      <option value="ADMINISTRATIVO" disabled>
-                        Administrativo/a (rol heredado)
-                      </option>
-                    )}
                     {ROLES_SELECCIONABLES.map((rol) => (
                       <option key={rol.value} value={rol.value}>
                         {rol.label}
@@ -704,6 +694,23 @@ function UsuarioModal({
                     ))}
                   </select>
                 </FormField>
+
+                {form.rol === "KINE" && (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-3 dark:border-[#2a2a2a] dark:bg-[#151515]">
+                    <input
+                      type="checkbox"
+                      checked={form.es_encargado}
+                      onChange={(event) => set("es_encargado", event.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600"
+                    />
+                    <span>
+                      <span className="block text-xs font-black text-slate-900 dark:text-white">Profesional encargado</span>
+                      <span className="mt-1 block text-xs font-medium text-slate-500 dark:text-ink-black-200">
+                        Resuelve la Revisión de carga y corrige a fondo los datos de los pacientes. Puede haber más de uno.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {editando && (
                   <div className="rounded-lg border border-slate-200 px-3 py-3 dark:border-[#2a2a2a] dark:bg-[#151515]">

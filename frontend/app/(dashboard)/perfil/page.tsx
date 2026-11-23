@@ -13,13 +13,13 @@ import { formatearRut } from '@/lib/rut'
 
 const ROL_ICONS: Record<Rol, string> = {
   KINE: '🩺',
-  ADMINISTRATIVO: '📋',
+  MEDICO: '📋',
   ADMIN: '⚙️',
 }
 
 const ROL_COLORS: Record<Rol, { bg: string; text: string; border: string }> = {
   KINE: { bg: '#ECFDF5', text: '#065F46', border: '#6EE7B7' },
-  ADMINISTRATIVO: { bg: '#ecf5f8', text: '#335fdb', border: '#BFDBFE' },
+  MEDICO: { bg: '#ecf5f8', text: '#335fdb', border: '#BFDBFE' },
   ADMIN: { bg: '#F5F3FF', text: '#5B21B6', border: '#C4B5FD' },
 }
 
@@ -106,7 +106,7 @@ export default function PerfilPage() {
   const colors = ROL_COLORS[user.rol]
   const kinesActivos = todosUsuarios.filter(u => u.rol === 'KINE' && u.is_active).length
   const adminActivos = todosUsuarios.filter(u => u.rol === 'ADMIN' && u.is_active).length
-  const administrativosActivos = todosUsuarios.filter(u => u.rol === 'ADMINISTRATIVO' && u.is_active).length
+  const medicosActivos = todosUsuarios.filter(u => u.rol === 'MEDICO' && u.is_active).length
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -160,7 +160,7 @@ export default function PerfilPage() {
               <Stat label="Mis pacientes activos" value={contadores.mios} color="#065F46" bg="#ECFDF5" />
               <Stat label="Lista de espera global" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
             </>}
-            {user.rol === 'ADMINISTRATIVO' && <>
+            {user.rol === 'MEDICO' && <>
               <Stat label="En lista de espera" value={contadores.total} color="#335fdb" bg="#ecf5f8" />
               <Stat label="Egresos registrados" value={contadores.egresos} color="#065F46" bg="#ECFDF5" />
             </>}
@@ -180,7 +180,7 @@ export default function PerfilPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
             <Stat label="Responsables CCR activos" value={kinesActivos} color="#065F46" bg="#ECFDF5" />
-            <Stat label="Administrativos" value={administrativosActivos} color="#335fdb" bg="#ecf5f8" />
+            <Stat label="Médicos" value={medicosActivos} color="#335fdb" bg="#ecf5f8" />
             <Stat label="Administradores" value={adminActivos} color="#5B21B6" bg="#F5F3FF" />
           </div>
           <div className="space-y-2">
@@ -203,14 +203,14 @@ export default function PerfilPage() {
         </div>
       )}
 
-      {user.rol === 'ADMINISTRATIVO' && (
+      {user.rol === 'MEDICO' && (
         <div className="rounded-2xl bg-white p-6 border border-gray-200">
           <h3 className="text-sm font-bold text-gray-700 mb-4">Accesos rápidos</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: 'Importar derivaciones', href: '/importar', icon: '📁' },
               { label: 'Historial mensual', href: '/historial-mensual', icon: '📅' },
-              { label: 'Cola de llamados', href: '/llamados', icon: '📞' },
+              { label: 'Lista de espera', href: '/lista-espera', icon: '📋' },
               { label: 'Estadísticas', href: '/analisis/estadisticas', icon: '📊' },
             ].map(link => (
               <Link key={link.href} href={link.href}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import AlertaChip from "@/components/AlertaChip";
 import {
   createColumnHelper,
   flexRender,
@@ -13,6 +14,7 @@ import {
 } from "@tanstack/react-table";
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEntradaFilas } from "@/lib/useEntradaFilas";
 import {
   FiCalendar,
   FiCheck,
@@ -33,7 +35,7 @@ import { TONO_CATEGORIA } from "@/components/AgendaGrid";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import SectorBadge from "@/components/SectorBadge";
 import BadgePrioridad from "@/components/BadgePrioridad";
-import { TableSkeleton } from "@/components/Skeleton";
+import LoaderKine from "@/components/LoaderKine";
 import EmptyState from "@/components/EmptyState";
 import FilterPopover, {
   type ColumnMeta,
@@ -320,7 +322,9 @@ export default function MisPacientesPage() {
 
   useEffect(() => {
     if (!openFilter) return;
-    function cerrar() {
+    function cerrar(event: Event) {
+      // El scroll de la lista de valores dentro del propio filtro no debe cerrarlo.
+      if (event.target instanceof Element && event.target.closest(".ccr-filter-popover")) return;
       setOpenFilter(null);
       setFilterPosition(null);
     }
@@ -424,18 +428,10 @@ export default function MisPacientesPage() {
 
   const columns = useMemo(
     () => [
-      columnHelper.display({
-        id: "seleccion",
-        enableResizing: false,
-        enableSorting: false,
-        header: "",
-        meta: { label: "Seleccionar" } satisfies ColumnMeta,
-        cell: () => null,
-      }),
       columnHelper.accessor("kine", {
-        header: "Kine",
+        header: "Profesional",
         filterFn: multiSelectFilter,
-        meta: { label: "Kine", filterable: true } satisfies ColumnMeta,
+        meta: { label: "Profesional", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
           <span className={`block truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-400"}`}>
             {info.getValue() || "Sin asignar"}
@@ -449,7 +445,10 @@ export default function MisPacientesPage() {
         cell: (info) => (
           <div className="min-w-0 leading-tight" title={info.getValue()}>
             <p className="truncate text-[13px] font-bold text-slate-950 dark:text-white">{info.getValue()}</p>
-            <p className="mt-0.5 truncate text-[11px] font-medium tabular-nums text-slate-500">{info.row.original.rut}</p>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-medium tabular-nums text-slate-500">
+              <span className="truncate">{info.row.original.rut}</span>
+              <AlertaChip alerta={info.row.original.patient.alerta} />
+            </p>
           </div>
         ),
       }),
@@ -521,7 +520,7 @@ export default function MisPacientesPage() {
       columnHelper.accessor("sector_cesfam", {
         header: "Sector",
         filterFn: multiSelectFilter,
-        meta: { label: "Sector CESFAM", filterable: true } satisfies ColumnMeta,
+        meta: { label: "Sector", filterable: true } satisfies ColumnMeta,
         cell: (info) => <SectorBadge sector={info.getValue()} />,
       }),
       columnHelper.accessor("diagnostico", {
@@ -535,9 +534,9 @@ export default function MisPacientesPage() {
         ),
       }),
       columnHelper.accessor("sector_oficial", {
-        header: "Sector oficial",
+        header: "Sector territorial",
         filterFn: multiSelectFilter,
-        meta: { label: "Sector oficial", filterable: true } satisfies ColumnMeta,
+        meta: { label: "Sector territorial", filterable: true } satisfies ColumnMeta,
         cell: (info) => <span className="block truncate text-gray-600">{info.getValue()}</span>,
       }),
       columnHelper.display({
@@ -622,6 +621,8 @@ export default function MisPacientesPage() {
     estimateSize: () => 52,
     overscan: 10,
   });
+  // Entrada escalonada de las primeras filas al cargar (como Grupos).
+  const entradaFila = useEntradaFilas(!loading && tableRows.length > 0);
 
   function getColumnOptions(column: Column<MyPatientRow>) {
     const values = Array.from(column.getFacetedUniqueValues().keys())
@@ -841,7 +842,7 @@ export default function MisPacientesPage() {
               />
               <MultiSelectFiltro
                 anchoCompleto
-                label="Sector CESFAM"
+                label="Sector"
                 textoTodos
                 values={quickFilters.sector_cesfam}
                 opciones={quickFilterOptions.sectoresCesfam.map((sec) => ({
@@ -854,7 +855,7 @@ export default function MisPacientesPage() {
               />
               <MultiSelectFiltro
                 anchoCompleto
-                label="Sector oficial"
+                label="Sector territorial"
                 textoTodos
                 values={quickFilters.sector_oficial}
                 opciones={quickFilterOptions.sectoresOficiales.map((sec) => ({ value: sec, label: sec, total: conteo("sector_oficial", sec) }))}
@@ -863,7 +864,7 @@ export default function MisPacientesPage() {
               {verTodos && (
                 <MultiSelectFiltro
                   anchoCompleto
-                  label="Kine"
+                  label="Profesional"
                   textoTodos
                   values={quickFilters.responsable}
                   opciones={quickFilterOptions.responsables.map((r) => ({ value: r.value, label: r.label, total: conteo("responsable", r.value) }))}
@@ -904,16 +905,7 @@ export default function MisPacientesPage() {
         <section className="ccr-data-table ccr-operational-table relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-ink-black-800">
           {(loading || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
-              {loading && !hasHydrated ? (
-                <div className="w-full p-4">
-                  <TableSkeleton rows={6} />
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-semibold text-gray-600 shadow-sm dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-100">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-500" />
-                  Actualizando...
-                </div>
-              )}
+              <LoaderKine enLinea retrasoMs={0} />
             </div>
           )}
 
@@ -1058,13 +1050,14 @@ export default function MisPacientesPage() {
                   {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                     const row = tableRows[virtualRow.index];
                     const marcado = marcados.includes(row.original.patient.id);
+                    const entrada = entradaFila(virtualRow.index);
                     return (
                       <div
                         key={row.id}
                         className={`ccr-table-row absolute left-0 top-0 grid w-full cursor-pointer border-b border-slate-100 transition-colors dark:border-ink-black-700 ${
                           marcado ? "bg-blue-50/70 dark:bg-blue-500/10" : "bg-white hover:bg-blue-50/60 dark:bg-ink-black-800 dark:hover:bg-blue-500/10"
-                        }`}
-                        style={{ gridTemplateColumns: columnTemplate, transform: `translateY(${virtualRow.start}px)` }}
+                        } ${entrada.className}`}
+                        style={{ ...entrada.style, gridTemplateColumns: columnTemplate, transform: `translateY(${virtualRow.start}px)` }}
                         onClick={() => setSeleccionado(row.original.patient)}
                       >
                         {row.getVisibleCells().map((cell) => {

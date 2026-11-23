@@ -51,7 +51,7 @@ export default function RegistrarInasistenciaModal({
       if (response.alerta_abandono) {
         const mensaje =
           response.mensaje ||
-          "Paciente tiene 2 inasistencias no justificadas. Evaluar marcar como ABANDONO.";
+          "Paciente con 2 inasistencias no justificadas. Evaluar abandono.";
         setAlerta(mensaje);
         toast.warning(mensaje);
         return;

@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import type { Estado, Paciente, PacienteConMovimientos, PerfilPaciente } from '@/lib/types'
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS, getKineRowBackground } from '@/lib/types'
 import { formatearRut } from '@/lib/rut'
+import { puedeCorregirDatos } from '@/lib/roles'
 import EditarPacienteModal from '@/components/EditarPacienteModal'
 import CambiarEstadoModal from '@/components/CambiarEstadoModal'
 import RegistrarContactoModal from '@/components/RegistrarContactoModal'
@@ -104,8 +105,8 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
           </div>
           <div className="text-right text-sm text-gray-600">
             <p>Edad: <span className="font-semibold">{perfil.edad} años</span></p>
-            <p>SectorCesfam: <span className="font-semibold">{perfil.sector_cesfam || 'Sin dato'}</span></p>
-            <p>Sector oficial: <span className="font-semibold">{perfil.sector_oficial || 'Sin dato'}</span></p>
+            <p>Sector: <span className="font-semibold">{perfil.sector_cesfam || 'Sin dato'}</span></p>
+            <p>Sector territorial: <span className="font-semibold">{perfil.sector_oficial || 'Sin dato'}</span></p>
           </div>
         </div>
         {perfil.mayor_60 && (
@@ -161,22 +162,27 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
 
               {/* Action buttons per derivation */}
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditarPaciente(derivacion)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
-                >
-                  <FiEdit3 size={13} />
-                  Editar paciente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCambiarEstadoPaciente(derivacion)}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-                >
-                  <FiRefreshCw size={13} />
-                  Cambiar estado
-                </button>
+                {/* El Médico solo carga derivaciones: no edita ni cambia estados. */}
+                {user?.rol !== 'MEDICO' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditarPaciente(derivacion)}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+                    >
+                      <FiEdit3 size={13} />
+                      Editar paciente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCambiarEstadoPaciente(derivacion)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
+                    >
+                      <FiRefreshCw size={13} />
+                      Cambiar estado
+                    </button>
+                  </>
+                )}
                 {puedeRegistrarLlamado && (
                   <button
                     type="button"
@@ -263,7 +269,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
       {editarPaciente && (
         <EditarPacienteModal
           paciente={editarPaciente}
-          mode="full"
+          mode={puedeCorregirDatos(user) ? 'full' : 'contact-only'}
           onClose={() => setEditarPaciente(null)}
           onGuardado={() => {
             setEditarPaciente(null)

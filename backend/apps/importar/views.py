@@ -1,11 +1,17 @@
 import csv
+import json
+import re
+import uuid
 from datetime import date, datetime
 from io import BytesIO
 
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
-from django.db.models import Q, F
+from django.core.validators import validate_email
+from django.db.models import Q, F, Sum
 from django.http import HttpResponse
 from django.db import transaction
+from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from rest_framework import status
@@ -14,13 +20,36 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.pacientes.exports import crear_excel_pacientes, excel_response
-from apps.pacientes.models import MovimientoPaciente, Paciente
-from apps.pacientes.services import ESTADOS_FINALES, categoria_por_diagnostico, prioridad_normalizada
-from apps.usuarios.permissions import IsAdminOrAdministrativoRole, IsAdminRole
+from apps.pacientes.models import MovimientoPaciente, ObservacionPaciente, Paciente
+from apps.pacientes.services import (
+    ESTADOS_FINALES,
+    categoria_por_diagnostico,
+    crear_observaciones_iniciales,
+    prioridad_normalizada,
+    sincronizar_observaciones,
+)
+from apps.pacientes.telefonos import FilaTelefono, completar_telefonos, normalizar_telefono
+from apps.usuarios.models import Usuario
+from apps.usuarios.permissions import IsAdminMedicoOrEncargado, IsAdminOrEncargado, IsAdminOrMedicoRole, IsAdminRole
 
-from .models import ImportacionMensual
+from .models import HistoricoPaciente, ImportacionMensual
 from .parser import normalizar_texto, parsear_derivaciones, parsear_fecha, previsualizar_derivaciones
-from .serializers import ImportacionDerivacionesSerializer
+from .serializers import ImportacionDerivacionesSerializer, ImportacionTelefonosSerializer
+from .revision import (
+    CAMPOS_ESPERA,
+    CAMPOS_SECTOR,
+    ESTADOS_EN_LISTA,
+    RESOLUCION_AUTO,
+    RESOLUCION_RECURRENTE,
+    acumular_espera,
+    completar_sector_paciente,
+    enriquecer_observaciones,
+    foto_paciente,
+    indice_recurrencias,
+    restaurar_paciente,
+)
+from .reversion import MINUTOS_REVERSION, estado_reversion, revertible_hasta, revertir_carga
+from .telefonos import leer_excel_telefonos
 
 
 MESES_SHEET = {
@@ -80,7 +109,7 @@ def _periodo_q(mes: int, anio: int) -> Q:
     )
 
 
-def _serialize_importacion(importacion: ImportacionMensual) -> dict:
+def _serialize_importacion(importacion: ImportacionMensual, usuario=None) -> dict:
     mes_ref, anio_ref = _mes_y_anio_referencia(importacion)
     observaciones = [
         observacion
@@ -117,6 +146,8 @@ def _serialize_importacion(importacion: ImportacionMensual) -> dict:
         ),
         "pacientes_actuales_del_corte": _resumen_pacientes_corte(mes_ref, anio_ref),
         "reemplazada_por": importacion.reemplazada_por_id,
+        "lote": importacion.lote,
+        **estado_reversion(importacion, usuario),
     }
 
 
@@ -128,6 +159,33 @@ def _resumen_pacientes_corte(mes: int, anio: int) -> dict:
         "ingresados": pacientes.filter(estado=Paciente.Estado.INGRESADO).count(),
         "egresados_total": pacientes.filter(estado__in=ESTADOS_EGRESADOS).count(),
     }
+
+
+def _pacientes_corte(mes: int, anio: int) -> list[dict]:
+    pacientes = (
+        Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+        .select_related("kine_asignado")
+        .order_by("nombre", "id")
+    )
+    return [
+        {
+            "id": paciente.id,
+            "id_ccr": paciente.id_ccr,
+            "nombre": paciente.nombre,
+            "rut": paciente.rut,
+            "fecha_derivacion": paciente.fecha_derivacion.isoformat(),
+            "edad": paciente.edad,
+            "sector_oficial": paciente.sector_oficial,
+            "sector_cesfam": paciente.sector_cesfam,
+            "diagnostico": paciente.diagnostico,
+            "prioridad": paciente.get_prioridad_display(),
+            "categoria": paciente.get_categoria_display(),
+            "estado": paciente.estado,
+            "estado_label": paciente.get_estado_display(),
+            "kine_asignado_nombre": paciente.kine_asignado.nombre if paciente.kine_asignado else None,
+        }
+        for paciente in pacientes
+    ]
 
 
 def _id_ccr_desde_pk(pk: int) -> str:
@@ -355,11 +413,39 @@ def _mes_desde_registro(registro: dict, mes_fallback: int | None = None) -> int 
     return _mes_desde_fecha_preview(registro.get("fecha_derivacion")) or mes_fallback
 
 
+def _leer_opciones_carga(data) -> tuple[tuple[int, int] | None, list[dict] | None]:
+    """Lee el periodo de corte elegido y las correcciones hechas en la previsualizacion."""
+    mes = data.get("periodo_mes")
+    anio = data.get("periodo_anio")
+    periodo = None
+    if mes not in (None, "") and anio not in (None, ""):
+        try:
+            mes_i, anio_i = int(mes), int(anio)
+        except (TypeError, ValueError):
+            raise ValueError("Mes o año de corte inválido.")
+        if not (1 <= mes_i <= 12 and 2000 <= anio_i <= 2100):
+            raise ValueError("Mes o año de corte inválido.")
+        periodo = (mes_i, anio_i)
+
+    correcciones = data.get("correcciones")
+    if isinstance(correcciones, str):
+        try:
+            correcciones = json.loads(correcciones) if correcciones.strip() else None
+        except json.JSONDecodeError:
+            raise ValueError("Formato de correcciones inválido.")
+    if correcciones is not None and not isinstance(correcciones, list):
+        raise ValueError("Formato de correcciones inválido.")
+    return periodo, correcciones
+
+
 def _periodo_desde_registro(
     registro: dict,
     mes_fallback: int | None = None,
     anio_fallback: int | None = None,
 ) -> tuple[int, int] | None:
+    corte = str(registro.get("periodo_corte") or "")
+    if re.fullmatch(r"\d{4}-\d{2}", corte):
+        return (int(corte[5:]), int(corte[:4]))
     periodo = _periodo_desde_fecha_preview(registro.get("fecha_derivacion"))
     if periodo:
         return periodo
@@ -634,15 +720,22 @@ def _actualizar_observacion_resuelta(
     usuario,
     resolucion: str,
     paciente: Paciente | None = None,
+    lote: str = "",
+    deshacer: dict | None = None,
 ) -> dict:
+    # Los campos calculados para la vista (cruce con histórico) no se guardan.
+    base = {k: v for k, v in observacion.items() if k not in {"historico", "auto_resoluble", "auto_motivo"}}
     actualizada = {
-        **observacion,
+        **base,
         "estado_revision": "DESCARTADO" if accion == "DESCARTAR" else "RESUELTO",
         "resolucion": resolucion,
         "resuelto_en": datetime.now().isoformat(),
         "resuelto_por_id": usuario.id if usuario and usuario.is_authenticated else None,
         "resuelto_por_nombre": usuario.nombre if usuario and usuario.is_authenticated else None,
         "requiere_revision": False,
+        # Permite deshacer: el lote agrupa una acción y `deshacer` guarda lo que cambió.
+        "lote_resolucion": lote or uuid.uuid4().hex,
+        "deshacer": deshacer or {},
     }
     if paciente:
         actualizada.update(
@@ -664,8 +757,8 @@ ENCABEZADOS_PEGADO = [
     "RUT",
     "EDAD",
     "PERCAPITA / DESDE",
-    "SECTOR OFICIAL",
-    "SectorCesfam",
+    "SECTOR TERRITORIAL",
+    "SECTOR",
     "DIAGNOSTICO",
     "PROFESIONAL",
     "PRIORIDAD",
@@ -729,9 +822,15 @@ def _archivo_desde_texto_pegado(texto: str):
     return ContentFile(buffer.getvalue(), name="pegado_planilla_ccr.xlsx")
 
 
-def _agregar_diagnosticos_recurrentes(registros: list[dict], usuario) -> None:
+def _agregar_diagnosticos_recurrentes(registros: list[dict], usuario) -> dict:
+    """Suma el diagnóstico de la nueva derivación a pacientes recurrentes.
+
+    Devuelve los efectos (diagnóstico previo y movimientos creados) para poder
+    revertir la carga.
+    """
     movimientos: list[MovimientoPaciente] = []
     pacientes_actualizados: list[Paciente] = []
+    diagnosticos_previos: list[dict] = []
     vistos: set[tuple[int, str]] = set()
 
     for registro in registros:
@@ -756,6 +855,7 @@ def _agregar_diagnosticos_recurrentes(registros: list[dict], usuario) -> None:
                 else diagnostico
             )
             pacientes_actualizados.append(paciente)
+            diagnosticos_previos.append({"id": paciente.id, "previo": diagnostico_actual, "nuevo": paciente.diagnostico})
 
         movimientos.append(
             MovimientoPaciente(
@@ -772,8 +872,11 @@ def _agregar_diagnosticos_recurrentes(registros: list[dict], usuario) -> None:
 
     if pacientes_actualizados:
         Paciente.objects.bulk_update(pacientes_actualizados, ["diagnostico"], batch_size=200)
-    if movimientos:
-        MovimientoPaciente.objects.bulk_create(movimientos, batch_size=200)
+    creados = MovimientoPaciente.objects.bulk_create(movimientos, batch_size=200) if movimientos else []
+    return {
+        "diagnosticos": diagnosticos_previos,
+        "movimientos": [m.pk for m in creados if m.pk],
+    }
 
 
 def _procesar_importacion_archivo(
@@ -784,12 +887,16 @@ def _procesar_importacion_archivo(
     anio_fallback: int,
     forzar_reemplazo: bool,
     modo_suplementar: bool,
+    periodo_forzado: tuple[int, int] | None = None,
+    correcciones: list[dict] | None = None,
 ):
     hoy = date.today()
     resultado = parsear_derivaciones(
         archivo,
         mes_objetivo=mes_solicitado,
         anio_objetivo=anio_fallback if mes_solicitado else None,
+        periodo_forzado=periodo_forzado,
+        correcciones=correcciones,
     )
     periodos_detectados = _periodos_desde_resultado(
         resultado,
@@ -838,6 +945,9 @@ def _procesar_importacion_archivo(
         )
 
     with transaction.atomic():
+        # Identifica la subida: sus cortes se revierten juntos (reversion.py).
+        lote = uuid.uuid4().hex
+        efectos: dict = {"recurrentes": [], "diagnosticos": [], "telefonos": [], "movimientos": []}
         if forzar_reemplazo and conflictos:
             _vaciar_importaciones(list(importaciones_previas.values()), borrar_importacion=False)
             archivo.seek(0)
@@ -845,6 +955,8 @@ def _procesar_importacion_archivo(
                 archivo,
                 mes_objetivo=mes_solicitado,
                 anio_objetivo=anio_fallback if mes_solicitado else None,
+                periodo_forzado=periodo_forzado,
+                correcciones=correcciones,
             )
             periodos_detectados = _periodos_desde_resultado(
                 resultado,
@@ -886,6 +998,7 @@ def _procesar_importacion_archivo(
                 mes_datos=mes_num,
                 anio_datos=anio_periodo,
                 usuario=request.user,
+                lote=lote,
                 estado=(
                     ImportacionMensual.Estado.COMPLETADO
                     if not errores_periodo
@@ -907,6 +1020,7 @@ def _procesar_importacion_archivo(
                 mes_datos=mes_solicitado,
                 anio_datos=anio_fallback,
                 usuario=request.user,
+                lote=lote,
                 estado=ImportacionMensual.Estado.CON_ERRORES,
                 total_registros=resultado["total"],
                 registros_importados=0,
@@ -935,6 +1049,7 @@ def _procesar_importacion_archivo(
                 p.id_ccr = f"T{batch_prefix}{i + 1:05d}"
 
             creados = Paciente.objects.bulk_create(pacientes_a_crear, batch_size=200)
+            crear_observaciones_iniciales(creados, autor=request.user)
             for paciente in creados:
                 paciente.id_ccr = _id_ccr_desde_pk(paciente.pk)
             Paciente.objects.bulk_update(creados, ["id_ccr"], batch_size=200)
@@ -967,7 +1082,9 @@ def _procesar_importacion_archivo(
                 MovimientoPaciente.objects.bulk_create(movimientos_iniciales, batch_size=200)
             resultado["importados"] = len(creados)
 
-        _agregar_diagnosticos_recurrentes(resultado.get("registros", []), request.user)
+        efectos_diagnostico = _agregar_diagnosticos_recurrentes(resultado.get("registros", []), request.user)
+        efectos["diagnosticos"] = efectos_diagnostico["diagnosticos"]
+        efectos["movimientos"].extend(efectos_diagnostico["movimientos"])
 
         ruts_duplicados = {
             reg["rut"]
@@ -992,6 +1109,7 @@ def _procesar_importacion_archivo(
 
             pats_data = list(pats_a_actualizar.values_list("id", "estado"))
             if pats_data:
+                efectos["recurrentes"] = [pid for pid, _estado in pats_data]
                 pats_a_actualizar.update(n_meses_espera=F("n_meses_espera") + 1)
                 meses_str = ", ".join(
                     f"{MESES_LABEL.get(m, str(m))} {anio}"
@@ -1007,7 +1125,27 @@ def _procesar_importacion_archivo(
                     )
                     for pid, estado in pats_data
                 ]
-                MovimientoPaciente.objects.bulk_create(movimientos, batch_size=200)
+                creados_mov = MovimientoPaciente.objects.bulk_create(movimientos, batch_size=200)
+                efectos["movimientos"].extend(m.pk for m in creados_mov if m.pk)
+
+        # Un paciente que ya existe no se vuelve a crear, pero si la planilla
+        # trae su teléfono y en el sistema está vacío, se completa.
+        filas_telefono = [
+            FilaTelefono(
+                rut=reg["rut"],
+                telefono=reg.get("telefono", ""),
+                telefono_recados=reg.get("telefono_recados", ""),
+                fila=reg.get("fila"),
+            )
+            for reg in resultado.get("registros", [])
+            if reg.get("es_duplicado") and reg.get("rut") and (reg.get("telefono") or reg.get("telefono_recados"))
+        ]
+        if filas_telefono:
+            resumen_telefonos = completar_telefonos(filas_telefono, aplicar=True)
+            resultado["telefonos_completados"] = resumen_telefonos.actualizados
+            efectos["telefonos"] = resumen_telefonos.previos
+        else:
+            resultado["telefonos_completados"] = 0
 
         _registrar_observaciones_revision(
             registros=resultado.get("registros", []),
@@ -1019,7 +1157,15 @@ def _procesar_importacion_archivo(
 
         for importacion in nuevas_importaciones.values():
             importacion.registros_importados = importacion.pacientes_creados.count()
-            importacion.save(update_fields=["registros_importados"])
+            importacion.efectos = efectos
+            importacion.save(update_fields=["registros_importados", "efectos"])
+
+        # Datos para ofrecer "Revertir carga" durante la ventana de 10 minutos.
+        cortes = list(nuevas_importaciones.values())
+        resultado["lote"] = lote
+        resultado["importaciones"] = [{"id": c.id, "periodo_label": c.periodo_label} for c in cortes]
+        if cortes:
+            resultado["revertible_hasta"] = revertible_hasta(cortes[0]).isoformat()
 
         resultado.pop("pacientes", None)
         resultado.pop("registros", None)
@@ -1028,12 +1174,16 @@ def _procesar_importacion_archivo(
 
 class ImportarDerivacionesView(APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def post(self, request):
         serializer = ImportacionDerivacionesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         hoy = date.today()
+        try:
+            periodo_forzado, correcciones = _leer_opciones_carga(request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return _procesar_importacion_archivo(
             request=request,
             archivo=serializer.validated_data["archivo"],
@@ -1041,11 +1191,13 @@ class ImportarDerivacionesView(APIView):
             anio_fallback=serializer.validated_data.get("anio", hoy.year),
             forzar_reemplazo=_bool_from_request(request.data.get("forzar_reemplazo", False)),
             modo_suplementar=_bool_from_request(request.data.get("modo_suplementar", False)),
+            periodo_forzado=periodo_forzado,
+            correcciones=correcciones,
         )
 
 
 class PrevisualizarDerivacionesPegadasView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def post(self, request):
         try:
@@ -1057,10 +1209,13 @@ class PrevisualizarDerivacionesPegadasView(APIView):
                 anio_solicitado = int(anio_solicitado) if anio_solicitado else None
             except (TypeError, ValueError):
                 return Response({"detail": "Mes o año inválido."}, status=status.HTTP_400_BAD_REQUEST)
+            periodo_forzado, correcciones = _leer_opciones_carga(request.data)
             resultado = previsualizar_derivaciones(
                 archivo,
                 mes_objetivo=mes_solicitado,
                 anio_objetivo=anio_solicitado if mes_solicitado else None,
+                periodo_forzado=periodo_forzado,
+                correcciones=correcciones,
             )
             return Response(resultado, status=status.HTTP_200_OK)
         except ValueError as exc:
@@ -1068,7 +1223,7 @@ class PrevisualizarDerivacionesPegadasView(APIView):
 
 
 class ImportarDerivacionesPegadasView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def post(self, request):
         try:
@@ -1084,6 +1239,10 @@ class ImportarDerivacionesPegadasView(APIView):
             anio_fallback = int(anio_fallback)
         except (TypeError, ValueError):
             return Response({"detail": "Mes o año inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periodo_forzado, correcciones = _leer_opciones_carga(request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return _procesar_importacion_archivo(
             request=request,
@@ -1092,12 +1251,14 @@ class ImportarDerivacionesPegadasView(APIView):
             anio_fallback=anio_fallback,
             forzar_reemplazo=_bool_from_request(request.data.get("forzar_reemplazo", False)),
             modo_suplementar=_bool_from_request(request.data.get("modo_suplementar", False)),
+            periodo_forzado=periodo_forzado,
+            correcciones=correcciones,
         )
 
 
 class PrevisualizarDerivacionesView(APIView):
     parser_classes = [MultiPartParser]
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def post(self, request):
         serializer = ImportacionDerivacionesSerializer(data=request.data)
@@ -1105,27 +1266,34 @@ class PrevisualizarDerivacionesView(APIView):
         archivo = serializer.validated_data["archivo"]
         mes_solicitado = serializer.validated_data.get("mes")
         anio_solicitado = serializer.validated_data.get("anio")
+        try:
+            periodo_forzado, correcciones = _leer_opciones_carga(request.data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         resultado = previsualizar_derivaciones(
             archivo,
             mes_objetivo=mes_solicitado,
             anio_objetivo=anio_solicitado if mes_solicitado else None,
+            periodo_forzado=periodo_forzado,
+            correcciones=correcciones,
         )
         return Response(resultado, status=status.HTTP_200_OK)
 
 
 class HistorialImportacionesView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def get(self, request):
         historial = (
             ImportacionMensual.objects.select_related("usuario", "reemplazada_por")
+            .filter(total_registros__gt=0)
             .all()
         )
-        return Response([_serialize_importacion(item) for item in historial])
+        return Response([_serialize_importacion(item, request.user) for item in historial])
 
 
 class ObservacionesRevisionImportacionView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrEncargado]
 
     def get(self, request):
         """Bandeja operativa para completar o descartar observaciones del corte."""
@@ -1148,7 +1316,9 @@ class ObservacionesRevisionImportacionView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        items: list[dict] = []
+        alerta = request.query_params.get("alerta")
+
+        todos: list[dict] = []
         total_pendientes = 0
         total_resueltos = 0
         total_descartados = 0
@@ -1164,11 +1334,7 @@ class ObservacionesRevisionImportacionView(APIView):
                     total_resueltos += 1
                 elif estado_item == "DESCARTADO":
                     total_descartados += 1
-                if tipo and observacion.get("tipo") != tipo:
-                    continue
-                if estado_revision != "TODOS" and estado_item != estado_revision:
-                    continue
-                items.append(
+                todos.append(
                     {
                         "id": f"{importacion.id}-{index}",
                         "importacion_id": importacion.id,
@@ -1182,19 +1348,64 @@ class ObservacionesRevisionImportacionView(APIView):
                     }
                 )
 
+        # Solo se cruza con el histórico lo que se muestra y lo pendiente (resumen).
+        pendientes = [o for o in todos if (o.get("estado_revision") or "PENDIENTE") == "PENDIENTE"]
+        enriquecer_observaciones(pendientes)
+        resumen = {
+            "por_tipo": {
+                t: sum(1 for o in pendientes if o.get("tipo") == t) for t in ("ERROR", "ADVERTENCIA", "RECURRENTE")
+            },
+            "auto_resolubles": sum(1 for o in pendientes if o.get("auto_resoluble")),
+            "auto_por_tipo": {
+                t: sum(1 for o in pendientes if o.get("auto_resoluble") and o.get("tipo") == t)
+                for t in ("ADVERTENCIA", "RECURRENTE")
+            },
+            "fallecidos": sum(1 for o in pendientes if (o.get("historico") or {}).get("fallecido")),
+            "otra_comuna": sum(1 for o in pendientes if (o.get("historico") or {}).get("otra_comuna")),
+            "con_historico": sum(1 for o in pendientes if (o.get("historico") or {}).get("encontrado")),
+        }
+
+        items = []
+        for observacion in todos:
+            estado_item = observacion.get("estado_revision") or "PENDIENTE"
+            if tipo and observacion.get("tipo") != tipo:
+                continue
+            if estado_revision != "TODOS" and estado_item != estado_revision:
+                continue
+            items.append(observacion)
+        if estado_revision != "PENDIENTE":
+            enriquecer_observaciones([o for o in items if (o.get("estado_revision") or "PENDIENTE") != "PENDIENTE"])
+
+        if alerta:
+            historico = lambda o: o.get("historico") or {}  # noqa: E731
+            filtros = {
+                "FALLECIDO": lambda o: historico(o).get("fallecido"),
+                "OTRA_COMUNA": lambda o: historico(o).get("otra_comuna"),
+                "AUTO": lambda o: o.get("auto_resoluble"),
+                "DATOS_DISTINTOS": lambda o: historico(o).get("nombre_coincide") is False
+                or historico(o).get("edad_coincide") is False,
+            }
+            if alerta in filtros:
+                items = [o for o in items if filtros[alerta](o)]
+
+        # Errores primero, luego advertencias y al final recurrentes.
+        orden_tipo = {"ERROR": 0, "ADVERTENCIA": 1, "RECURRENTE": 2}
+        items.sort(key=lambda o: (orden_tipo.get(o.get("tipo"), 3), -int(o.get("importacion_id") or 0)))
+
         return Response(
             {
                 "total": len(items),
                 "pendientes": total_pendientes,
                 "resueltos": total_resueltos,
                 "descartados": total_descartados,
+                "resumen": resumen,
                 "items": items,
             }
         )
 
 
 class ObservacionRevisionDetalleView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrEncargado]
 
     @transaction.atomic
     def patch(self, request, importacion_id: int, index: int):
@@ -1226,6 +1437,7 @@ class ObservacionRevisionDetalleView(APIView):
         accion = str(request.data.get("accion") or "").upper().strip()
         resolucion = str(request.data.get("resolucion") or "").strip()
         paciente = None
+        ficha_creada = None
 
         if accion not in {"DESCARTAR", "COMPLETAR"}:
             return Response(
@@ -1265,11 +1477,39 @@ class ObservacionRevisionDetalleView(APIView):
             prioridad = prioridad_normalizada(str(paciente_data.get("prioridad") or observacion.get("prioridad") or "MODERADA"))
             categoria_raw = str(paciente_data.get("categoria") or observacion.get("categoria") or "").strip().upper()
             observaciones_texto = str(paciente_data.get("observaciones") or observacion.get("observaciones") or "").strip()
+            # La revisión envía las observaciones ya separadas: cada una queda como entrada propia.
+            notas_lista = None
+            if isinstance(paciente_data.get("observaciones_lista"), list):
+                notas_lista = [str(t).strip() for t in paciente_data["observaciones_lista"] if str(t or "").strip()]
+                observaciones_texto = " | ".join(notas_lista)
             try:
                 edad = int(float(paciente_data.get("edad") or observacion.get("edad") or 0))
                 fecha_derivacion = _parse_fecha_revisada(fecha_raw)
             except (TypeError, ValueError) as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Datos de contacto y nacimiento que el funcionario pudo completar en la revisión.
+            telefono_rev = normalizar_telefono(paciente_data.get("telefono"))
+            recados_rev = normalizar_telefono(paciente_data.get("telefono_recados"))
+            email_rev = str(paciente_data.get("email") or "").strip().lower()
+            if email_rev:
+                try:
+                    validate_email(email_rev)
+                except ValidationError:
+                    return Response({"detail": "El correo electrónico no es válido."}, status=status.HTTP_400_BAD_REQUEST)
+            fecha_nacimiento_rev = None
+            nacimiento_raw = str(paciente_data.get("fecha_nacimiento") or "").strip()
+            if nacimiento_raw:
+                try:
+                    fecha_nacimiento_rev = date.fromisoformat(nacimiento_raw)
+                except ValueError:
+                    return Response(
+                        {"detail": "La fecha de nacimiento no es válida."}, status=status.HTTP_400_BAD_REQUEST
+                    )
+                if fecha_nacimiento_rev > date.today():
+                    return Response(
+                        {"detail": "La fecha de nacimiento no puede ser futura."}, status=status.HTTP_400_BAD_REQUEST
+                    )
 
             if not nombre or not rut or not diagnostico:
                 return Response(
@@ -1304,7 +1544,27 @@ class ObservacionRevisionDetalleView(APIView):
                     observaciones=observaciones_texto,
                     importacion_origen=importacion,
                 )
+                historico = HistoricoPaciente.objects.filter(rut=rut).first()
+                extras = {
+                    "telefono": telefono_rev or (historico.telefono if historico else ""),
+                    "telefono_recados": recados_rev or (historico.telefono_recados if historico else ""),
+                    "email": email_rev,
+                }
+                nacimiento = fecha_nacimiento_rev or (historico.fecha_nacimiento if historico else None)
+                if nacimiento:
+                    extras["fecha_nacimiento"] = nacimiento
+                extras = {k: v for k, v in extras.items() if v}
+                if extras:
+                    Paciente.objects.filter(pk=paciente.pk).update(**extras)
+                if notas_lista is None:
+                    crear_observaciones_iniciales([paciente], autor=request.user)
+                elif notas_lista:
+                    ObservacionPaciente.objects.bulk_create(
+                        [ObservacionPaciente(paciente=paciente, texto=t, autor=request.user) for t in notas_lista]
+                    )
+                    sincronizar_observaciones(paciente)
                 movimiento_nota = "Ficha operativa creada desde revisión de importación."
+                ficha_creada = paciente.id
             else:
                 movimiento_nota = "Observación vinculada a ficha operativa existente desde revisión de importación."
 
@@ -1341,14 +1601,297 @@ class ObservacionRevisionDetalleView(APIView):
             usuario=request.user,
             resolucion=resolucion,
             paciente=paciente,
+            deshacer={"ficha_creada": ficha_creada} if ficha_creada else None,
         )
         importacion.observaciones_revision = observaciones
         importacion.save(update_fields=["observaciones_revision"])
         return Response({"item": observaciones[index_int]}, status=status.HTTP_200_OK)
 
 
+def _resolver_recurrente(observacion: dict, indice: dict, usuario) -> tuple[bool, dict, str]:
+    """Deja al recurrente en lista con la espera acumulada.
+
+    Devuelve (se_puede, deshacer, detalle). Si el paciente ya fue ingresado o
+    egresado no se toca: esa decisión queda para una persona.
+    """
+    paciente = (
+        Paciente.objects.select_related("importacion_origen")
+        .filter(pk=observacion.get("paciente_id"))
+        .first()
+        if observacion.get("paciente_id")
+        else _paciente_vinculado_por_registro(observacion)
+    )
+    if not paciente or paciente.estado not in ESTADOS_EN_LISTA:
+        return False, {}, ""
+    foto = foto_paciente(paciente, CAMPOS_ESPERA)
+    detalle = acumular_espera(paciente, indice.get(paciente.rut, {}))
+    if detalle:
+        MovimientoPaciente.objects.create(
+            paciente=paciente,
+            usuario=usuario,
+            estado_anterior=None,
+            estado_nuevo=paciente.estado,
+            notas=f"Espera acumulada por recurrencia en listas mensuales: {detalle}.",
+        )
+    return True, ({"paciente": foto} if detalle else {}), detalle
+
+
+def _importaciones_vigentes():
+    return ImportacionMensual.objects.exclude(estado=ImportacionMensual.Estado.REEMPLAZADO)
+
+
+class ObservacionesRevisionMasivaView(APIView):
+    """Resuelve o descarta varias observaciones de una vez.
+
+    - Errores: solo DESCARTAR (crear la ficha exige revisar el dato).
+    - Recurrentes con RESOLVER: siguen en lista y su espera se acumula.
+    """
+
+    permission_classes = [IsAdminOrEncargado]
+
+    @transaction.atomic
+    def post(self, request):
+        accion = str(request.data.get("accion") or "").upper().strip()
+        resolucion = str(request.data.get("resolucion") or "").strip()
+        seleccion = request.data.get("items")
+        if accion not in {"RESOLVER", "DESCARTAR"}:
+            return Response({"detail": "Acción inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(seleccion, list) or not seleccion:
+            return Response({"detail": "Seleccione al menos una observación."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(seleccion) > 5000:
+            return Response({"detail": "Demasiadas observaciones en una sola acción."}, status=status.HTTP_400_BAD_REQUEST)
+
+        por_importacion: dict[int, set[int]] = {}
+        for item in seleccion:
+            try:
+                por_importacion.setdefault(int(item["importacion_id"]), set()).add(int(item["index"]))
+            except (KeyError, TypeError, ValueError):
+                return Response({"detail": "Selección inválida."}, status=status.HTTP_400_BAD_REQUEST)
+
+        lote = uuid.uuid4().hex
+        indice = indice_recurrencias(_importaciones_vigentes()) if accion == "RESOLVER" else {}
+        procesadas = omitidas = 0
+        for importacion in ImportacionMensual.objects.filter(pk__in=por_importacion):
+            observaciones = _observaciones_revision_persistidas(importacion)
+            for index in sorted(por_importacion[importacion.id]):
+                if index < 0 or index >= len(observaciones):
+                    omitidas += 1
+                    continue
+                observacion = observaciones[index]
+                if (observacion.get("estado_revision") or "PENDIENTE") != "PENDIENTE":
+                    omitidas += 1
+                    continue
+                tipo = observacion.get("tipo")
+                if accion == "RESOLVER" and tipo == "ERROR":
+                    omitidas += 1
+                    continue
+                deshacer: dict = {}
+                texto = resolucion or (
+                    "Descartado por funcionario (acción masiva)." if accion == "DESCARTAR"
+                    else "Revisado por funcionario (acción masiva)."
+                )
+                if accion == "RESOLVER" and tipo == "RECURRENTE":
+                    se_puede, deshacer, _detalle = _resolver_recurrente(observacion, indice, request.user)
+                    if not se_puede:
+                        omitidas += 1
+                        continue
+                    texto = resolucion or RESOLUCION_RECURRENTE
+                observaciones[index] = _actualizar_observacion_resuelta(
+                    observacion=observacion,
+                    accion="DESCARTAR" if accion == "DESCARTAR" else "COMPLETAR",
+                    usuario=request.user,
+                    resolucion=texto,
+                    lote=lote,
+                    deshacer=deshacer,
+                )
+                procesadas += 1
+            importacion.observaciones_revision = observaciones
+            importacion.save(update_fields=["observaciones_revision"])
+        return Response({"procesadas": procesadas, "omitidas": omitidas, "lote": lote}, status=status.HTTP_200_OK)
+
+
+class ObservacionesRevisionAutoresolverView(APIView):
+    """Resuelve sola toda observación que no necesita una persona.
+
+    - Advertencias de sector que el histórico ya resolvió: completa el sector.
+    - Recurrentes de pacientes que siguen en lista (pendiente/rescate): quedan
+      en lista con la espera acumulada desde su primera derivación.
+    Con `simular` solo cuenta. Todo queda en un lote que se puede deshacer.
+    """
+
+    permission_classes = [IsAdminOrEncargado]
+
+    @transaction.atomic
+    def post(self, request):
+        simular = _bool_from_request(request.data.get("simular", False))
+        lote = uuid.uuid4().hex
+        importaciones = list(_importaciones_vigentes())
+        indice = indice_recurrencias(importaciones)
+        advertencias = recurrentes = fichas_completadas = esperas_acumuladas = 0
+        for importacion in importaciones:
+            observaciones = _observaciones_revision_persistidas(importacion)
+            pendientes = [
+                (i, o) for i, o in enumerate(observaciones)
+                if (o.get("estado_revision") or "PENDIENTE") == "PENDIENTE"
+                and o.get("tipo") in {"ADVERTENCIA", "RECURRENTE"}
+            ]
+            if not pendientes:
+                continue
+            enriquecer_observaciones([o for _, o in pendientes])
+            cambio = False
+            for index, observacion in pendientes:
+                if observacion.get("tipo") == "ADVERTENCIA":
+                    if not observacion.get("auto_resoluble"):
+                        continue
+                    advertencias += 1
+                    if simular:
+                        continue
+                    paciente = Paciente.objects.filter(pk=observacion.get("paciente_id")).first()
+                    foto = foto_paciente(paciente, CAMPOS_SECTOR) if paciente else None
+                    completo = completar_sector_paciente(observacion)
+                    fichas_completadas += int(completo)
+                    observaciones[index] = _actualizar_observacion_resuelta(
+                        observacion=observacion, accion="COMPLETAR", usuario=request.user,
+                        resolucion=RESOLUCION_AUTO, lote=lote,
+                        deshacer={"paciente": foto} if completo and foto else None,
+                    )
+                    cambio = True
+                    continue
+
+                # RECURRENTE: solo si el paciente sigue en lista (pendiente o rescate).
+                filtro = (
+                    {"pk": observacion.get("paciente_id")}
+                    if observacion.get("paciente_id")
+                    else {"rut": observacion.get("rut")}
+                )
+                if not Paciente.objects.filter(estado__in=ESTADOS_EN_LISTA, **filtro).exists():
+                    continue
+                recurrentes += 1
+                if simular:
+                    continue
+                _ok, deshacer, detalle = _resolver_recurrente(observacion, indice, request.user)
+                esperas_acumuladas += int(bool(detalle))
+                observaciones[index] = _actualizar_observacion_resuelta(
+                    observacion=observacion, accion="COMPLETAR", usuario=request.user,
+                    resolucion=RESOLUCION_RECURRENTE, lote=lote, deshacer=deshacer,
+                )
+                cambio = True
+            if cambio:
+                importacion.observaciones_revision = observaciones
+                importacion.save(update_fields=["observaciones_revision"])
+        return Response(
+            {
+                "simulado": simular,
+                "lote": "" if simular else lote,
+                "resueltas": advertencias + recurrentes,
+                "advertencias": advertencias,
+                "recurrentes": recurrentes,
+                "fichas_completadas": fichas_completadas,
+                "esperas_acumuladas": esperas_acumuladas,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ObservacionesRevisionDeshacerView(APIView):
+    """Vuelve a dejar pendientes observaciones resueltas o descartadas.
+
+    Acepta un `lote` (toda una acción) o `items`. Restaura los datos de la
+    ficha que la resolución cambió (sector, fecha de espera, meses en listas).
+    Una ficha creada desde la revisión no se borra: queda vinculada y se avisa.
+    """
+
+    permission_classes = [IsAdminOrEncargado]
+
+    @transaction.atomic
+    def post(self, request):
+        lote = str(request.data.get("lote") or "").strip()
+        seleccion = request.data.get("items") or []
+        claves: set[tuple[int, int]] = set()
+        if not lote:
+            if not isinstance(seleccion, list) or not seleccion:
+                return Response({"detail": "Indique un lote u observaciones a deshacer."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                claves = {(int(i["importacion_id"]), int(i["index"])) for i in seleccion}
+            except (KeyError, TypeError, ValueError):
+                return Response({"detail": "Selección inválida."}, status=status.HTTP_400_BAD_REQUEST)
+
+        importaciones = (
+            ImportacionMensual.objects.filter(pk__in={k[0] for k in claves}) if claves else _importaciones_vigentes()
+        )
+        deshechas = fichas_restauradas = fichas_creadas = 0
+        importaciones = list(importaciones)
+
+        def elegida(importacion, index, obs) -> bool:
+            if (obs.get("estado_revision") or "PENDIENTE") == "PENDIENTE":
+                return False
+            if lote and obs.get("lote_resolucion") != lote:
+                return False
+            return not claves or (importacion.id, index) in claves
+
+        # Si un campo de un paciente cambió varias veces, vale su valor más antiguo
+        # (el previo a todo). Cada acción guarda solo los campos que tocó.
+        por_campo: dict[int, dict[str, tuple[str, object]]] = {}
+        for importacion in importaciones:
+            for index, obs in enumerate(importacion.observaciones_revision or []):
+                foto = (obs.get("deshacer") or {}).get("paciente")
+                if not (foto and foto.get("id") and elegida(importacion, index, obs)):
+                    continue
+                marca = obs.get("resuelto_en") or ""
+                campos = por_campo.setdefault(foto["id"], {})
+                for campo, valor in foto.items():
+                    if campo != "id" and (campo not in campos or marca < campos[campo][0]):
+                        campos[campo] = (marca, valor)
+        fotos = {
+            pid: (None, {"id": pid, **{c: v for c, (_m, v) in campos.items()}})
+            for pid, campos in por_campo.items()
+        }
+        for paciente_id, (_marca, foto) in fotos.items():
+            if restaurar_paciente(foto):
+                fichas_restauradas += 1
+                paciente = Paciente.objects.get(pk=paciente_id)
+                MovimientoPaciente.objects.create(
+                    paciente=paciente, usuario=request.user, estado_anterior=None,
+                    estado_nuevo=paciente.estado,
+                    notas="Se deshizo una resolución de la revisión de carga; se restauraron sus datos previos.",
+                )
+
+        for importacion in importaciones:
+            observaciones = list(importacion.observaciones_revision or [])
+            cambio = False
+            for index, obs in enumerate(observaciones):
+                if not elegida(importacion, index, obs):
+                    continue
+                info = obs.get("deshacer") or {}
+                if info.get("ficha_creada"):
+                    fichas_creadas += 1
+                limpia = {
+                    k: v for k, v in obs.items()
+                    if k not in {"resolucion", "resuelto_en", "resuelto_por_id", "resuelto_por_nombre",
+                                 "lote_resolucion", "deshacer"}
+                }
+                limpia["estado_revision"] = "PENDIENTE"
+                limpia["requiere_revision"] = obs.get("tipo") == "ADVERTENCIA" or (
+                    obs.get("tipo") == "ERROR" and not obs.get("paciente_id")
+                )
+                observaciones[index] = limpia
+                deshechas += 1
+                cambio = True
+            if cambio:
+                importacion.observaciones_revision = observaciones
+                importacion.save(update_fields=["observaciones_revision"])
+        return Response(
+            {
+                "deshechas": deshechas,
+                "fichas_restauradas": fichas_restauradas,
+                "fichas_creadas_conservadas": fichas_creadas,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class ExportarHistorialImportacionesMesView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def get(self, request, mes: int, anio: int):
         mes = int(mes)
@@ -1373,7 +1916,7 @@ class ExportarHistorialImportacionesMesView(APIView):
 
 
 class HistorialImportacionesMesView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def get(self, request, mes: int, anio: int):
         mes = int(mes)
@@ -1390,12 +1933,20 @@ class HistorialImportacionesMesView(APIView):
                 "mes_label": MESES_LABEL.get(mes, str(mes)),
                 "periodo_label": f"{MESES_LABEL.get(mes, mes)} {anio}",
                 "pacientes_actuales_del_corte": _resumen_pacientes_corte(mes, anio),
-                "items": [_serialize_importacion(item) for item in historial],
+                "pacientes": _pacientes_corte(mes, anio),
+                "items": [_serialize_importacion(item, request.user) for item in historial],
             }
         )
 
     @transaction.atomic
     def delete(self, request, mes: int, anio: int):
+        # Borrar un periodo completo es mantención: solo el Administrador.
+        # El Médico revierte su propia carga dentro de 10 minutos (corte/<id>).
+        if request.user.rol != Usuario.Rol.ADMIN:
+            return Response(
+                {"detail": "Solo el Administrador puede eliminar un periodo completo."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         try:
             mes = int(mes)
             anio = int(anio)
@@ -1434,7 +1985,7 @@ class HistorialImportacionesMesView(APIView):
 
 
 class ImportacionMensualDetalleView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     @transaction.atomic
     def delete(self, request, pk: int):
@@ -1447,6 +1998,18 @@ class ImportacionMensualDetalleView(APIView):
             )
 
         mes, anio = _mes_y_anio_referencia(importacion)
+
+        # Dentro de los 10 minutos, quien cargó revierte la subida completa.
+        reversion = estado_reversion(importacion, request.user)
+        if reversion["revertible"]:
+            resumen = revertir_carga(importacion, request.user)
+            return Response({"id": int(pk), "mes": mes, "anio": anio, "revertida": True, **resumen}, status=status.HTTP_200_OK)
+
+        # Pasada la ventana la carga queda consolidada; solo el Administrador
+        # puede limpiar el corte como mantención.
+        if request.user.rol != Usuario.Rol.ADMIN:
+            return Response({"detail": reversion["motivo_no_revertible"]}, status=status.HTTP_403_FORBIDDEN)
+
         resumen = _vaciar_importaciones([importacion], borrar_importacion=True)
 
         return Response(
@@ -1454,6 +2017,7 @@ class ImportacionMensualDetalleView(APIView):
                 "id": int(pk),
                 "mes": mes,
                 "anio": anio,
+                "revertida": False,
                 **resumen,
             },
             status=status.HTTP_200_OK,
@@ -1461,22 +2025,22 @@ class ImportacionMensualDetalleView(APIView):
 
 
 class PlantillaImportacionView(APIView):
-    permission_classes = [IsAdminOrAdministrativoRole]
+    permission_classes = [IsAdminOrMedicoRole]
 
     def get(self, request):
         wb = Workbook()
         ws = wb.active
         ws.title = "IMPORTAR"
 
-        ws.merge_cells("A1:N1")
+        ws.merge_cells("A1:P1")
         ws["A1"] = "Derivación a Centro Comunitario de Rehabilitación Cesfam Dr. Alberto Reyes"
         ws["A1"].font = Font(bold=True, size=11)
         ws["A1"].alignment = Alignment(horizontal="center")
 
         headers_f2 = {
             "A2": "FECHA DERIV",
-            "B2": "SECTOR OFICIAL",
-            "C2": "SectorCesfam",
+            "B2": "SECTOR TERRITORIAL",
+            "C2": "SECTOR",
             "D2": "NOMBRE",
             "E2": "RUT",
             "F2": "EDAD",
@@ -1488,6 +2052,8 @@ class PlantillaImportacionView(APIView):
             "L2": "ESTADO SUGERIDO",
             "M2": "CATEGORIA",
             "N2": "ASIGNADO HISTORICO",
+            "O2": "TELEFONO",
+            "P2": "TELEFONO RECADOS",
         }
         fill_header = PatternFill("solid", fgColor="1B5E3B")
         font_header = Font(bold=True, color="FFFFFF", size=10)
@@ -1518,6 +2084,8 @@ class PlantillaImportacionView(APIView):
             "L3": "PENDIENTE / INGRESADO",
             "M3": "LUMBAGOS / MAS65",
             "N3": "SI / NO",
+            "O3": "+56912345678",
+            "P3": "Opcional",
         }
         fill_ejemplo = PatternFill("solid", fgColor="E8F5EE")
         font_ejemplo = Font(italic=True, color="3A5A3A", size=9)
@@ -1545,6 +2113,8 @@ class PlantillaImportacionView(APIView):
                 "PENDIENTE",
                 "LUMBAGOS",
                 "NO",
+                "+56912345678",
+                "",
             ),
             (
                 "20/01/2025",
@@ -1561,6 +2131,8 @@ class PlantillaImportacionView(APIView):
                 "INGRESADO",
                 "MAS65",
                 "SI",
+                "+56987654321",
+                "+56223456789",
             ),
             (
                 "22/01/2025",
@@ -1577,6 +2149,8 @@ class PlantillaImportacionView(APIView):
                 "",
                 "HOMBROS",
                 "NO",
+                "",
+                "",
             ),
         ]
         for i, fila in enumerate(datos_ejemplo, start=4):
@@ -1587,7 +2161,7 @@ class PlantillaImportacionView(APIView):
                 if j == 1:
                     c.number_format = "DD/MM/YYYY"
 
-        anchos = [14, 20, 20, 30, 14, 7, 28, 18, 16, 40, 20, 20, 28, 18]
+        anchos = [14, 20, 20, 30, 14, 7, 28, 18, 16, 40, 20, 20, 28, 18, 16, 18]
         for i, ancho in enumerate(anchos, start=1):
             ws.column_dimensions[chr(64 + i)].width = ancho
 
@@ -1599,6 +2173,124 @@ class PlantillaImportacionView(APIView):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = 'attachment; filename="Plantilla_Derivaciones_CCR.xlsx"'
+        return response
+
+
+class ResumenCargasView(APIView):
+    """Inicio del Médico: indicadores del mes y últimas cargas con su ventana de reversión."""
+
+    permission_classes = [IsAdminOrMedicoRole]
+
+    def get(self, request):
+        ahora = timezone.now()
+        hoy = timezone.localdate()
+        del_mes = ImportacionMensual.objects.filter(fecha_subida__date__gte=hoy.replace(day=1))
+        recientes = ImportacionMensual.objects.select_related("usuario").order_by("-fecha_subida")[:8]
+        return Response({
+            "mes_label": f"{MESES_LABEL[hoy.month]} {hoy.year}",
+            "derivaciones_mes": del_mes.aggregate(total=Sum("registros_importados"))["total"] or 0,
+            # Una subida = un lote; las cargas previas al lote cuentan una por corte.
+            "cargas_mes": del_mes.exclude(lote="").values("lote").distinct().count() + del_mes.filter(lote="").count(),
+            "pendientes_telefono": Paciente.objects.filter(
+                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE, Paciente.Estado.INGRESADO],
+                telefono="",
+                telefono_recados="",
+            ).count(),
+            "ventana_minutos": MINUTOS_REVERSION,
+            "ahora": ahora.isoformat(),
+            "recientes": [
+                {
+                    "id": item.id,
+                    "archivo_nombre": item.archivo_nombre or item.archivo.name.rsplit("/", 1)[-1],
+                    "periodo_label": item.periodo_label,
+                    "fecha_subida": item.fecha_subida.isoformat(),
+                    "usuario_nombre": item.usuario.nombre if item.usuario else None,
+                    "registros_importados": item.registros_importados,
+                    "duplicados": item.duplicados,
+                    "errores_count": item.errores_count,
+                    "estado": item.estado,
+                    "estado_label": item.get_estado_display(),
+                    "lote": item.lote,
+                    **estado_reversion(item, request.user, ahora),
+                }
+                for item in recientes
+            ],
+        })
+
+
+class CompletarTelefonosView(APIView):
+    """Completa teléfonos vacíos desde un Excel de RUT + teléfono.
+
+    Sin `aplicar` solo previsualiza. Nunca pisa un teléfono existente.
+    """
+
+    parser_classes = [MultiPartParser]
+    permission_classes = [IsAdminMedicoOrEncargado]
+
+    def post(self, request):
+        serializer = ImportacionTelefonosSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            filas = leer_excel_telefonos(serializer.validated_data["archivo"])
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        aplicar = serializer.validated_data["aplicar"]
+        resumen = completar_telefonos(filas, aplicar=aplicar)
+        return Response({**resumen.as_dict(), "aplicado": aplicar}, status=status.HTTP_200_OK)
+
+
+class PlantillaTelefonosView(APIView):
+    """Excel con los pacientes activos sin teléfono, listo para completar."""
+
+    permission_classes = [IsAdminMedicoOrEncargado]
+
+    def get(self, request):
+        pacientes = (
+            Paciente.objects.filter(
+                estado__in=[Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE, Paciente.Estado.INGRESADO],
+                telefono="",
+                telefono_recados="",
+            )
+            .order_by("nombre")
+            .values_list("rut", "nombre", "estado")
+        )
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TELEFONOS"
+        headers = ["RUT", "NOMBRE", "ESTADO", "TELEFONO", "TELEFONO RECADOS"]
+        fill_header = PatternFill("solid", fgColor="1B5E3B")
+        font_header = Font(bold=True, color="FFFFFF", size=10)
+        for col, valor in enumerate(headers, start=1):
+            c = ws.cell(row=1, column=col, value=valor)
+            c.fill = fill_header
+            c.font = font_header
+            c.alignment = Alignment(horizontal="center", vertical="center")
+
+        vistos = set()
+        fila = 2
+        for rut, nombre, estado in pacientes:
+            if rut in vistos:
+                continue
+            vistos.add(rut)
+            ws.cell(row=fila, column=1, value=rut).number_format = "@"
+            ws.cell(row=fila, column=2, value=nombre)
+            ws.cell(row=fila, column=3, value=estado)
+            # Texto: evita que Excel convierta el número y le quite el +56.
+            ws.cell(row=fila, column=4).number_format = "@"
+            ws.cell(row=fila, column=5).number_format = "@"
+            fila += 1
+
+        for letra, ancho in zip("ABCDE", (14, 40, 14, 18, 20)):
+            ws.column_dimensions[letra].width = ancho
+        ws.freeze_panes = "A2"
+
+        output = BytesIO()
+        wb.save(output)
+        response = HttpResponse(
+            output.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="Completar_Telefonos_CCR.xlsx"'
         return response
 
 

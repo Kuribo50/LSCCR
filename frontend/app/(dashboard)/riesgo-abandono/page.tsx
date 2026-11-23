@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { formatearRut } from "@/lib/rut";
 import type { PacienteRiesgo, RiesgoAbandonoResponse, RiesgoNivel } from "@/lib/types";
 import FichaPaciente from "@/components/FichaPaciente";
+import LoaderKine from '@/components/LoaderKine'
 
 const NIVEL_BAND: Record<
   RiesgoNivel,
@@ -107,16 +108,15 @@ export default function RiesgoAbandonoPage() {
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-8 text-sm font-semibold text-slate-500 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-slate-400">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-500" />
-          Calculando el riesgo de cada paciente…
+        <div className="flex justify-center rounded-2xl border border-slate-200 bg-white py-8 dark:border-[#262626] dark:bg-[#0f0f10]">
+          <LoaderKine enLinea retrasoMs={0} />
         </div>
       ) : pacientes.length === 0 ? (
         <p className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-500 dark:border-[#262626] dark:bg-[#151515] dark:text-slate-400">
           <FiSearch size={15} /> Sin pacientes activos para evaluar.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-[#262626] dark:bg-[#0f0f10]">
+        <div className="ccr-stagger overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-[#262626] dark:bg-[#0f0f10]">
           {pacientes.map((paciente, index) => {
             const band = NIVEL_BAND[paciente.riesgo_nivel];
             const tel = (paciente.telefono || "").replace(/\D/g, "");

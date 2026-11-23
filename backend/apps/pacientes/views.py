@@ -10,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.usuarios.models import Usuario
+from apps.usuarios.permissions import BloqueaMedicoMixin, es_encargado
 
 from .exports import crear_excel_pacientes, excel_response, fecha_archivo_hoy
 from .models import (
@@ -19,6 +20,7 @@ from .models import (
     InasistenciaPaciente,
     LlamadoPaciente,
     MovimientoPaciente,
+    ObservacionPaciente,
     Paciente,
     ParticipanteActividad,
     RegistroAgendaPaciente,
@@ -27,6 +29,7 @@ from .permissions import (
     PuedeAsignarPaciente,
     PuedeCambiarEstado,
     PuedeGestionarActividadGrupal,
+    PuedeGestionarObservacion,
     PuedeProgramarAtencion,
     PuedeRegistrarLlamado,
 )
@@ -41,6 +44,7 @@ from .serializers import (
     InasistenciaPacienteSerializer,
     LlamadoPacienteSerializer,
     MovimientoPacienteSerializer,
+    ObservacionPacienteSerializer,
     PacienteCreateSerializer,
     PacienteSerializer,
     ProgramarAtencionSerializer,
@@ -55,6 +59,8 @@ from .llamados import ESTADOS_EN_COLA, deshacer_llamado, registrar_llamado as re
 from .services import (
     ESTADOS_FINALES,
     categoria_por_diagnostico,
+    crear_observaciones_iniciales,
+    sincronizar_observaciones,
     estado_requiere_nota,
     prioridad_normalizada,
     validar_transicion_estado,
@@ -110,7 +116,7 @@ def _q_iexact_varios(campo, valor):
             filtro |= Q(**{f"{campo}__iexact": item})
     return filtro
 
-class PacienteViewSet(viewsets.ModelViewSet):
+class PacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
     """API principal de pacientes.
 
     Este ViewSet concentra lista de espera, busqueda, asignacion, cambios de
@@ -133,6 +139,10 @@ class PacienteViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return PacienteCreateSerializer
         return PacienteSerializer
+
+    def perform_create(self, serializer):
+        paciente = serializer.save()
+        crear_observaciones_iniciales([paciente], autor=self.request.user)
 
     def _fecha_programada_agenda(self, paciente, serializer):
         return serializer.validated_data.get("fecha_programada") or paciente.proxima_atencion
@@ -304,6 +314,22 @@ class PacienteViewSet(viewsets.ModelViewSet):
                 for item in dias
             ]
         )
+
+    # Lo único que un profesional (no encargado) corrige: el contacto para llamar.
+    CAMPOS_CONTACTO = {"telefono", "telefono_recados", "email"}
+
+    def update(self, request, *args, **kwargs):
+        # Los datos clínicos y administrativos los corrige el profesional
+        # encargado (o el Administrador); el resto de profesionales trabaja
+        # sobre datos ya corregidos y solo actualiza el contacto.
+        if request.user.rol == Usuario.Rol.KINE and not es_encargado(request.user):
+            otros = sorted(set(request.data.keys()) - self.CAMPOS_CONTACTO)
+            if otros:
+                return Response(
+                    {"detail": "Solo un profesional encargado puede corregir estos datos: " + ", ".join(otros) + "."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.rol != Usuario.Rol.ADMIN:
@@ -486,24 +512,6 @@ class PacienteViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         estado_nuevo = serializer.validated_data["estado"]
         notas = serializer.validated_data["notas"].strip()
-
-        # El administrativo participa en contacto/rescate, pero no debe cerrar
-        # estados clinicos salvo egreso administrativo documentado.
-        if request.user.rol == Usuario.Rol.ADMINISTRATIVO:
-            if estado_nuevo not in {
-                Paciente.Estado.INGRESADO,
-                Paciente.Estado.RESCATE,
-                Paciente.Estado.EGRESO_ADMINISTRATIVO,
-            }:
-                return Response(
-                    {"detail": "Administrativo no puede cambiar a estados de cierre operativo."},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            if estado_nuevo == Paciente.Estado.INGRESADO and paciente.kine_asignado_id is None:
-                return Response(
-                    {"detail": "No puede confirmar asistencia sin responsable CCR asignado."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
 
         if not validar_transicion_estado(paciente.estado, estado_nuevo):
             return Response(
@@ -1055,6 +1063,65 @@ class PacienteViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=False, methods=["get"], url_path="inasistencias-resumen")
+    def inasistencias_resumen(self, request):
+        """Pacientes con inasistencias registradas, con totales y el detalle de cada una.
+
+        El profesional ve solo su cartera; el encargado y el administrador, todos.
+        Filtros opcionales: `desde` y `hasta` (AAAA-MM-DD) sobre la fecha de la inasistencia.
+        """
+        registros = InasistenciaPaciente.objects.select_related("paciente__kine_asignado", "usuario")
+        if request.user.rol == Usuario.Rol.KINE and not es_encargado(request.user):
+            registros = registros.filter(paciente__kine_asignado=request.user)
+        for param, lookup in (("desde", "fecha__gte"), ("hasta", "fecha__lte")):
+            valor = request.query_params.get(param)
+            if valor:
+                try:
+                    registros = registros.filter(**{lookup: date.fromisoformat(valor)})
+                except ValueError:
+                    return Response({"detail": f"Fecha '{param}' inválida."}, status=status.HTTP_400_BAD_REQUEST)
+
+        por_paciente: dict[int, dict] = {}
+        for ina in registros.order_by("-fecha", "-id"):
+            p = ina.paciente
+            item = por_paciente.setdefault(p.id, {
+                "paciente_id": p.id,
+                "id_ccr": p.id_ccr,
+                "nombre": p.nombre,
+                "rut": p.rut,
+                "estado": p.estado,
+                "estado_label": p.get_estado_display(),
+                "kine_nombre": p.kine_asignado.nombre if p.kine_asignado else None,
+                "telefono": p.telefono,
+                "total": 0,
+                "no_justificadas": 0,
+                "justificadas": 0,
+                "ultima_fecha": ina.fecha.isoformat(),
+                "ultimo_motivo": ina.motivo,
+                "detalle": [],
+            })
+            item["total"] += 1
+            item["justificadas" if ina.justificada else "no_justificadas"] += 1
+            item["detalle"].append({
+                "id": ina.id,
+                "fecha": ina.fecha.isoformat(),
+                "justificada": ina.justificada,
+                "motivo": ina.motivo,
+                "usuario_nombre": ina.usuario.nombre if ina.usuario else None,
+            })
+
+        items = sorted(
+            por_paciente.values(),
+            key=lambda i: (-i["no_justificadas"], -i["total"], i["nombre"]),
+        )
+        return Response({
+            "total_pacientes": len(items),
+            "total_inasistencias": sum(i["total"] for i in items),
+            "no_justificadas": sum(i["no_justificadas"] for i in items),
+            "en_riesgo": sum(1 for i in items if i["no_justificadas"] >= 2),
+            "items": items,
+        })
+
     @action(detail=False, methods=["get"], url_path="riesgo-abandono")
     def riesgo_abandono(self, request):
         """Score heuristico (0-100) de riesgo de abandono por paciente activo.
@@ -1200,11 +1267,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="ingreso-masivo")
     def ingreso_masivo(self, request):
-        if request.user.rol not in {
-            Usuario.Rol.KINE,
-            Usuario.Rol.ADMIN,
-            Usuario.Rol.ADMINISTRATIVO,
-        }:
+        if request.user.rol not in {Usuario.Rol.KINE, Usuario.Rol.ADMIN}:
             return Response({"detail": "Sin permiso."}, status=status.HTTP_403_FORBIDDEN)
 
         data = request.data if isinstance(request.data, list) else request.data.get("pacientes", [])
@@ -1338,7 +1401,7 @@ class PacienteViewSet(viewsets.ModelViewSet):
 
 from rest_framework.views import APIView
 
-class PerfilPacienteView(APIView):
+class PerfilPacienteView(BloqueaMedicoMixin, APIView):
     def get(self, request, rut):
         rut = normalizar_rut(rut)
         pacientes = Paciente.objects.filter(rut=rut).order_by("-fecha_derivacion")
@@ -1368,7 +1431,7 @@ class PerfilPacienteView(APIView):
 
 
 
-class ActividadGrupalViewSet(viewsets.ModelViewSet):
+class ActividadGrupalViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
     """Actividades grupales: una fecha y hora a la que asisten varios pacientes.
 
     Filtros: `desde` y `hasta` (YYYY-MM-DD), `paciente` (id) y `estado`
@@ -1457,7 +1520,7 @@ def _nombres_pacientes(ids):
     return f"{texto} y {len(nombres) - 4} más" if len(nombres) > 4 else texto
 
 
-class GrupoPacientesViewSet(viewsets.ModelViewSet):
+class GrupoPacientesViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
     """Grupos guardados de pacientes para citarlos juntos.
 
     Por defecto lista solo grupos activos; `?incluir_inactivos=1` muestra
@@ -1595,3 +1658,39 @@ class GrupoPacientesViewSet(viewsets.ModelViewSet):
                 "actividades": ActividadGrupalSerializer(actividades, many=True, context=self.get_serializer_context()).data,
             }
         )
+
+
+class ObservacionPacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
+    """Observaciones del paciente como lista: crear, editar, borrar y fijar.
+
+    Listar requiere `?paciente=<id>`. Cada cambio reescribe el resumen
+    `Paciente.observaciones` que usan las exportaciones y la búsqueda.
+    """
+
+    permission_classes = [PuedeGestionarObservacion]
+    serializer_class = ObservacionPacienteSerializer
+
+    def get_queryset(self):
+        qs = ObservacionPaciente.objects.select_related("autor", "paciente")
+        paciente = self.request.query_params.get("paciente")
+        if self.action == "list":
+            if not paciente:
+                return qs.none()
+            qs = qs.filter(paciente_id=paciente)
+        return qs
+
+    def _sincronizar(self, paciente):
+        sincronizar_observaciones(paciente)
+
+    def perform_create(self, serializer):
+        obs = serializer.save(autor=self.request.user)
+        self._sincronizar(obs.paciente)
+
+    def perform_update(self, serializer):
+        obs = serializer.save()
+        self._sincronizar(obs.paciente)
+
+    def perform_destroy(self, instance):
+        paciente = instance.paciente
+        instance.delete()
+        self._sincronizar(paciente)

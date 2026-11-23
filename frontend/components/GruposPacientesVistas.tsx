@@ -349,7 +349,7 @@ export function FormularioGrupo({
       const guardado = grupo
         ? await api.patch<GrupoPacientes>(`/grupos-pacientes/${grupo.id}/`, payload)
         : await api.post<GrupoPacientes>("/grupos-pacientes/", payload);
-      toast.success(grupo ? "Grupo actualizado." : `Grupo "${guardado.nombre}" guardado.`);
+      toast.success(grupo ? "Grupo actualizado correctamente." : `Grupo creado correctamente.`);
       await onGuardado(guardado);
     } catch (err) {
       setError(getErrorMessage(err, "No se pudo guardar el grupo."));

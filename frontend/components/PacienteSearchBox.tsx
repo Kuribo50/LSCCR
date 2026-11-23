@@ -92,7 +92,7 @@ function responsablePaciente(paciente: Paciente) {
 
 function kineAsignadoLabel(paciente: Paciente) {
   const responsable = responsablePaciente(paciente);
-  return responsable ? `Kine asignado: ${responsable}` : "Kine asignado: pendiente";
+  return responsable ? `Profesional asignado: ${responsable}` : "Profesional asignado: pendiente";
 }
 
 function seccionPaciente(paciente: Paciente): SearchSectionId | null {
@@ -422,7 +422,7 @@ export default function PacienteSearchBox({
               {sectorCesfam && (
                 <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
                   <FiMapPin size={10} />
-                  CESFAM {sectorCesfam}
+                  Sector {sectorCesfam}
                 </span>
               )}
               {sectorOficial && (

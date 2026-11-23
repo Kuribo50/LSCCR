@@ -1,6 +1,7 @@
 from django.urls import re_path
 
 from .views import (
+    CompletarTelefonosView,
     ExportarHistorialImportacionesMesView,
     HistorialImportacionesMesView,
     HistorialImportacionesView,
@@ -8,8 +9,13 @@ from .views import (
     ImportacionMensualDetalleView,
     ImportarDerivacionesView,
     ObservacionRevisionDetalleView,
+    ObservacionesRevisionAutoresolverView,
+    ObservacionesRevisionDeshacerView,
     ObservacionesRevisionImportacionView,
+    ObservacionesRevisionMasivaView,
     PlantillaImportacionView,
+    PlantillaTelefonosView,
+    ResumenCargasView,
     PrevisualizarDerivacionesPegadasView,
     PrevisualizarDerivacionesView,
     ResetPoblacionView,
@@ -21,6 +27,9 @@ urlpatterns = [
     re_path(r"^importar/derivaciones/?$", ImportarDerivacionesView.as_view(), name="importar-derivaciones"),
     re_path(r"^importar/previsualizar-pegado/?$", PrevisualizarDerivacionesPegadasView.as_view(), name="importar-previsualizar-pegado"),
     re_path(r"^importar/derivaciones-pegado/?$", ImportarDerivacionesPegadasView.as_view(), name="importar-derivaciones-pegado"),
+    re_path(r"^importar/revision/masiva/?$", ObservacionesRevisionMasivaView.as_view(), name="importar-revision-masiva"),
+    re_path(r"^importar/revision/deshacer/?$", ObservacionesRevisionDeshacerView.as_view(), name="importar-revision-deshacer"),
+    re_path(r"^importar/revision/autoresolver/?$", ObservacionesRevisionAutoresolverView.as_view(), name="importar-revision-autoresolver"),
     re_path(r"^importar/revision/?$", ObservacionesRevisionImportacionView.as_view(), name="importar-revision"),
     re_path(r"^importar/revision/(?P<importacion_id>\d+)/(?P<index>\d+)/?$", ObservacionRevisionDetalleView.as_view(), name="importar-revision-detalle"),
     re_path(r"^importar/historial/?$", HistorialImportacionesView.as_view(), name="importar-historial"),
@@ -29,4 +38,7 @@ urlpatterns = [
     re_path(r"^importar/historial/corte/(?P<pk>\d+)/?$", ImportacionMensualDetalleView.as_view(), name="importar-historial-corte"),
     re_path(r"^importar/plantilla/?$", PlantillaImportacionView.as_view(), name="importar-plantilla"),
     re_path(r"^importar/reset/?$", ResetPoblacionView.as_view(), name="importar-reset"),
+    re_path(r"^importar/telefonos/?$", CompletarTelefonosView.as_view(), name="importar-telefonos"),
+    re_path(r"^importar/telefonos/plantilla/?$", PlantillaTelefonosView.as_view(), name="importar-telefonos-plantilla"),
+    re_path(r"^importar/resumen-cargas/?$", ResumenCargasView.as_view(), name="importar-resumen-cargas"),
 ]

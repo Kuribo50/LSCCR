@@ -33,6 +33,7 @@ import type {
 import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha, { fechaHoyKey } from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
+import FondoPestana from "./FondoPestana";
 import { Bloque, type Candidato, candidatoDe, INPUT, ListaGrupos, nombreLegible, SelectorPacientes, useKines } from "./GruposPacientesVistas";
 
 // Los grupos se administran en /grupos; aqui solo se eligen para citar o para sumar pacientes.
@@ -303,11 +304,12 @@ function ListaActividades({
             role="tab"
             aria-selected={pestana === id}
             onClick={() => setPestana(id)}
-            className={`h-8 rounded-md px-3 text-xs font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-              pestana === id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+            className={`relative h-8 rounded-md px-3 text-xs font-bold outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+              pestana === id ? "text-blue-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
             }`}
           >
-            {label}
+            {pestana === id && <FondoPestana id="actividades-pestana" />}
+            <span className="relative z-10">{label}</span>
           </button>
         ))}
       </div>
@@ -463,7 +465,7 @@ function FormularioActividad({
       const guardada = actividad
         ? await api.patch<ActividadGrupal>(`/actividades-grupales/${actividad.id}/`, payload)
         : await api.post<ActividadGrupal>("/actividades-grupales/", payload);
-      toast.success(actividad ? "Actividad actualizada." : `Actividad creada con ${seleccion.length} paciente${seleccion.length !== 1 ? "s" : ""}.`);
+      toast.success(actividad ? "Actividad actualizada correctamente." : `Actividad creada correctamente.`);
       await onGuardada(guardada);
     } catch (err) {
       setError(getErrorMessage(err, "No se pudo guardar la actividad."));
@@ -721,7 +723,7 @@ function DetalleActividad({
                     setOcupado("eliminar");
                     try {
                       await api.delete(`/actividades-grupales/${a.id}/`);
-                      toast.success("Actividad eliminada.");
+                      toast.success("Actividad eliminada correctamente.");
                       await onEliminada();
                     } catch (err) {
                       toast.error(getErrorMessage(err, "No se pudo eliminar la actividad."));

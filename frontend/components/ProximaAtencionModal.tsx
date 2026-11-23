@@ -664,7 +664,7 @@ export default function ProximaAtencionModal({
                     className="ccr-control-input mt-2 w-full bg-white px-3 font-semibold dark:bg-ink-black-800"
                     aria-label="Profesional que atenderá"
                   >
-                    <option value="">Seleccionar kinesiólogo</option>
+                    <option value="">Seleccionar profesional</option>
                     {kines.map((k) => (
                       <option key={k.id} value={k.id}>
                         {k.nombre}

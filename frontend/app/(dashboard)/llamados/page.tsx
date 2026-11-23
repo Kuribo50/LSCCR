@@ -161,6 +161,8 @@ function Llamados() {
 
   const grupos = useMemo(() => agrupar(visibles), [visibles]);
   const orden = useMemo(() => grupos.flatMap((g) => g.pacientes), [grupos]);
+  // Posicion en la lista completa: escalona la entrada de las filas.
+  const posicion = useMemo(() => new Map(orden.map((p, i) => [p.id, i])), [orden]);
   const seleccionado = orden.find((p) => p.id === seleccionId) ?? orden[0] ?? null;
 
   const paraHoy = (lista: Paciente[]) => agrupar(lista).find((g) => g.id === "hoy")?.pacientes.length ?? 0;
@@ -289,12 +291,23 @@ function Llamados() {
                   setSeleccionId(null);
                   setEstados([]);
                 }}
-                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-                  seccion === id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+                className={`relative inline-flex h-7 items-center rounded-md px-3 text-xs font-bold outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                  seccion === id ? "text-blue-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
                 }`}
               >
-                {label}
-                <span className="rounded-full bg-slate-200/70 px-1.5 text-[10px] tabular-nums leading-4 text-slate-600 dark:bg-ink-black-600 dark:text-ink-black-200">{total}</span>
+                {seccion === id && (
+                  // Fondo blanco que se desliza entre pestañas (mismo patrón que Grupos).
+                  <motion.span
+                    layoutId="llamados-seccion"
+                    aria-hidden="true"
+                    className="absolute inset-0 z-0 rounded-md bg-white shadow-sm dark:bg-ink-black-700"
+                    transition={reducir ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10 inline-flex items-center gap-1.5">
+                  {label}
+                  <span className="rounded-full bg-slate-200/70 px-1.5 text-[10px] tabular-nums leading-4 text-slate-600 dark:bg-ink-black-600 dark:text-ink-black-200">{total}</span>
+                </span>
               </button>
             ))}
           </div>
@@ -383,7 +396,18 @@ function Llamados() {
           aria-label="Pacientes por llamar"
           className={`ccr-panel min-h-0 flex-col overflow-hidden rounded-2xl ${verDetalleMovil ? "hidden lg:flex" : "flex"}`}
         >
-          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+          {/* Sin initial={false}: así las filas también entran escalonadas al abrir la página. */}
+          <AnimatePresence mode="wait">
+          <motion.div
+            key={seccion}
+            // "Por contactar" entra desde la izquierda e "Ingresados" desde la
+            // derecha, siguiendo la posicion de la pestaña.
+            initial={reducir ? false : { opacity: 0, x: seccion === "contactar" ? -18 : 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reducir ? undefined : { opacity: 0, x: seccion === "contactar" ? -12 : 12 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2"
+          >
             {isLoading ? (
               <div className="space-y-2 p-1">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -405,7 +429,17 @@ function Llamados() {
                   </p>
                   <ul className="space-y-1">
                     {g.pacientes.map((p) => (
-                      <li key={p.id}>
+                      <motion.li
+                        key={p.id}
+                        layout={reducir ? false : "position"}
+                        initial={reducir ? false : { opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.2,
+                          delay: reducir ? 0 : Math.min(posicion.get(p.id) ?? 0, 10) * 0.035,
+                          layout: { duration: 0.25, ease: "easeOut" },
+                        }}
+                      >
                         <ItemLista
                           paciente={p}
                           activo={seleccionado?.id === p.id}
@@ -414,13 +448,14 @@ function Llamados() {
                             setVerDetalleMovil(true);
                           }}
                         />
-                      </li>
+                      </motion.li>
                     ))}
                   </ul>
                 </div>
               ))
             )}
-          </div>
+          </motion.div>
+          </AnimatePresence>
           {orden.length > 0 && (
             <p className="hidden shrink-0 border-t border-slate-100 px-4 py-2 text-[11px] font-medium text-slate-400 dark:border-ink-black-700 lg:block">
               {orden.length} paciente{orden.length !== 1 ? "s" : ""} · usa ↑ ↓ para moverte
@@ -433,24 +468,41 @@ function Llamados() {
           aria-label="Paciente seleccionado"
           className={`ccr-panel min-h-0 flex-col rounded-2xl lg:overflow-hidden ${verDetalleMovil ? "flex" : "hidden lg:flex"}`}
         >
+          <AnimatePresence mode="wait" initial={false}>
           {seleccionado ? (
-            <Detalle
+            <motion.div
               key={seleccionado.id}
-              paciente={seleccionado}
-              mostrarResponsable={!esKine}
-              ocupado={ocupado}
-              onVolver={() => setVerDetalleMovil(false)}
-              onResultado={(resultado) => setModal({ paciente: seleccionado, resultado })}
-              onNoContesta={() => void noContestaRapido(seleccionado)}
-              onEditar={() => setEdicion(seleccionado)}
-              onFicha={() => setFicha(seleccionado)}
-            />
+              initial={reducir ? false : { opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={reducir ? undefined : { opacity: 0, x: -6 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <Detalle
+                paciente={seleccionado}
+                mostrarResponsable={!esKine}
+                ocupado={ocupado}
+                onVolver={() => setVerDetalleMovil(false)}
+                onResultado={(resultado) => setModal({ paciente: seleccionado, resultado })}
+                onNoContesta={() => void noContestaRapido(seleccionado)}
+                onEditar={() => setEdicion(seleccionado)}
+                onFicha={() => setFicha(seleccionado)}
+              />
+            </motion.div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+            <motion.div
+              key="vacio"
+              initial={reducir ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reducir ? undefined : { opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center"
+            >
               <FiPhoneCall className="text-slate-300" size={30} aria-hidden="true" />
               <p className="mt-2 text-sm font-bold text-slate-700 dark:text-ink-black-100">Sin paciente seleccionado</p>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </section>
       </div>
 
@@ -488,16 +540,77 @@ function Llamados() {
 // Lista
 // -----------------------------------------------------------------------------
 
+/** Intentos sin respuesta en el estado actual y si el proximo cambia el estado. */
+function intentosDe(p: Paciente) {
+  const umbral = p.intentos_umbral ?? null;
+  const hechos = umbral ? Math.min(p.intentos_estado ?? 0, umbral) : 0;
+  return { umbral, hechos, ultimo: umbral !== null && hechos === umbral - 1 };
+}
+
+function tonoIntentos(hechos: number, ultimo: boolean) {
+  if (ultimo) return "bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-200 dark:ring-red-500/30";
+  if (hechos > 0) return "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/30";
+  return "bg-slate-50 text-slate-500 ring-slate-200 dark:bg-ink-black-800 dark:text-ink-black-300 dark:ring-ink-black-600";
+}
+
+/** Insignia "Intentos 2/3" de la lista. Ingresados por citar: total de llamados. */
 function Intentos({ paciente }: { paciente: Paciente }) {
-  const umbral = paciente.intentos_umbral;
-  if (!umbral) return null;
-  const hechos = Math.min(paciente.intentos_estado ?? 0, umbral);
+  const { umbral, hechos, ultimo } = intentosDe(paciente);
+  if (!umbral) {
+    const total = paciente.llamados_count ?? 0;
+    if (!total) return null;
+    return (
+      <span className={`shrink-0 rounded px-1.5 py-px text-[10.5px] font-bold tabular-nums ring-1 ring-inset ${tonoIntentos(0, false)}`}>
+        {total} {total === 1 ? "llamado" : "llamados"}
+      </span>
+    );
+  }
+  const texto = `${hechos} de ${umbral} intentos sin respuesta`;
   return (
-    <span className="inline-flex items-center gap-0.5" title={`${hechos} de ${umbral} intentos sin respuesta`} aria-label={`${hechos} de ${umbral} intentos sin respuesta`}>
-      {Array.from({ length: umbral }).map((_, i) => (
-        <span key={i} className={`h-1.5 w-1.5 rounded-full ${i < hechos ? "bg-amber-500" : "bg-slate-200 dark:bg-ink-black-600"}`} />
-      ))}
+    <span
+      className={`shrink-0 rounded px-1.5 py-px text-[10.5px] font-bold tabular-nums ring-1 ring-inset ${tonoIntentos(hechos, ultimo)}`}
+      title={ultimo ? `${texto}. El próximo sin respuesta cambia el estado.` : texto}
+      aria-label={texto}
+    >
+      Intentos {hechos}/{umbral}
     </span>
+  );
+}
+
+/** Contadores grandes del panel de detalle. */
+function ContadorIntentos({ paciente: p }: { paciente: Paciente }) {
+  const { umbral, hechos, ultimo } = intentosDe(p);
+  const total = p.llamados_count ?? 0;
+  const enRescate = p.estado === "RESCATE";
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {umbral ? (
+        <div className={`rounded-xl px-4 py-2.5 ring-1 ring-inset ${tonoIntentos(hechos, ultimo)}`}>
+          <p className="text-[11px] font-semibold">Intentos sin respuesta</p>
+          <p className="text-[20px] font-extrabold leading-tight tabular-nums">
+            {hechos} <span className="text-[13px] font-bold">de {umbral}</span>
+          </p>
+          <p className="text-[11px] font-semibold">
+            {ultimo
+              ? `Si no contesta: ${enRescate ? "egreso administrativo" : "pasa a Rescate"}`
+              : `En ${enRescate ? "Rescate" : "Pendiente"}`}
+          </p>
+        </div>
+      ) : (
+        <div className={`rounded-xl px-4 py-2.5 ring-1 ring-inset ${tonoIntentos(0, false)}`}>
+          <p className="text-[11px] font-semibold">Intentos sin respuesta</p>
+          <p className="text-[20px] font-extrabold leading-tight">—</p>
+          <p className="text-[11px] font-semibold">No aplica a ingresados</p>
+        </div>
+      )}
+      <div className={`rounded-xl px-4 py-2.5 ring-1 ring-inset ${tonoIntentos(0, false)}`}>
+        <p className="text-[11px] font-semibold">Llamados totales</p>
+        <p className="text-[20px] font-extrabold leading-tight tabular-nums text-slate-900 dark:text-ink-black-50">{total}</p>
+        <p className="text-[11px] font-semibold">
+          {p.n_intentos_contacto ? `${p.n_intentos_contacto} sin respuesta en total` : "Ninguno sin respuesta"}
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -633,6 +746,8 @@ function Detalle({
           </div>
         </div>
 
+        <ContadorIntentos paciente={p} />
+
         {telefonos.length > 0 ? (
           <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
             {telefonos.map((t) => (
@@ -640,27 +755,18 @@ function Detalle({
             ))}
           </div>
         ) : (
-          <div className="flex flex-wrap items-center gap-3 rounded-xl bg-amber-50 px-4 py-3 dark:bg-amber-500/10">
-            <p className="min-w-0 flex-1 text-[12.5px] font-semibold text-amber-900 dark:text-amber-100">Sin teléfono registrado. Consíguelo antes de llamar (CESFAM, ficha clínica).</p>
+          <div className="flex flex-col items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 dark:bg-amber-500/10">
+            <p className="text-[12.5px] font-semibold text-amber-900 dark:text-amber-100">Sin teléfono registrado. Consíguelo antes de llamar (CESFAM, ficha clínica).</p>
             <button type="button" onClick={onEditar} className="ccr-control-button">
               Agregar teléfono
             </button>
           </div>
         )}
 
-        {(p.intentos_umbral || reprogramado) && (
+        {reprogramado && (
           <p className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 dark:bg-ink-black-900 dark:text-ink-black-200">
-            {reprogramado ? (
-              <>
-                <FiClock size={14} className="text-blue-600" aria-hidden="true" />
-                Pidió que lo llamaran el {formatearFechaHoraCorta(p.proximo_llamado)}.
-              </>
-            ) : (
-              <>
-                <Intentos paciente={p} />
-                {p.intentos_estado ?? 0} de {p.intentos_umbral} intentos sin respuesta en {p.estado === "RESCATE" ? "Rescate" : "Pendiente"}.
-              </>
-            )}
+            <FiClock size={14} className="text-blue-600" aria-hidden="true" />
+            Pidió que lo llamaran el {formatearFechaHoraCorta(p.proximo_llamado)}.
           </p>
         )}
 

@@ -38,7 +38,7 @@ export default function ColaDeLlamados({ pacientes, usuario, onRefresh }: Props)
       return b.dias_en_lista - a.dias_en_lista
     })
 
-  if (!['ADMINISTRATIVO', 'ADMIN', 'KINE'].includes(usuario.rol)) {
+  if (!['ADMIN', 'KINE'].includes(usuario.rol)) {
     return (
       <div className="bg-white rounded-[10px] p-6 text-sm text-gray-500" style={{ border: '0.5px solid #a8d4f0' }}>
         Esta vista está disponible para perfil administrativo.

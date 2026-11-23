@@ -40,12 +40,15 @@ class Usuario(AbstractUser):
     """Usuario del sistema CCR.
 
     El RUT es el identificador de login. Los roles controlan acceso a vistas y
-    acciones: KINE, ADMINISTRATIVO y ADMIN.
+    acciones: KINE (profesional: llama y atiende su cartera), MEDICO (carga
+    derivaciones) y ADMIN. Un profesional puede ser además "encargado"
+    (`es_encargado`): corrige a fondo los datos de los pacientes y resuelve la
+    Revisión de carga. Puede haber varios encargados.
     """
 
     class Rol(models.TextChoices):
-        KINE = "KINE", "Kinesiólogo"
-        ADMINISTRATIVO = "ADMINISTRATIVO", "Administrativo"
+        KINE = "KINE", "Profesional"
+        MEDICO = "MEDICO", "Médico"
         ADMIN = "ADMIN", "Administrador"
 
     username = None
@@ -57,6 +60,10 @@ class Usuario(AbstractUser):
     nombre = models.CharField(max_length=150)
     rol = models.CharField(max_length=20, choices=Rol.choices, default=Rol.KINE)
     requiere_cambio_password = models.BooleanField(default=False)
+    es_encargado = models.BooleanField(
+        default=False,
+        help_text="Profesional encargado: corrige datos de pacientes y resuelve la Revisión de carga.",
+    )
 
     USERNAME_FIELD = "rut"
     REQUIRED_FIELDS = ["nombre"]

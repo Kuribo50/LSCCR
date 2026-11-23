@@ -47,6 +47,12 @@ class ImportacionMensual(models.Model):
         on_delete=models.SET_NULL,
         related_name="reemplaza_a",
     )
+    # Todos los cortes creados por una misma subida comparten lote: se
+    # revierten juntos (ver apps/importar/reversion.py).
+    lote = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    # Cambios que la carga hizo sobre pacientes que ya existían, para poder
+    # deshacerlos dentro de la ventana de reversión.
+    efectos = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-fecha_subida"]
@@ -109,3 +115,31 @@ class ImportacionMensual(models.Model):
                 if item.get("estado_revision", "PENDIENTE") == "PENDIENTE"
             ]
         )
+
+
+class HistoricoPaciente(models.Model):
+    """Padrón de pacientes (histórico de Tomé) usado para cruzar por RUT.
+
+    Solo guarda lo mínimo para validar y completar fichas: identificación,
+    fecha de nacimiento, sector, teléfonos y fallecimiento. No se copian
+    dirección, correo, previsión ni otros datos del padrón.
+    """
+
+    rut = models.CharField(max_length=12, unique=True)
+    nombre = models.CharField(max_length=200, blank=True, default="")
+    fecha_nacimiento = models.DateField(null=True, blank=True)
+    fecha_fallecimiento = models.DateField(null=True, blank=True)
+    comuna = models.CharField(max_length=80, blank=True, default="")
+    centro_inscripcion = models.CharField(max_length=120, blank=True, default="")
+    sector = models.CharField(max_length=120, blank=True, default="")
+    codigo_sector = models.CharField(max_length=4, blank=True, default="")
+    telefono = models.CharField(max_length=20, blank=True, default="")
+    telefono_recados = models.CharField(max_length=20, blank=True, default="")
+    cargado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Paciente del histórico"
+        verbose_name_plural = "Pacientes del histórico"
+
+    def __str__(self):
+        return f"{self.rut} {self.nombre}"

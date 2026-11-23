@@ -174,7 +174,7 @@ export default function CalendarioPage() {
     setLoading(true);
     setError("");
     try {
-      // KINE ve solo su cartera; ADMIN/ADMINISTRATIVO pueden planificar global.
+      // KINE ve solo su cartera; ADMIN puede planificar global.
       const endpoint = user.rol === "KINE" ? "/pacientes/?solo_mios=1" : "/pacientes/";
       const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>(endpoint);
       setPacientes(unwrapResults(data));
@@ -224,7 +224,7 @@ export default function CalendarioPage() {
       // Solo se agenda a pacientes activos y, para KINE, propios.
       if (!estadoProgramable) return false;
       if (user.rol === "KINE") return esPropio;
-      return user.rol === "ADMIN" || user.rol === "ADMINISTRATIVO";
+      return user.rol === "ADMIN";
     });
   }, [pacientes, user]);
 
@@ -282,7 +282,7 @@ export default function CalendarioPage() {
         },
       );
       actualizarPaciente(actualizado);
-      toast.success("Asistencia registrada. El paciente vuelve a pendientes de agenda.");
+      toast.success("Asistencia registrada correctamente.");
       await cargar();
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo registrar asistencia."));
@@ -306,9 +306,9 @@ export default function CalendarioPage() {
       actualizarPaciente(data.paciente);
       setInasistenciaAgenda(null);
       if (data.alerta_abandono) {
-        toast.warning("Paciente con 2 inasistencias. Evaluar ABANDONO.");
+        toast.warning("Paciente con 2 inasistencias. Evaluar abandono.");
       } else {
-        toast.warning("Inasistencia registrada.");
+        toast.warning("Inasistencia registrada correctamente.");
       }
       await cargar();
     } catch (error) {
@@ -331,7 +331,7 @@ export default function CalendarioPage() {
       );
       actualizarPaciente(actualizado);
       setEliminandoCita(null);
-      toast.info("Cita eliminada. Paciente vuelve a pendientes de agenda.");
+      toast.info("Cita eliminada correctamente.");
       await cargar();
     } catch (error) {
       toast.error(getErrorMessage(error, "No se pudo eliminar la cita."));
@@ -675,7 +675,7 @@ export default function CalendarioPage() {
               />
             </div>
           ) : (
-            <ol className="divide-y divide-slate-200 dark:divide-ink-black-600">
+            <ol className="ccr-stagger divide-y divide-slate-200 dark:divide-ink-black-600">
               {bloquesDelDia.map(([hora, citas]) => (
                 <li key={hora} className="grid grid-cols-[4.5rem_minmax(0,1fr)] sm:grid-cols-[5.5rem_minmax(0,1fr)]">
                   <div className="border-r border-slate-200 px-4 py-4 dark:border-ink-black-600">
@@ -1195,7 +1195,7 @@ function AgendarDialog({
             </label>
           </div>
 
-          <ul className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto dark:divide-ink-black-700">
+          <ul className="ccr-stagger max-h-[50vh] divide-y divide-slate-100 overflow-y-auto dark:divide-ink-black-700">
             {resultados.length === 0 ? (
               <li className="px-5 py-10 text-center">
                 <p className="text-sm font-bold text-slate-950 dark:text-white">Sin resultados</p>

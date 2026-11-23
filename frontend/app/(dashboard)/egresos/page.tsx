@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
-import { FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiAlertTriangle, FiDownload, FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { esEncargado } from '@/lib/roles'
+import { descargarBlob } from '@/lib/utils'
 import { formatearRut } from '@/lib/rut'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
@@ -102,6 +104,11 @@ function calcularDiasAtendido(paciente: Paciente) {
   return diasDesdeIngreso ?? paciente.dias_en_lista
 }
 
+/** Egreso por fallecimiento (marcado al cruzar con el histórico de Tomé). */
+function esFallecido(paciente: Paciente) {
+  return /FALLECID/i.test(paciente.observaciones ?? '')
+}
+
 export default function EgresosPage() {
   const { user } = useAuth()
   const [pacientes, setPacientes] = useState<Paciente[]>([])
@@ -119,7 +126,8 @@ export default function EgresosPage() {
     setLoading(true)
     setError('')
     try {
-      if (user?.rol === 'KINE') {
+      // El profesional ve sus egresos; el encargado y el administrador, todos.
+      if (user?.rol === 'KINE' && !esEncargado(user)) {
         const data = await api.get<Paciente[] | PaginatedResponse<Paciente>>('/pacientes/?solo_mios=1')
         setPacientes(unwrapResults(data).filter((p) => EGRESO_STATES.includes(p.estado as EgresoState)))
       } else {
@@ -132,7 +140,7 @@ export default function EgresosPage() {
     } finally {
       setLoading(false)
     }
-  }, [user?.rol])
+  }, [user])
 
   useEffect(() => {
     void cargar()
@@ -207,6 +215,38 @@ export default function EgresosPage() {
     filtroAnio,
   ].filter(Boolean).length
 
+  const indicadores = useMemo(() => {
+    const total = pacientesFiltrados.length
+    const altas = pacientesFiltrados.filter((p) => p.estado === 'ALTA_MEDICA').length
+    const dias = pacientesFiltrados.map(calcularDiasAtendido).filter((d) => Number.isFinite(d))
+    const fallecidos = pacientesFiltrados.filter((p) => esFallecido(p)).length
+    return {
+      total,
+      altasPct: total ? Math.round((altas / total) * 100) : 0,
+      promedioDias: dias.length ? Math.round(dias.reduce((a, b) => a + b, 0) / dias.length) : 0,
+      abandonos: pacientesFiltrados.filter((p) => p.estado === 'ABANDONO').length,
+      fallecidos,
+    }
+  }, [pacientesFiltrados])
+
+  const [exportando, setExportando] = useState(false)
+
+  async function exportarExcel() {
+    setExportando(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('estado', (filtroEstado ? [filtroEstado] : EGRESO_STATES).join(','))
+      if (search.trim()) params.set('search', search.trim())
+      if (user?.rol === 'KINE' && !esEncargado(user)) params.set('solo_mios', '1')
+      const blob = await api.getBlob(`/pacientes/exportar/?${params.toString()}`)
+      descargarBlob(blob, `egresos-ccr-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
+    } catch {
+      setError('No se pudo exportar el historial de egresos.')
+    } finally {
+      setExportando(false)
+    }
+  }
+
   function clearFilters() {
     setSearch('')
     setFiltroEstado('')
@@ -243,6 +283,15 @@ export default function EgresosPage() {
                   <strong>{activeFilterCount}</strong>
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => void exportarExcel()}
+                disabled={exportando}
+                className="ccr-export-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition disabled:opacity-60 sm:w-auto"
+              >
+                <FiDownload size={13} />
+                {exportando ? 'Exportando...' : 'Exportar'}
+              </button>
               <button
                 type="button"
                 onClick={() => void cargar()}
@@ -392,6 +441,21 @@ export default function EgresosPage() {
         </div>
       </section>
 
+      <section className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        {[
+          { label: 'Egresos en la vista', valor: indicadores.total, tono: 'text-slate-900 dark:!text-white' },
+          { label: 'Alta médica', valor: `${indicadores.altasPct}%`, tono: 'text-blue-700 dark:!text-ink-black-100' },
+          { label: 'Días promedio de atención', valor: indicadores.promedioDias, tono: 'text-slate-900 dark:!text-white' },
+          { label: 'Abandonos', valor: indicadores.abandonos, tono: 'text-amber-700' },
+          { label: 'Fallecidos', valor: indicadores.fallecidos, tono: 'text-red-700' },
+        ].map((kpi) => (
+          <div key={kpi.label} className="ccr-panel rounded-2xl px-4 py-3">
+            <p className={`text-2xl font-extrabold tabular-nums leading-none ${kpi.tono}`}>{kpi.valor}</p>
+            <p className="mt-1.5 text-[11px] font-semibold text-[var(--text-muted)]">{kpi.label}</p>
+          </div>
+        ))}
+      </section>
+
       {error && (
         <EmptyState variant="error" compact message={error} />
       )}
@@ -430,10 +494,10 @@ export default function EgresosPage() {
                     Responsable CCR
                   </th>
                   <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
-                    Sector CESFAM
+                    Sector
                   </th>
                   <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
-                    Sector oficial
+                    Sector territorial
                   </th>
                   <th className="border-r border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-700 dark:border-[#262626] dark:text-ink-black-100">
                     Diagnóstico
@@ -458,7 +522,7 @@ export default function EgresosPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="ccr-stagger">
                 {pacientesFiltrados.length === 0 ? (
                   <tr className="bg-white dark:bg-[#151515]">
                     <td colSpan={12} className="h-[260px] border-r border-gray-100 px-4 py-6 align-middle dark:border-[#262626]">
@@ -523,8 +587,15 @@ export default function EgresosPage() {
                           : 'Sin fecha'}
                       </td>
                       <td className="max-w-[220px] border-r border-gray-100 px-2 py-1 align-middle text-gray-600 dark:border-[#262626] dark:text-ink-black-200">
-                        <div className="line-clamp-1">
-                          {paciente.observaciones || 'Sin observación registrada'}
+                        <div className="flex items-center gap-1.5">
+                          {esFallecido(paciente) && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:!bg-red-500/15 dark:!text-red-100">
+                              <FiAlertTriangle size={10} /> Fallecido
+                            </span>
+                          )}
+                          <span className="line-clamp-1" title={paciente.observaciones || ''}>
+                            {paciente.observaciones || 'Sin observación registrada'}
+                          </span>
                         </div>
                       </td>
                       <td className="border-r border-gray-100 px-2 py-1 align-middle text-center font-semibold text-gray-700 dark:border-[#262626] dark:text-white">
@@ -581,12 +652,12 @@ function EgresoFilterChip({
       onClick={onClick}
       className={
         active
-          ? 'inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700'
-          : 'inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50'
+          ? 'inline-flex items-center gap-2 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white'
+          : 'inline-flex items-center gap-2 rounded-full bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-bold text-gray-600 transition hover:bg-blue-50 dark:text-ink-black-200'
       }
     >
       <span>{label}</span>
-      <span className={active ? 'rounded-full bg-red-100 px-2 py-0.5 text-[10px]' : 'rounded-full bg-gray-100 px-2 py-0.5 text-[10px]'}>
+      <span className={active ? 'text-[11px] tabular-nums text-white/80' : 'text-[11px] tabular-nums text-[var(--text-muted)]'}>
         {total}
       </span>
     </button>

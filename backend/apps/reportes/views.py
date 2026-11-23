@@ -11,6 +11,7 @@ from apps.pacientes.exports import excel_response, sanitizar_celda_excel
 from apps.pacientes.models import Paciente
 from apps.pacientes.services import ESTADOS_FINALES
 from apps.usuarios.models import Usuario
+from apps.usuarios.permissions import BloqueaMedicoMixin
 
 
 MESES = {
@@ -302,7 +303,7 @@ def crear_excel_responsables(data):
     return wb
 
 
-class ResumenReporteView(APIView):
+class ResumenReporteView(BloqueaMedicoMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -338,7 +339,7 @@ class ResumenReporteView(APIView):
         )
 
 
-class PorKineReporteView(APIView):
+class PorKineReporteView(BloqueaMedicoMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -346,7 +347,7 @@ class PorKineReporteView(APIView):
         return Response(reporte_por_responsable_data(mes, anio))
 
 
-class PorResponsableExportarView(APIView):
+class PorResponsableExportarView(BloqueaMedicoMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -356,7 +357,7 @@ class PorResponsableExportarView(APIView):
         return excel_response(workbook, f"reporte-responsables-ccr-{anio}-{mes:02d}.xlsx")
 
 
-class SerieMensualReporteView(APIView):
+class SerieMensualReporteView(BloqueaMedicoMixin, APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

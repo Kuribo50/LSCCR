@@ -25,7 +25,7 @@ export default function PacientesPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [vista, setVista] = useState<Vista>(
-    user?.rol === 'ADMINISTRATIVO' ? 'cola' : 'tabla'
+    'tabla'
   )
   const [crearPacienteOpen, setCrearPacienteOpen] = useState(false)
   const searchUrl = searchParams.get('search') ?? ''
@@ -136,7 +136,7 @@ export default function PacientesPage() {
 
   if (!user) return null
 
-  const puedeVerCola = ['ADMINISTRATIVO', 'ADMIN'].includes(user.rol)
+  const puedeVerCola = user.rol === 'ADMIN'
   const puedeCrear = ['ADMIN', 'KINE'].includes(user.rol)
 
   function toggleDiasOrdering() {
@@ -287,7 +287,7 @@ export default function PacientesPage() {
             onChange={(e) => setFiltroKine(e.target.value)}
             className="min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
-            <option value="">Todos los kines asignados</option>
+            <option value="">Todos los profesionales asignados</option>
             {kineOptions.map((k) => <option key={k.id} value={k.id}>{k.nombre}</option>)}
           </select>
         )}

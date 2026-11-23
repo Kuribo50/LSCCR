@@ -56,9 +56,8 @@ export default function CambiarEstadoModal({
   const [loading, setLoading] = useState(false);
 
   const estadosPermitidos = useMemo(() => {
-    if (rol === "ADMINISTRATIVO") {
-      return ["INGRESADO", "RESCATE", "EGRESO_ADMINISTRATIVO"] as Estado[];
-    }
+    // El Médico solo carga derivaciones: no cambia estados.
+    if (rol === "MEDICO") return [] as Estado[];
 
     if (ESTADOS_EGRESO.has(paciente.estado)) {
       return ["PENDIENTE", "INGRESADO", "RESCATE"] as Estado[];
@@ -92,13 +91,13 @@ export default function CambiarEstadoModal({
 
   async function handleConfirm() {
     if (!estadoNuevo) {
-      setError("Selecciona un estado para continuar.");
-      toast.warning("Selecciona un estado para continuar.");
+      setError("Seleccione un estado.");
+      toast.warning("Seleccione un estado.");
       return;
     }
     if (requiereNota && !notas.trim()) {
-      setError("Las notas son obligatorias para este cambio de estado.");
-      toast.warning("Las notas son obligatorias para este cambio de estado.");
+      setError("Este cambio de estado requiere una nota.");
+      toast.warning("Este cambio de estado requiere una nota.");
       return;
     }
     setLoading(true);

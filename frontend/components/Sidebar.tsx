@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { iniciarNavegacion, useDestinoNavegacion } from "@/lib/navegacion";
 import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { motion, useReducedMotion } from "framer-motion";
@@ -22,6 +23,7 @@ import {
   FiUsers,
   FiX,
   FiUser,
+  FiUserX,
 } from "react-icons/fi";
 import type { IconType } from "react-icons";
 import { api } from "@/lib/api";
@@ -35,6 +37,7 @@ import type {
 } from "@/lib/types";
 import FichaPaciente from "./FichaPaciente";
 import CommandPalette from "./CommandPalette";
+import { esEncargado } from "@/lib/roles";
 
 const BRAND_ALT = "Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes";
 const SIDEBAR_ICON_SRC = "/icon.ico";
@@ -69,21 +72,15 @@ const BASE_ITEMS: Record<Rol, Item[]> = {
     { href: "/llamados", label: "Llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
     { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
+    { href: "/inasistencias", label: "Inasistencias", icon: FiUserX, section: "gestion", tone: "text-rose-700" },
     { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
-  ADMINISTRATIVO: [
+  // Médico: solo carga y verifica derivaciones de TrakCare (ver lib/roles.ts).
+  MEDICO: [
     { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
-    { href: "/grupos", label: "Grupos", icon: FiLayers, section: "gestion", tone: "text-sky-700" },
-    { href: "/llamados", label: "Llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
     { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-    { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
-    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
-    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
-    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   ],
   ADMIN: [
     { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
@@ -97,6 +94,7 @@ const BASE_ITEMS: Record<Rol, Item[]> = {
     { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
     { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
     { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
+    { href: "/inasistencias", label: "Inasistencias", icon: FiUserX, section: "gestion", tone: "text-rose-700" },
     { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
     { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
     { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
@@ -112,6 +110,20 @@ const SECTION_LABELS: Record<Item["section"], string> = {
 
 function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+// El profesional encargado también carga derivaciones, ve los cortes y resuelve la revisión.
+const ITEMS_ENCARGADO: Item[] = [
+  { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
+  { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
+  { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
+];
+
+function itemsConEncargado(base: Item[]): Item[] {
+  const sinRepetidos = ITEMS_ENCARGADO.filter((extra) => !base.some((item) => item.href === extra.href));
+  const despuesDe = base.findIndex((item) => item.href === "/llamados");
+  if (despuesDe < 0) return [...base, ...sinRepetidos];
+  return [...base.slice(0, despuesDe + 1), ...sinRepetidos, ...base.slice(despuesDe + 1)];
 }
 
 function SidebarBrand({ mode = "desktop" }: { mode?: SidebarBrandMode }) {
@@ -240,7 +252,13 @@ function SidebarNav({
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      onClick={onNavigate}
+                      onClick={(e) => {
+                        // Clic normal (no nueva pestaña): marcar el destino al instante.
+                        if (!e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0 && pathname !== item.href) {
+                          iniciarNavegacion(item.href);
+                        }
+                        onNavigate?.();
+                      }}
                       title={compact ? item.label : undefined}
                       aria-label={compact ? item.label : undefined}
                       aria-current={active ? "page" : undefined}
@@ -307,9 +325,13 @@ export default function Sidebar({
   onMobileOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
+  const rutaActual = usePathname();
+  // Mientras navega, el menu ya marca la pagina elegida (seleccion instantanea).
+  const destino = useDestinoNavegacion();
+  const pathname = destino ?? rutaActual;
   const rol = user.rol;
   const userId = user.id;
+  const encargado = esEncargado(user);
   const [compact, setCompact] = useState(false);
   const [counts, setCounts] = useState<SidebarCounts>({
     total: 0,
@@ -322,7 +344,11 @@ export default function Sidebar({
   });
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
   const [searchOverlayOpen, setSearchOverlayOpen] = useState(false);
-  const items = useMemo(() => BASE_ITEMS[rol], [rol]);
+  // El profesional encargado suma Importar, Revisión de carga e Historial de cortes.
+  const items = useMemo(
+    () => (encargado ? itemsConEncargado(BASE_ITEMS[rol]) : BASE_ITEMS[rol]),
+    [rol, encargado],
+  );
 
   function abrirBuscadorCentral() {
     setSearchOverlayOpen(true);
@@ -353,9 +379,12 @@ export default function Sidebar({
 
     async function loadCounts() {
       try {
-        const puedeVerRevision = rol === "ADMIN" || rol === "ADMINISTRATIVO";
+        const puedeVerRevision = rol === "ADMIN" || encargado;
         const [resumen, revision] = await Promise.all([
-          api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/"),
+          // El Médico no tiene acceso a pacientes: solo cuenta la revisión de carga.
+          rol === "MEDICO"
+            ? Promise.resolve({} as DashboardResumenOperativo)
+            : api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/"),
           puedeVerRevision
             ? api.get<ImportacionRevisionResultado>("/importar/revision/?estado=PENDIENTE").catch(() => null)
             : Promise.resolve(null),
@@ -397,7 +426,7 @@ export default function Sidebar({
       mounted = false;
       window.removeEventListener("ccr:refresh-sidebar", onRefreshEvent);
     };
-  }, [rol, userId]);
+  }, [rol, userId, encargado]);
 
   useEffect(() => {
     onMobileOpenChange(false);
@@ -496,6 +525,7 @@ export default function Sidebar({
         isOpen={searchOverlayOpen}
         onClose={() => setSearchOverlayOpen(false)}
         navItems={items}
+        buscarPacientes={rol !== "MEDICO"}
         onSelectPatient={handleSelectPaciente}
         onViewAllPatients={handleViewAllPacientes}
       />

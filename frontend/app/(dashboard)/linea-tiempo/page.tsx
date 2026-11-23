@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 import PacienteSearchBox from "@/components/PacienteSearchBox";
 import TimelinePaciente from "@/components/TimelinePaciente";
+import LoaderKine from '@/components/LoaderKine'
 
 function iniciales(nombre: string) {
   return nombre
@@ -149,9 +150,8 @@ export default function LineaTiempoPage() {
           )}
 
           {loading ? (
-            <div className="flex items-center gap-2 px-1 py-6 text-sm font-semibold text-slate-500 dark:text-slate-400">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-blue-500" />
-              Cargando línea de tiempo…
+            <div className="flex justify-center py-8">
+              <LoaderKine enLinea retrasoMs={0} />
             </div>
           ) : (
             <TimelinePaciente acciones={acciones} />

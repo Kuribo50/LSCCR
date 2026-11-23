@@ -10,11 +10,13 @@ from .models import (
     LlamadoPaciente,
     MiembroGrupo,
     MovimientoPaciente,
+    ObservacionPaciente,
     Paciente,
     ParticipanteActividad,
     RegistroAgendaPaciente,
 )
 from .llamados import intentos_en_estado, umbral_intentos
+from .permissions import puede_editar_observacion
 from .services import ESTADOS_REQUIEREN_NOTA
 
 
@@ -139,6 +141,7 @@ class PacienteSerializer(serializers.ModelSerializer):
             "fecha_ultima_inasistencia",
             "motivo_ultima_inasistencia",
             "observaciones",
+            "alerta",
             "dias_en_lista",
             "llamados_count",
             "inasistencias_count",
@@ -607,3 +610,27 @@ class GrupoPacientesSerializer(serializers.ModelSerializer):
 
 class MiembrosGrupoSerializer(serializers.Serializer):
     paciente_ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+
+
+class ObservacionPacienteSerializer(serializers.ModelSerializer):
+    tipo_label = serializers.CharField(source="get_tipo_display", read_only=True)
+    autor_nombre = serializers.CharField(source="autor.nombre", read_only=True, default=None)
+    puede_editar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ObservacionPaciente
+        fields = (
+            "id", "paciente", "tipo", "tipo_label", "texto", "fijada",
+            "autor", "autor_nombre", "creado_en", "actualizado_en", "puede_editar",
+        )
+        read_only_fields = ("id", "autor", "autor_nombre", "creado_en", "actualizado_en", "puede_editar")
+
+    def validate_texto(self, valor):
+        valor = (valor or "").strip()
+        if not valor:
+            raise serializers.ValidationError("La observación no puede quedar vacía.")
+        return valor
+
+    def get_puede_editar(self, obj) -> bool:
+        request = self.context.get("request")
+        return bool(request and puede_editar_observacion(request.user, obj))

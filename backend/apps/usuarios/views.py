@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Usuario
-from .permissions import IsAdminRole
+from .permissions import IsAdminOrEncargado, IsAdminRole
 from .serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
@@ -15,6 +15,20 @@ from .serializers import (
     UsuarioPatchSerializer,
     UsuarioSerializer,
 )
+
+
+class ProfesionalesView(APIView):
+    """Profesionales activos, para asignar responsable.
+
+    El Administrador y los profesionales encargados corrigen datos de pacientes
+    (incluido el responsable), pero solo el Administrador gestiona usuarios.
+    """
+
+    permission_classes = [IsAdminOrEncargado]
+
+    def get(self, request):
+        profesionales = Usuario.objects.filter(rol=Usuario.Rol.KINE, is_active=True).order_by("nombre")
+        return Response(UsuarioSerializer(profesionales, many=True).data)
 
 
 class LoginView(APIView):

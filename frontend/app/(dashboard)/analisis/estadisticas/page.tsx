@@ -203,10 +203,10 @@ export default function EstadisticasPage() {
       ["Egresos del mes", resumen.actividad_mes.egresos_total],
       ["Sobre 90 dias", resumen.corte.sobre_90_dias],
       [],
-      ["Sector CESFAM", "Total"],
+      ["Sector", "Total"],
       ...(resumen.por_sector_cesfam ?? []).map((item) => [item.label, item.total]),
       [],
-      ["Sector oficial", "Total"],
+      ["Sector territorial", "Total"],
       ...(resumen.por_sector_oficial ?? []).map((item) => [item.label, item.total]),
       [],
       ["Diagnóstico", "Total"],
@@ -554,8 +554,8 @@ export default function EstadisticasPage() {
           </section>
 
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <DistributionCard title="Sector CESFAM" items={resumen.por_sector_cesfam ?? []} labelKey="label" />
-            <DistributionCard title="Sector oficial" items={resumen.por_sector_oficial ?? []} labelKey="label" />
+            <DistributionCard title="Sector" items={resumen.por_sector_cesfam ?? []} labelKey="label" />
+            <DistributionCard title="Sector territorial" items={resumen.por_sector_oficial ?? []} labelKey="label" />
             <DistributionCard title="Diagnósticos frecuentes" items={resumen.por_diagnostico ?? []} labelKey="label" />
           </section>
 
@@ -717,7 +717,7 @@ function ResponsablesTable({ responsables }: { responsables: ReporteResponsableI
             <th className="px-3 py-3">Prom. días</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-[#2a2a2a]">
+        <tbody className="ccr-stagger divide-y divide-slate-100 dark:divide-[#2a2a2a]">
           {responsables.map((item) => (
             <tr key={item.responsable_id ?? item.responsable_nombre ?? "sin-responsable"} className="bg-white hover:bg-[#F6FBF8] dark:bg-[#111111] dark:hover:bg-[#202020]">
               <td className="whitespace-nowrap px-3 py-3 font-bold text-slate-900 dark:text-white">

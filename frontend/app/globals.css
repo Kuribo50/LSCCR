@@ -431,10 +431,33 @@ h1, h2, h3, h4, h5, h6 {
 /* ================================================================
    Login
    ================================================================ */
-.ccr-login-background { background: var(--bg-app); color: var(--text-primary); }
-.dark .ccr-login-background { background: var(--bg-app); color: var(--text-primary); }
+.ccr-login-background {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(47, 99, 214, 0.1), transparent 30rem),
+    radial-gradient(circle at 92% 88%, rgba(16, 185, 129, 0.08), transparent 28rem),
+    var(--bg-app);
+  color: var(--text-primary);
+}
+.dark .ccr-login-background {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(94, 144, 241, 0.12), transparent 30rem),
+    radial-gradient(circle at 92% 88%, rgba(16, 185, 129, 0.08), transparent 28rem),
+    var(--bg-app);
+}
 .ccr-login-background, .ccr-login-background * { transition: background-color 150ms ease-in-out, color 150ms ease-in-out, border-color 150ms ease-in-out; }
-.ccr-login-background::before, .dark .ccr-login-background::before { content: ""; position: absolute; inset: 0; pointer-events: none; display: none; }
+.ccr-login-background::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+  background-image: linear-gradient(rgba(47, 99, 214, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 99, 214, 0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, black, transparent 78%);
+}
+.dark .ccr-login-background::before { opacity: 0.22; }
+.ccr-login-card { box-shadow: 0 24px 70px -38px rgba(22, 24, 27, 0.4), var(--shadow-lift); }
+.dark .ccr-login-card { box-shadow: 0 24px 70px -30px rgba(0, 0, 0, 0.75), var(--shadow-lift); }
 
 .ccr-login-orb { position: fixed; pointer-events: none; border-radius: 9999px; filter: blur(34px); display: none; opacity: 0; animation: ccr-login-float 11s ease-in-out infinite alternate; }
 .ccr-login-orb-one { left: -5rem; top: 7rem; width: 18rem; height: 18rem; background: rgba(14,165,233,0.28); }
@@ -464,11 +487,39 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes shimmerGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 .animate-in.slide-in-from-top-2 { animation: slideInFromTop 300ms ease-out; }
 
+/* Entrada de cada pantalla del panel (app/(dashboard)/template.tsx). */
+@keyframes ccr-page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ccr-page-enter { animation: ccr-page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
+/* Entrada escalonada de filas, igual que la lista de Grupos y Llamados.
+   Se aplica al contenedor (tbody, ul, grid): cada hijo entra desde la
+   izquierda con 35 ms de diferencia, tope en la fila 10 para no demorar. */
+@keyframes ccr-entrada-fila { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+.ccr-stagger > * { animation: ccr-entrada-fila 200ms ease-out backwards; }
+.ccr-stagger > *:nth-child(2) { animation-delay: 35ms; }
+.ccr-stagger > *:nth-child(3) { animation-delay: 70ms; }
+.ccr-stagger > *:nth-child(4) { animation-delay: 105ms; }
+.ccr-stagger > *:nth-child(5) { animation-delay: 140ms; }
+.ccr-stagger > *:nth-child(6) { animation-delay: 175ms; }
+.ccr-stagger > *:nth-child(7) { animation-delay: 210ms; }
+.ccr-stagger > *:nth-child(8) { animation-delay: 245ms; }
+.ccr-stagger > *:nth-child(9) { animation-delay: 280ms; }
+.ccr-stagger > *:nth-child(10) { animation-delay: 315ms; }
+.ccr-stagger > *:nth-child(n + 11) { animation-delay: 350ms; }
+
+/* Variante para filas virtualizadas (lib/useEntradaFilas.ts): la fila ya usa
+   transform para posicionarse, así que ella solo anima opacidad y el
+   deslizamiento lo hacen sus celdas. --fila es el índice de la fila. */
+@keyframes ccr-fila-opacidad { from { opacity: 0; } to { opacity: 1; } }
+.ccr-fila-entrada { animation: ccr-fila-opacidad 200ms ease-out backwards; animation-delay: calc(var(--fila, 0) * 35ms); }
+.ccr-fila-entrada > * { animation: ccr-entrada-fila 200ms ease-out backwards; animation-delay: calc(var(--fila, 0) * 35ms); }
+
 /* ================================================================
    Reduced Motion
    ================================================================ */
 @media (prefers-reduced-motion: reduce) {
   .ccr-login-orb, .ccr-login-enter, .ccr-login-panel, .ccr-login-alert, .ccr-login-submit { animation: none !important; }
+  .ccr-stagger > *, .ccr-page-enter, .ccr-fila-entrada, .ccr-fila-entrada > * { animation: none !important; }
   .ccr-data-table *, .ccr-table-skeleton *, .ccr-skeleton-shimmer, .ccr-skeleton-shimmer::before { animation: none !important; transition: none !important; }
 }
 
@@ -524,6 +575,10 @@ input.ccr-control-input, select.ccr-control-input { height: 2.25rem; padding-top
 .ccr-control-button { background: var(--btn-secundario-bg) !important; color: var(--btn-secundario-fg) !important; box-shadow: none !important; }
 .ccr-control-button:hover { background: var(--btn-secundario-hover) !important; }
 .dark .ccr-control-button { background: var(--btn-secundario-bg) !important; }
+/* El primario (azul solido) debe ganar al secundario cuando un boton lleva ambas clases. */
+.ccr-control-button.ccr-control-button-primary { background: var(--action) !important; color: #ffffff !important; box-shadow: 0 6px 16px -6px rgba(47, 99, 214, 0.45) !important; }
+.ccr-control-button.ccr-control-button-primary:hover { background: var(--action-hover) !important; }
+.ccr-control-button.ccr-control-button-primary:disabled { box-shadow: none !important; }
 .ccr-export-button { background: var(--btn-exportar-bg) !important; color: var(--btn-exportar-fg) !important; box-shadow: none !important; }
 .ccr-export-button:hover { background: var(--btn-exportar-hover) !important; }
 .ccr-export-button svg { color: currentColor !important; }
@@ -556,3 +611,24 @@ input.ccr-control-input, select.ccr-control-input { height: 2.25rem; padding-top
 .ccr-page-fill > .ccr-fill { flex: 1 1 0%; min-height: 0; display: flex; flex-direction: column; }
 .ccr-fill > * { flex-shrink: 0; }
 .ccr-fill > .ccr-table-scroll, .ccr-fill > .ccr-fill-grow { flex: 1 1 0%; min-height: 0; max-height: none; }
+
+/* Avisos (react-hot-toast): entrada y salida suaves. */
+@keyframes ccr-toast-entrar {
+  0% { opacity: 0; transform: translate3d(0, -14px, 0) scale(0.96); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes ccr-toast-salir {
+  0% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(0, -10px, 0) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ccr-toast-entrar { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ccr-toast-salir { from { opacity: 1; } to { opacity: 0; } }
+}
+
+/* Revisión de carga: entrada escalonada y hover suave */
+@keyframes ccr-revision-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.ccr-revision-row { animation: ccr-revision-in 280ms ease-out both; border-top: 1px solid var(--border-subtle); transition: background-color 160ms ease, box-shadow 160ms ease !important; }
+.ccr-data-table .ccr-revision-row:hover { background: var(--bg-table-hover) !important; }
+.ccr-data-table .ccr-revision-row.is-selected { background: rgba(37,99,235,0.07) !important; }
+@media (prefers-reduced-motion: reduce) { .ccr-revision-row { animation: none; } }

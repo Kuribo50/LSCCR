@@ -67,10 +67,10 @@ export default function PacienteTable({
                   Edad
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
-                  Sector CESFAM
+                  Sector
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
-                  Sector oficial
+                  Sector territorial
                 </th>
                 <th className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-700 dark:border-[#262626] dark:text-ink-black-100">
                   Diagnóstico
@@ -111,7 +111,7 @@ export default function PacienteTable({
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="ccr-stagger">
               {pacientes.map((paciente) => (
                 <PacienteRow
                   key={paciente.id}

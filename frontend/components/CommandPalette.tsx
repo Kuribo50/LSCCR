@@ -29,6 +29,8 @@ interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   navItems: NavItem[];
+  /** false para el Médico: no tiene acceso a pacientes, solo a secciones. */
+  buscarPacientes?: boolean;
   onSelectPatient: (paciente: Paciente) => void;
   onViewAllPatients: (term: string) => void;
 }
@@ -124,6 +126,7 @@ export default function CommandPalette({
   isOpen,
   onClose,
   navItems,
+  buscarPacientes = true,
   onSelectPatient,
   onViewAllPatients,
 }: CommandPaletteProps) {
@@ -161,7 +164,7 @@ export default function CommandPalette({
   useEffect(() => {
     if (!isOpen) return;
     const term = debouncedQuery;
-    if (term.length < 2) {
+    if (!buscarPacientes || term.length < 2) {
       setPatients([]);
       setLoadingPatients(false);
       return;
@@ -184,7 +187,7 @@ export default function CommandPalette({
       .finally(() => {
         if (requestIdRef.current === requestId) setLoadingPatients(false);
       });
-  }, [debouncedQuery, isOpen]);
+  }, [buscarPacientes, debouncedQuery, isOpen]);
 
   const actions: PaletteEntry[] = useMemo(() => {
     return [
@@ -330,7 +333,7 @@ export default function CommandPalette({
                 setActiveIndex(0);
               }}
               onKeyDown={handleKeyDown}
-              placeholder="Busca por nombre, RUT o sección"
+              placeholder={buscarPacientes ? "Busca por nombre, RUT o sección" : "Busca una sección"}
               aria-label="Buscar paciente, sección o acción"
               className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-slate-950 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-ink-black-400"
             />

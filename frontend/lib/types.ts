@@ -7,7 +7,7 @@ export interface PaginatedResponse<T> {
   results: T[];
 }
 
-export type Rol = "KINE" | "ADMINISTRATIVO" | "ADMIN";
+export type Rol = "KINE" | "MEDICO" | "ADMIN";
 export type Prioridad = "ALTA" | "MEDIANA" | "MODERADA" | "LICENCIA_MEDICA";
 export type Categoria =
   | "BORRADOR"
@@ -39,6 +39,8 @@ export interface Usuario {
   is_active: boolean;
   date_joined: string;
   requiere_cambio_password: boolean;
+  /** Profesional encargado: corrige datos y resuelve la Revisión de carga. */
+  es_encargado?: boolean;
 }
 
 export interface Paciente {
@@ -71,6 +73,8 @@ export interface Paciente {
   fecha_ultima_inasistencia: string | null;
   motivo_ultima_inasistencia: string;
   n_meses_espera: number;
+  /** Observación o incongruencia a revisar; se muestra como chip azul. */
+  alerta?: string;
   observaciones: string;
   dias_en_lista: number;
   llamados_count?: number;
@@ -369,6 +373,33 @@ export interface ImportacionResultado {
   ingresados?: number;
   pendientes?: number;
   asignado_historico?: number;
+  /** Pacientes ya registrados a los que la planilla les completó el teléfono. */
+  telefonos_completados?: number;
+  /** Cortes creados por esta subida; se pueden revertir hasta `revertible_hasta`. */
+  lote?: string;
+  importaciones?: { id: number; periodo_label: string }[];
+  revertible_hasta?: string;
+}
+
+export type ResultadoTelefono = "ACTUALIZADO" | "SIN_CAMBIOS" | "CONFLICTO" | "NO_ENCONTRADO" | "INVALIDO";
+
+export interface CompletarTelefonosResultado {
+  total: number;
+  actualizados: number;
+  sin_cambios: number;
+  conflictos: number;
+  no_encontrados: number;
+  invalidos: number;
+  aplicado: boolean;
+  detalle: {
+    fila: number | null;
+    rut: string;
+    nombre?: string;
+    telefono?: string;
+    telefono_recados?: string;
+    resultado: ResultadoTelefono;
+    motivo: string;
+  }[];
 }
 
 export interface ImportacionErrorDetalle {
@@ -440,7 +471,7 @@ export type ImportacionHistorialEstado =
   | "REEMPLAZADO"
   | "PROCESANDO";
 
-export interface ImportacionHistorialItem {
+export interface ImportacionHistorialItem extends EstadoReversion {
   id: number;
   archivo_nombre: string;
   mes: number;
@@ -471,6 +502,38 @@ export interface ImportacionHistorialItem {
   reemplazada_por: number | null;
 }
 
+/** Ventana de 10 minutos para revertir una carga (apps/importar/reversion.py). */
+export interface EstadoReversion {
+  lote?: string;
+  revertible: boolean;
+  revertible_hasta: string;
+  en_ventana: boolean;
+  motivo_no_revertible: string;
+}
+
+export interface CargaReciente extends EstadoReversion {
+  id: number;
+  archivo_nombre: string;
+  periodo_label: string;
+  fecha_subida: string;
+  usuario_nombre: string | null;
+  registros_importados: number;
+  duplicados: number;
+  errores_count: number;
+  estado: string;
+  estado_label: string;
+}
+
+export interface ResumenCargas {
+  mes_label: string;
+  derivaciones_mes: number;
+  cargas_mes: number;
+  pendientes_telefono: number;
+  ventana_minutos: number;
+  ahora: string;
+  recientes: CargaReciente[];
+}
+
 export interface ImportacionHistorialDetalle {
   mes: number;
   anio: number;
@@ -482,7 +545,25 @@ export interface ImportacionHistorialDetalle {
     ingresados: number;
     egresados_total: number;
   };
+  pacientes: ImportacionHistorialPaciente[];
   items: ImportacionHistorialItem[];
+}
+
+export interface ImportacionHistorialPaciente {
+  id: number;
+  id_ccr: string;
+  nombre: string;
+  rut: string;
+  fecha_derivacion: string;
+  edad: number;
+  sector_oficial: string;
+  sector_cesfam: string;
+  diagnostico: string;
+  prioridad: string;
+  categoria: string;
+  estado: string;
+  estado_label: string;
+  kine_asignado_nombre: string | null;
 }
 
 export interface ImportacionConflictoMes {
@@ -558,13 +639,49 @@ export interface ImportacionRevisionItem {
   resuelto_en: string | null;
   resuelto_por_id: number | null;
   resuelto_por_nombre: string | null;
+  /** Lo que el histórico de Tomé sabe de este RUT (solo en observaciones pendientes). */
+  historico?: ImportacionRevisionHistorico;
+  auto_resoluble?: boolean;
+  auto_motivo?: string;
+  /** Agrupa una acción de revisión para poder deshacerla completa. */
+  lote_resolucion?: string;
 }
+
+export interface ImportacionRevisionHistorico {
+  encontrado: boolean;
+  nombre?: string;
+  edad?: number | null;
+  fecha_nacimiento?: string;
+  sector_oficial?: string;
+  sector_cesfam?: string;
+  telefono?: string;
+  telefono_recados?: string;
+  comuna?: string;
+  centro_inscripcion?: string;
+  fallecido?: boolean;
+  fecha_fallecimiento?: string;
+  otra_comuna?: boolean;
+  nombre_coincide?: boolean | null;
+  edad_coincide?: boolean | null;
+}
+
+export interface ImportacionRevisionResumen {
+  por_tipo: Record<ImportacionRevisionTipo, number>;
+  auto_resolubles: number;
+  auto_por_tipo?: { ADVERTENCIA: number; RECURRENTE: number };
+  fallecidos: number;
+  otra_comuna: number;
+  con_historico: number;
+}
+
+export type ImportacionRevisionAlerta = "FALLECIDO" | "OTRA_COMUNA" | "AUTO" | "DATOS_DISTINTOS";
 
 export interface ImportacionRevisionResultado {
   total: number;
   pendientes: number;
   resueltos: number;
   descartados: number;
+  resumen?: ImportacionRevisionResumen;
   items: ImportacionRevisionItem[];
 }
 
@@ -573,8 +690,8 @@ export interface ImportacionRevisionActionResultado {
 }
 
 export const ROL_LABELS: Record<Rol, string> = {
-  KINE: "Kinesiólogo/a",
-  ADMINISTRATIVO: "Administrativo/a",
+  KINE: "Profesional",
+  MEDICO: "Médico/a",
   ADMIN: "Administrador/a",
 };
 
@@ -744,4 +861,55 @@ export interface MovimientoGrupo {
 export interface HistorialGrupo {
   movimientos: MovimientoGrupo[];
   actividades: ActividadGrupal[];
+}
+
+/** Apartado de inasistencias: un paciente por fila (GET /pacientes/inasistencias-resumen/). */
+export interface InasistenciaDetalle {
+  id: number;
+  fecha: string;
+  justificada: boolean;
+  motivo: string;
+  usuario_nombre: string | null;
+}
+
+export interface InasistenciaPacienteResumen {
+  paciente_id: number;
+  id_ccr: string;
+  nombre: string;
+  rut: string;
+  estado: Estado;
+  estado_label: string;
+  kine_nombre: string | null;
+  telefono: string;
+  total: number;
+  no_justificadas: number;
+  justificadas: number;
+  ultima_fecha: string;
+  ultimo_motivo: string;
+  detalle: InasistenciaDetalle[];
+}
+
+export interface InasistenciasResumen {
+  total_pacientes: number;
+  total_inasistencias: number;
+  no_justificadas: number;
+  en_riesgo: number;
+  items: InasistenciaPacienteResumen[];
+}
+
+/** Observación del paciente como entrada independiente (GET /observaciones-paciente/?paciente=id). */
+export type TipoObservacion = "GENERAL" | "CLINICA" | "CONTACTO" | "ADMINISTRATIVA" | "IMPORTACION";
+
+export interface ObservacionPaciente {
+  id: number;
+  paciente: number;
+  tipo: TipoObservacion;
+  tipo_label: string;
+  texto: string;
+  fijada: boolean;
+  autor: number | null;
+  autor_nombre: string | null;
+  creado_en: string;
+  actualizado_en: string;
+  puede_editar: boolean;
 }

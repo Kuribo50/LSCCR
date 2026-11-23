@@ -12,6 +12,7 @@ from .models import (
     InasistenciaPaciente,
     LlamadoPaciente,
     MovimientoPaciente,
+    ObservacionPaciente,
     Paciente,
     RegistroAgendaPaciente,
 )
@@ -53,6 +54,42 @@ class PacienteWorkflowTests(APITestCase):
         }
         data.update(overrides)
         return Paciente.objects.create(**data)
+
+    def test_medico_no_accede_a_lista_de_espera_ni_estadisticas(self):
+        medico = Usuario.objects.create_user(rut="33333333-3", password="testpass", nombre="Medico Test", rol=Usuario.Rol.MEDICO)
+        paciente = self.crear_paciente()
+        self.client.force_authenticate(medico)
+
+        bloqueadas = [
+            "/api/pacientes/",
+            f"/api/pacientes/{paciente.id}/",
+            "/api/pacientes/dashboard-resumen/",
+            "/api/pacientes/cola-llamados/",
+            "/api/pacientes/exportar/",
+            f"/api/pacientes/perfil/{paciente.rut}/",
+            "/api/grupos-pacientes/",
+            "/api/actividades-grupales/",
+            "/api/reportes/resumen/",
+            "/api/reportes/por-kine/",
+        ]
+        for url in bloqueadas:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, status.HTTP_403_FORBIDDEN)
+        llamado = self.client.post(
+            f"/api/pacientes/{paciente.id}/registrar-llamado/", {"resultado": LlamadoPaciente.Resultado.NO_CONTESTA}, format="json"
+        )
+        self.assertEqual(llamado.status_code, status.HTTP_403_FORBIDDEN)
+        cambio = self.client.post(
+            f"/api/pacientes/{paciente.id}/cambiar-estado/", {"estado": Paciente.Estado.INGRESADO, "notas": "x"}, format="json"
+        )
+        self.assertEqual(cambio.status_code, status.HTTP_403_FORBIDDEN)
+        edicion = self.client.patch(f"/api/pacientes/{paciente.id}/", {"telefono": "+56912345678"}, format="json")
+        self.assertEqual(edicion.status_code, status.HTTP_403_FORBIDDEN)
+
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.estado, Paciente.Estado.PENDIENTE)
+        self.assertEqual(paciente.telefono, "")
+        self.assertFalse(paciente.llamados.exists())
 
     def test_listado_incluye_aliases_de_responsable_y_campos_compatibles(self):
         paciente = self.crear_paciente(nombre="Paciente Alias")
@@ -1244,3 +1281,221 @@ class GrupoPacientesTests(ActividadGrupalTests):
         editado = next(m for m in data["movimientos"] if m["tipo"] == "EDITADO")
         self.assertIn("Columna Martes", editado["descripcion"])
         self.assertEqual(len(data["actividades"]), 1)
+
+
+class ProfesionalEncargadoTests(APITestCase):
+    """El encargado corrige datos y la Revisión de carga; el resto solo el contacto."""
+
+    def setUp(self):
+        crear = Usuario.objects.create_user
+        self.profesional = crear(rut="11111111-1", password="x", nombre="Profesional", rol=Usuario.Rol.KINE)
+        self.encargado = crear(rut="22222222-2", password="x", nombre="Encargada", rol=Usuario.Rol.KINE, es_encargado=True)
+        self.medico = crear(rut="33333333-3", password="x", nombre="Medico", rol=Usuario.Rol.MEDICO)
+        self.admin = crear(rut="44444444-4", password="x", nombre="Admin", rol=Usuario.Rol.ADMIN)
+        self.paciente = Paciente.objects.create(
+            rut="900000011", nombre="Paciente", edad=50, diagnostico="Lumbago",
+            categoria=Paciente.Categoria.LUMBAGOS, prioridad=Paciente.Prioridad.ALTA,
+            fecha_derivacion=timezone.localdate(), kine_asignado=self.profesional,
+        )
+
+    def patch(self, usuario, datos):
+        self.client.force_authenticate(usuario)
+        return self.client.patch(f"/api/pacientes/{self.paciente.id}/", datos, format="json")
+
+    def test_profesional_solo_edita_contacto(self):
+        self.assertEqual(self.patch(self.profesional, {"telefono": "+56912345678"}).status_code, status.HTTP_200_OK)
+        respuesta = self.patch(self.profesional, {"diagnostico": "Hombro"})
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.telefono, "+56912345678")
+        self.assertEqual(self.paciente.diagnostico, "Lumbago")
+
+    def test_encargado_corrige_datos_y_responsable(self):
+        respuesta = self.patch(self.encargado, {"diagnostico": "Hombro doloroso", "kine_asignado": self.encargado.id})
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.diagnostico, "Hombro doloroso")
+        self.assertEqual(self.paciente.kine_asignado, self.encargado)
+
+    def test_revision_de_carga_solo_admin_y_encargado(self):
+        for usuario, esperado in [
+            (self.encargado, status.HTTP_200_OK),
+            (self.admin, status.HTTP_200_OK),
+            (self.medico, status.HTTP_403_FORBIDDEN),
+            (self.profesional, status.HTTP_403_FORBIDDEN),
+        ]:
+            with self.subTest(usuario=usuario.nombre):
+                self.client.force_authenticate(usuario)
+                self.assertEqual(self.client.get("/api/importar/revision/").status_code, esperado)
+
+    def test_alerta_la_resuelve_el_encargado_no_el_profesional(self):
+        Paciente.objects.filter(pk=self.paciente.pk).update(alerta="Confirmar categoría.")
+        self.assertEqual(self.patch(self.profesional, {"alerta": ""}).status_code, status.HTTP_403_FORBIDDEN)
+        respuesta = self.patch(self.encargado, {"alerta": ""})
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(respuesta.data["alerta"], "")
+
+    def test_importar_e_historial_de_cortes_para_encargado(self):
+        for usuario, esperado in [
+            (self.encargado, status.HTTP_200_OK),
+            (self.medico, status.HTTP_200_OK),
+            (self.admin, status.HTTP_200_OK),
+            (self.profesional, status.HTTP_403_FORBIDDEN),
+        ]:
+            with self.subTest(usuario=usuario.nombre):
+                self.client.force_authenticate(usuario)
+                self.assertEqual(self.client.get("/api/importar/historial/").status_code, esperado)
+                self.assertEqual(self.client.get("/api/importar/plantilla/").status_code, esperado)
+        # Resetear la población sigue siendo solo del Administrador.
+        self.client.force_authenticate(self.encargado)
+        self.assertEqual(self.client.delete("/api/importar/reset/").status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_completar_telefonos_medico_y_encargado(self):
+        for usuario, esperado in [
+            (self.encargado, status.HTTP_200_OK),
+            (self.medico, status.HTTP_200_OK),
+            (self.profesional, status.HTTP_403_FORBIDDEN),
+        ]:
+            with self.subTest(usuario=usuario.nombre):
+                self.client.force_authenticate(usuario)
+                self.assertEqual(self.client.get("/api/importar/telefonos/plantilla/").status_code, esperado)
+
+    def test_lista_de_profesionales_para_asignar(self):
+        self.client.force_authenticate(self.encargado)
+        respuesta = self.client.get("/api/usuarios/profesionales/")
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual({u["nombre"] for u in respuesta.data}, {"Profesional", "Encargada"})
+        self.client.force_authenticate(self.profesional)
+        self.assertEqual(self.client.get("/api/usuarios/profesionales/").status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_marca_encargado_solo_en_profesionales(self):
+        self.client.force_authenticate(self.admin)
+        respuesta = self.client.patch(f"/api/usuarios/{self.profesional.id}/", {"es_encargado": True}, format="json")
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.profesional.refresh_from_db()
+        self.assertTrue(self.profesional.es_encargado)
+        self.client.patch(f"/api/usuarios/{self.medico.id}/", {"es_encargado": True}, format="json")
+        self.medico.refresh_from_db()
+        self.assertFalse(self.medico.es_encargado)
+
+
+class InasistenciasResumenTests(APITestCase):
+    """Apartado de inasistencias: un paciente por fila con sus totales."""
+
+    def setUp(self):
+        crear = Usuario.objects.create_user
+        self.kine = crear(rut="61111111-1", password="x", nombre="Kine Uno", rol=Usuario.Rol.KINE)
+        self.otro = crear(rut="62222222-2", password="x", nombre="Kine Dos", rol=Usuario.Rol.KINE)
+        self.encargado = crear(rut="63333333-3", password="x", nombre="Encargada", rol=Usuario.Rol.KINE, es_encargado=True)
+        self.medico = crear(rut="64444444-4", password="x", nombre="Medico", rol=Usuario.Rol.MEDICO)
+
+        def paciente(rut, nombre, kine):
+            return Paciente.objects.create(
+                rut=rut, nombre=nombre, edad=50, diagnostico="Lumbago", categoria=Paciente.Categoria.LUMBAGOS,
+                prioridad=Paciente.Prioridad.ALTA, fecha_derivacion=timezone.localdate(),
+                kine_asignado=kine, estado=Paciente.Estado.INGRESADO,
+            )
+
+        self.ana = paciente("900000021", "ANA", self.kine)
+        self.beto = paciente("900000022", "BETO", self.otro)
+        paciente("900000023", "SIN FALTAS", self.kine)
+        hoy = timezone.localdate()
+        for dias, justificada in ((1, False), (8, False), (15, True)):
+            InasistenciaPaciente.objects.create(
+                paciente=self.ana, usuario=self.kine, fecha=hoy - timedelta(days=dias), justificada=justificada,
+                motivo=f"motivo {dias}",
+            )
+        InasistenciaPaciente.objects.create(paciente=self.beto, usuario=self.otro, fecha=hoy - timedelta(days=40))
+
+    def get(self, usuario, query=""):
+        self.client.force_authenticate(usuario)
+        return self.client.get(f"/api/pacientes/inasistencias-resumen/{query}")
+
+    def test_encargado_ve_todos_ordenados_por_no_justificadas(self):
+        data = self.get(self.encargado).data
+        self.assertEqual([i["nombre"] for i in data["items"]], ["ANA", "BETO"])
+        ana = data["items"][0]
+        self.assertEqual((ana["total"], ana["no_justificadas"], ana["justificadas"]), (3, 2, 1))
+        self.assertEqual(ana["ultimo_motivo"], "motivo 1")
+        self.assertEqual(len(ana["detalle"]), 3)
+        self.assertEqual(
+            (data["total_pacientes"], data["total_inasistencias"], data["no_justificadas"], data["en_riesgo"]),
+            (2, 4, 3, 1),
+        )
+
+    def test_profesional_ve_solo_su_cartera(self):
+        data = self.get(self.kine).data
+        self.assertEqual([i["nombre"] for i in data["items"]], ["ANA"])
+
+    def test_filtro_por_fechas(self):
+        desde = (timezone.localdate() - timedelta(days=10)).isoformat()
+        data = self.get(self.encargado, f"?desde={desde}").data
+        self.assertEqual(data["total_inasistencias"], 2)
+        self.assertEqual(self.get(self.encargado, "?desde=malo").status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_medico_no_tiene_acceso(self):
+        self.assertEqual(self.get(self.medico).status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ObservacionesPacienteTests(APITestCase):
+    """Observaciones como lista: tipo, fijar, editar y borrar por separado."""
+
+    def setUp(self):
+        crear = Usuario.objects.create_user
+        self.kine = crear(rut="71111111-1", password="x", nombre="Kine Uno", rol=Usuario.Rol.KINE)
+        self.otro = crear(rut="72222222-2", password="x", nombre="Kine Dos", rol=Usuario.Rol.KINE)
+        self.encargado = crear(rut="73333333-3", password="x", nombre="Encargada", rol=Usuario.Rol.KINE, es_encargado=True)
+        self.medico = crear(rut="74444444-4", password="x", nombre="Medico", rol=Usuario.Rol.MEDICO)
+        self.paciente = Paciente.objects.create(
+            rut="900000031", nombre="PACIENTE OBS", edad=40, diagnostico="Lumbago",
+            categoria=Paciente.Categoria.LUMBAGOS, prioridad=Paciente.Prioridad.ALTA,
+            fecha_derivacion=timezone.localdate(),
+        )
+        self.url = "/api/observaciones-paciente/"
+
+    def crear(self, usuario, **datos):
+        self.client.force_authenticate(usuario)
+        return self.client.post(self.url, {"paciente": self.paciente.id, "texto": "Llamar en la tarde", **datos}, format="json")
+
+    def test_crear_listar_y_resumen(self):
+        r = self.crear(self.kine, tipo="CONTACTO")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r.data["autor_nombre"], "Kine Uno")
+        self.assertTrue(r.data["puede_editar"])
+        self.crear(self.kine, texto="Nota fijada", fijada=True)
+        lista = self.client.get(f"{self.url}?paciente={self.paciente.id}").data
+        self.assertEqual([o["texto"] for o in lista], ["Nota fijada", "Llamar en la tarde"])
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.observaciones, "Nota fijada | Llamar en la tarde")
+        self.assertEqual(self.client.get(self.url).data, [])
+
+    def test_solo_autor_encargado_o_admin_editan_y_borran(self):
+        obs_id = self.crear(self.kine).data["id"]
+        self.client.force_authenticate(self.otro)
+        self.assertEqual(self.client.patch(f"{self.url}{obs_id}/", {"texto": "x"}, format="json").status_code, 403)
+        self.assertEqual(self.client.delete(f"{self.url}{obs_id}/").status_code, 403)
+        self.client.force_authenticate(self.encargado)
+        r = self.client.patch(f"{self.url}{obs_id}/", {"texto": "Editada", "fijada": True, "tipo": "CLINICA"}, format="json")
+        self.assertEqual((r.status_code, r.data["texto"], r.data["fijada"], r.data["tipo"]), (200, "Editada", True, "CLINICA"))
+        self.client.force_authenticate(self.kine)
+        self.assertEqual(self.client.delete(f"{self.url}{obs_id}/").status_code, status.HTTP_204_NO_CONTENT)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.observaciones, "")
+
+    def test_texto_vacio_y_medico(self):
+        self.assertEqual(self.crear(self.kine, texto="   ").status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.crear(self.medico).status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_separar_texto_antiguo(self):
+        from .services import separar_observaciones
+
+        entradas = separar_observaciones(
+            "Observación original: NSP EL 6/10. SectorCesfam: CESFAM DR. ALBERTO REYES. "
+            "Categoría: AATT. Revisión: Sector oficial vacío. | FALLECIDO (histórico Tomé 26-07-2026)"
+        )
+        self.assertEqual(entradas, [
+            ("GENERAL", "NSP EL 6/10", False),
+            ("IMPORTACION", "Datos de la carga: Sector: CESFAM DR. ALBERTO REYES. Categoría: AATT.", False),
+            ("ADMINISTRATIVA", "FALLECIDO (histórico Tomé 26-07-2026)", True),
+        ])
+        self.assertEqual(separar_observaciones("Paciente con dolor"), [("GENERAL", "Paciente con dolor", False)])

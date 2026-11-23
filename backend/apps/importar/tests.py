@@ -1,4 +1,5 @@
-from datetime import date
+import json
+from datetime import date, timedelta
 from io import BytesIO, StringIO
 import shutil
 import tempfile
@@ -7,11 +8,12 @@ from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import override_settings
+from django.utils import timezone
 from openpyxl import Workbook, load_workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.importar.models import ImportacionMensual
+from apps.importar.models import HistoricoPaciente, ImportacionMensual
 from apps.pacientes.models import MovimientoPaciente, Paciente
 from apps.usuarios.models import Usuario
 
@@ -143,7 +145,54 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(response.data["nuevos"], 1)
         self.assertEqual(response.data["errores_count"], 1)
         self.assertEqual(response.data["registros"][0]["tipo_revision"], "ADVERTENCIA")
-        self.assertIn("Sector oficial vacío", response.data["registros"][0]["motivo_revision"])
+        self.assertIn("Sector territorial vacío", response.data["registros"][0]["motivo_revision"])
+
+    def test_periodo_de_corte_forzado_reasigna_el_mes(self):
+        filas = [[date(2026, 8, 5), "Paciente Uno", "11111111-1", 50, "CESFAM", "Lumbago", "KINESIOLOGO", "ALTA", ""]]
+        response = self.client.post(
+            "/api/importar/previsualizar/",
+            {"archivo": self.archivo(filas), "periodo_mes": 11, "periodo_anio": 2026},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["periodos_detectados"], {"2026-11": 1})
+
+        response = self.client.post(
+            "/api/importar/derivaciones/",
+            {"archivo": self.archivo(filas), "periodo_mes": 11, "periodo_anio": 2026},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        corte = ImportacionMensual.objects.get()
+        self.assertEqual((corte.mes_datos, corte.anio_datos), (11, 2026))
+        self.assertEqual(Paciente.objects.get().fecha_derivacion, date(2026, 8, 5))
+
+    def test_periodo_de_corte_invalido_responde_400(self):
+        response = self.client.post(
+            "/api/importar/previsualizar/",
+            {"archivo": self.archivo([]), "periodo_mes": 13, "periodo_anio": 2026},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_correcciones_editan_y_descartan_filas(self):
+        filas = [
+            [date(2026, 9, 2), "Paciente Uno", "11111111-1", 50, "CESFAM", "Lumbago", "KINESIOLOGO", "ALTA", ""],
+            ["sin fecha", "Paciente Dos", "22222222-2", 60, "CESFAM", "Hombro", "KINESIOLOGO", "ALTA", ""],
+            [date(2026, 9, 3), "Paciente Tres", "33333333-3", 40, "CESFAM", "Rodilla", "KINESIOLOGO", "ALTA", ""],
+        ]
+        correcciones = [
+            {"hoja": "JULIO", "fila": 3, "campos": {"fecha": "04/09/2026"}},
+            {"hoja": "JULIO", "fila": 4, "descartar": True},
+        ]
+        response = self.client.post(
+            "/api/importar/previsualizar/",
+            {"archivo": self.archivo(filas), "correcciones": json.dumps(correcciones)},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total"], 2)
+        self.assertEqual(response.data["errores_count"], 0)
 
     def test_preview_rechaza_archivo_que_no_es_xlsx(self):
         archivo = SimpleUploadedFile(
@@ -305,6 +354,20 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(len(importacion.observaciones_revision), 2)
         self.assertEqual(importacion.observaciones_revision[0]["tipo"], "ADVERTENCIA")
         self.assertIn("Kine no activo", importacion.observaciones_revision[0]["motivo"])
+
+    def test_encabezados_sector_y_sector_territorial(self):
+        headers = ["FECHA DERIV", "SECTOR TERRITORIAL", "SECTOR", "NOMBRE", "RUT", "EDAD", "DIAGNÓSTICO",
+                   "PROFESIONAL", "PRIORIDAD"]
+        filas = [[date(2026, 9, 2), "Loma Alta", "Azul", "Paciente Sector", "11111111-1", 50, "Lumbago",
+                  "KINESIOLOGO", "ALTA"]]
+        response = self.client.post(
+            "/api/importar/previsualizar/",
+            {"archivo": self.archivo_con_headers(headers, filas)},
+            format="multipart",
+        )
+        registro = response.data["registros"][0]
+        self.assertEqual(registro["sector_oficial"], "LOMA ALTA")
+        self.assertEqual(registro["sector_cesfam"], "AZUL")
 
     def test_categoria_vacia_o_invalida_se_calcula_sin_bloquear(self):
         headers = [
@@ -548,6 +611,17 @@ class ImportacionesMensualesTests(APITestCase):
             total_registros=1,
             registros_importados=1,
         )
+        ImportacionMensual.objects.create(
+            archivo=ContentFile(b"vacio", name="sin-datos.xlsx"),
+            archivo_nombre="sin-datos.xlsx",
+            mes=8,
+            anio=2026,
+            mes_datos=8,
+            anio_datos=2026,
+            usuario=self.admin,
+            total_registros=0,
+            registros_importados=0,
+        )
         Paciente.objects.create(
             id_ccr="HIST-1",
             fecha_derivacion=date(2025, 7, 5),
@@ -568,6 +642,11 @@ class ImportacionesMensualesTests(APITestCase):
         self.assertEqual(response.data["periodo_label"], "Julio 2025")
         self.assertEqual(len(response.data["items"]), 1)
         self.assertEqual(response.data["pacientes_actuales_del_corte"]["pendientes"], 1)
+
+        historial = self.client.get("/api/importar/historial/")
+        self.assertEqual(historial.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(historial.data), 1)
+        self.assertEqual(historial.data[0]["periodo_label"], "Julio 2025")
 
     def test_exportar_historial_mensual_devuelve_xlsx(self):
         importacion = ImportacionMensual.objects.create(
@@ -748,3 +827,497 @@ class CompletarEdadesTests(APITestCase):
         nuevo = self._paciente("33333333", 0)
         _completar_edades_faltantes([nuevo], [])
         self.assertEqual(nuevo.edad, 55)
+
+
+def excel_telefonos(headers, rows):
+    wb = Workbook()
+    ws = wb.active
+    ws.append(headers)
+    for row in rows:
+        ws.append(row)
+    output = BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+
+class NormalizarTelefonoTests(APITestCase):
+    def test_formatos_chilenos(self):
+        from apps.pacientes.telefonos import normalizar_telefono
+
+        self.assertEqual(normalizar_telefono("9 1234 5678"), "+56912345678")
+        self.assertEqual(normalizar_telefono(912345678.0), "+56912345678")
+        self.assertEqual(normalizar_telefono("+56 9 1234-5678"), "+56912345678")
+        self.assertEqual(normalizar_telefono("56912345678"), "+56912345678")
+        self.assertEqual(normalizar_telefono("223456789"), "+56223456789")
+        # 8 digitos es ambiguo: se guarda limpio, sin inventar prefijo.
+        self.assertEqual(normalizar_telefono("1234-5678"), "12345678")
+        self.assertEqual(normalizar_telefono("123"), "")
+        self.assertEqual(normalizar_telefono(None), "")
+
+
+class TelefonosImportacionTests(APITestCase):
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.override_settings = override_settings(MEDIA_ROOT=self.media_root)
+        self.override_settings.enable()
+        self.admin = Usuario.objects.create_user(
+            rut="44444444-4", password="testpass", nombre="Admin", rol=Usuario.Rol.ADMIN,
+        )
+        self.client.force_authenticate(self.admin)
+
+    def tearDown(self):
+        self.override_settings.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def paciente(self, rut, **extra):
+        datos = {
+            "nombre": f"Paciente {rut}", "edad": 50, "diagnostico": "Lumbago",
+            "categoria": Paciente.Categoria.LUMBAGOS, "prioridad": Paciente.Prioridad.ALTA,
+            "fecha_derivacion": date(2025, 7, 2),
+        }
+        datos.update(extra)
+        return Paciente.objects.create(rut=rut, **datos)
+
+    def subir_telefonos(self, rows, aplicar, headers=("RUT", "TELEFONO", "TELEFONO RECADOS")):
+        archivo = SimpleUploadedFile(
+            "telefonos.xlsx", excel_telefonos(list(headers), rows), content_type=EXCEL_CONTENT_TYPE,
+        )
+        return self.client.post(
+            "/api/importar/telefonos/", {"archivo": archivo, "aplicar": aplicar}, format="multipart",
+        )
+
+    def importar(self, headers, rows):
+        archivo = SimpleUploadedFile(
+            "deriv.xlsx", excel_derivaciones_con_headers(headers, rows), content_type=EXCEL_CONTENT_TYPE,
+        )
+        return self.client.post(
+            "/api/importar/derivaciones/", {"archivo": archivo, "mes": 7, "anio": 2025}, format="multipart",
+        )
+
+    def test_importacion_nueva_guarda_telefono(self):
+        response = self.importar(
+            ["FECHA", "NOMBRE", "RUT", "EDAD", "DIAGNÓSTICO", "PRIORIDAD", "FONO", "TELEFONO RECADOS"],
+            [[date(2025, 7, 2), "Paciente Fono", "11111111-1", 50, "Lumbago", "ALTA", 912345678, "22 345 6789"]],
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        paciente = Paciente.objects.get(rut="111111111")
+        self.assertEqual(paciente.telefono, "+56912345678")
+        self.assertEqual(paciente.telefono_recados, "+56223456789")
+
+    def test_importacion_completa_telefono_de_paciente_existente(self):
+        existente = self.paciente("111111111")
+        response = self.importar(
+            ["FECHA", "NOMBRE", "RUT", "EDAD", "DIAGNÓSTICO", "PRIORIDAD", "TELEFONO"],
+            [[date(2025, 7, 2), "Paciente Existente", "11111111-1", 50, "Lumbago", "ALTA", "912345678"]],
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["telefonos_completados"], 1)
+        existente.refresh_from_db()
+        self.assertEqual(existente.telefono, "+56912345678")
+
+    def test_previsualizar_no_modifica(self):
+        paciente = self.paciente("111111111")
+        response = self.subir_telefonos([["11.111.111-1", "912345678", ""]], aplicar=False)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["actualizados"], 1)
+        self.assertFalse(response.data["aplicado"])
+        paciente.refresh_from_db()
+        self.assertEqual(paciente.telefono, "")
+
+    def test_aplicar_completa_solo_vacios_y_reporta(self):
+        vacio = self.paciente("111111111")
+        rederivado = self.paciente("111111111", diagnostico="Hombro")
+        con_fono = self.paciente("222222222", telefono="+56911111111")
+        mismo = self.paciente("333333333", telefono="+56933333333")
+        movimientos_antes = MovimientoPaciente.objects.count()
+
+        response = self.subir_telefonos([
+            ["11111111-1", 912345678, "223456789"],
+            ["22222222-2", "987654321", ""],
+            ["33333333-3", "933333333", ""],
+            ["99999999-9", "955555555", ""],
+            ["44444444-4", "12", ""],
+        ], aplicar=True)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        self.assertTrue(data["aplicado"])
+        self.assertEqual(data["total"], 5)
+        self.assertEqual(data["actualizados"], 2)  # 111 (sus dos derivaciones) y 222 (recados)
+        self.assertEqual(data["sin_cambios"], 1)
+        self.assertEqual(data["no_encontrados"], 1)
+        self.assertEqual(data["invalidos"], 1)
+
+        for p in (vacio, rederivado):
+            p.refresh_from_db()
+            self.assertEqual(p.telefono, "+56912345678")
+            self.assertEqual(p.telefono_recados, "+56223456789")
+        con_fono.refresh_from_db()
+        # No pisa el principal: el numero nuevo va a recados, que estaba vacio.
+        self.assertEqual(con_fono.telefono, "+56911111111")
+        self.assertEqual(con_fono.telefono_recados, "+56987654321")
+        mismo.refresh_from_db()
+        self.assertEqual(mismo.telefono, "+56933333333")
+        self.assertEqual(mismo.telefono_recados, "")
+        self.assertEqual(MovimientoPaciente.objects.count(), movimientos_antes)
+
+    def test_conflicto_si_ambos_campos_ocupados(self):
+        lleno = self.paciente("111111111", telefono="+56911111111", telefono_recados="+56922222222")
+        response = self.subir_telefonos([["11111111-1", "987654321", ""]], aplicar=True)
+        self.assertEqual(response.data["conflictos"], 1)
+        lleno.refresh_from_db()
+        self.assertEqual(lleno.telefono, "+56911111111")
+        self.assertEqual(lleno.telefono_recados, "+56922222222")
+
+    def test_archivo_sin_columnas_de_telefono(self):
+        response = self.subir_telefonos([["11111111-1", "x"]], aplicar=True, headers=("RUT", "NOMBRE"))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("teléfono", response.data["detail"])
+
+    def test_plantilla_lista_pacientes_activos_sin_telefono(self):
+        self.paciente("111111111")
+        self.paciente("111111111", diagnostico="Hombro")
+        self.paciente("222222222", telefono="+56911111111")
+        self.paciente("333333333", estado=Paciente.Estado.EGRESO_VOLUNTARIO)
+        response = self.client.get("/api/importar/telefonos/plantilla/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ws = load_workbook(BytesIO(response.content)).active
+        self.assertEqual([c.value for c in ws[1]], ["RUT", "NOMBRE", "ESTADO", "TELEFONO", "TELEFONO RECADOS"])
+        ruts = [ws.cell(row=r, column=1).value for r in range(2, ws.max_row + 1)]
+        self.assertEqual(ruts, ["111111111"])
+
+    def test_medico_puede_previsualizar_telefonos(self):
+        medico = Usuario.objects.create_user(rut="66666666-6", password="x", nombre="Medico", rol=Usuario.Rol.MEDICO)
+        self.client.force_authenticate(medico)
+        response = self.subir_telefonos([["11111111-1", "912345678", ""]], aplicar=False)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_kine_no_puede_cargar_telefonos(self):
+        kine = Usuario.objects.create_user(rut="55555555-5", password="x", nombre="Kine", rol=Usuario.Rol.KINE)
+        self.client.force_authenticate(kine)
+        response = self.subir_telefonos([["11111111-1", "912345678", ""]], aplicar=True)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ReversionCargaTests(APITestCase):
+    """El Médico puede revertir su carga solo dentro de los 10 minutos."""
+
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.override_settings = override_settings(MEDIA_ROOT=self.media_root)
+        self.override_settings.enable()
+        self.medico = Usuario.objects.create_user(rut="99999999-9", password="x", nombre="Medico", rol=Usuario.Rol.MEDICO)
+        self.admin = Usuario.objects.create_user(rut="44444444-4", password="x", nombre="Admin", rol=Usuario.Rol.ADMIN)
+        self.existente = Paciente.objects.create(
+            rut="111111111", nombre="Paciente Previo", edad=50, diagnostico="Lumbago",
+            categoria=Paciente.Categoria.LUMBAGOS, prioridad=Paciente.Prioridad.ALTA,
+            fecha_derivacion=date(2025, 6, 2),
+        )
+        self.client.force_authenticate(self.medico)
+
+    def tearDown(self):
+        self.override_settings.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def cargar(self):
+        archivo = SimpleUploadedFile(
+            "deriv.xlsx",
+            excel_derivaciones_con_headers(
+                ["FECHA", "NOMBRE", "RUT", "EDAD", "DIAGNÓSTICO", "PRIORIDAD", "TELEFONO"],
+                [
+                    [date(2025, 7, 2), "Paciente Nuevo", "22222222-2", 40, "Lumbago", "ALTA", ""],
+                    [date(2025, 7, 3), "Paciente Previo", "11111111-1", 50, "Hombro doloroso", "ALTA", "912345678"],
+                ],
+            ),
+            content_type=EXCEL_CONTENT_TYPE,
+        )
+        response = self.client.post(
+            "/api/importar/derivaciones/", {"archivo": archivo, "mes": 7, "anio": 2025}, format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return response.data
+
+    def revertir(self, corte_id):
+        return self.client.delete(f"/api/importar/historial/corte/{corte_id}/")
+
+    def test_revertir_dentro_de_10_minutos_deja_todo_como_antes(self):
+        movimientos_antes = MovimientoPaciente.objects.count()
+        meses_antes = self.existente.n_meses_espera
+        data = self.cargar()
+        self.assertTrue(data["lote"])
+        corte_id = data["importaciones"][0]["id"]
+
+        self.existente.refresh_from_db()
+        self.assertEqual(self.existente.n_meses_espera, meses_antes + 1)
+        self.assertIn("Hombro doloroso", self.existente.diagnostico)
+        self.assertEqual(self.existente.telefono, "+56912345678")
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
+        response = self.revertir(corte_id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["revertida"])
+        self.assertEqual(response.data["pacientes_eliminados"], 1)
+
+        self.existente.refresh_from_db()
+        self.assertEqual(self.existente.n_meses_espera, meses_antes)
+        self.assertEqual(self.existente.diagnostico, "Lumbago")
+        self.assertEqual(self.existente.telefono, "")
+        self.assertFalse(Paciente.objects.filter(rut="222222222").exists())
+        self.assertFalse(ImportacionMensual.objects.exists())
+        self.assertEqual(MovimientoPaciente.objects.count(), movimientos_antes)
+
+    def test_pasados_10_minutos_la_carga_queda_consolidada(self):
+        data = self.cargar()
+        corte_id = data["importaciones"][0]["id"]
+        ImportacionMensual.objects.update(fecha_subida=timezone.now() - timedelta(minutes=11))
+
+        historial = self.client.get("/api/importar/historial/").data
+        self.assertFalse(historial[0]["revertible"])
+        self.assertIn("10 minutos", historial[0]["motivo_no_revertible"])
+
+        response = self.revertir(corte_id)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ImportacionMensual.objects.filter(id=corte_id).exists())
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
+    def test_solo_quien_cargo_puede_revertir(self):
+        data = self.cargar()
+        otro = Usuario.objects.create_user(rut="88888888-8", password="x", nombre="Otro Medico", rol=Usuario.Rol.MEDICO)
+        self.client.force_authenticate(otro)
+        response = self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
+    def test_no_revierte_si_ya_hay_llamados(self):
+        from apps.pacientes.models import LlamadoPaciente
+
+        data = self.cargar()
+        nuevo = Paciente.objects.get(rut="222222222")
+        LlamadoPaciente.objects.create(paciente=nuevo, usuario=self.admin, resultado=LlamadoPaciente.Resultado.NO_CONTESTA)
+        response = self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
+    def test_medico_no_elimina_periodo_completo(self):
+        self.cargar()
+        response = self.client.delete("/api/importar/historial/7/2025/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(ImportacionMensual.objects.exists())
+
+    def test_admin_puede_limpiar_corte_consolidado(self):
+        data = self.cargar()
+        ImportacionMensual.objects.update(fecha_subida=timezone.now() - timedelta(minutes=30))
+        self.client.force_authenticate(self.admin)
+        response = self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["revertida"])
+
+    def test_resumen_de_cargas_para_el_inicio(self):
+        self.cargar()
+        response = self.client.get("/api/importar/resumen-cargas/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["derivaciones_mes"], 1)
+        self.assertEqual(response.data["cargas_mes"], 1)
+        # El paciente nuevo no trae teléfono; el previo lo completó la carga.
+        self.assertEqual(response.data["pendientes_telefono"], 1)
+        self.assertEqual(response.data["ventana_minutos"], 10)
+        self.assertTrue(response.data["recientes"][0]["revertible"])
+
+        kine = Usuario.objects.create_user(rut="55555555-5", password="x", nombre="Kine", rol=Usuario.Rol.KINE)
+        self.client.force_authenticate(kine)
+        self.assertEqual(self.client.get("/api/importar/resumen-cargas/").status_code, status.HTTP_403_FORBIDDEN)
+
+
+class RevisionConHistoricoTests(APITestCase):
+    """Cruce de la bandeja de revisión con el histórico de pacientes de Tomé."""
+
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.override_settings = override_settings(MEDIA_ROOT=self.media_root)
+        self.override_settings.enable()
+        self.admin = Usuario.objects.create_user(
+            rut="55555555-5", password="testpass", nombre="Admin Revision", rol=Usuario.Rol.ADMIN,
+        )
+        self.client.force_authenticate(self.admin)
+        self.paciente = Paciente.objects.create(
+            id_ccr="REV-1", fecha_derivacion=date(2026, 8, 3), nombre="ANA PEREZ SOTO", rut="111111111",
+            edad=60, diagnostico="Lumbago", profesional="KINESIOLOGO",
+            prioridad=Paciente.Prioridad.ALTA, categoria=Paciente.Categoria.LUMBAGOS,
+        )
+        HistoricoPaciente.objects.create(
+            rut="111111111", nombre="ANA MARIA PEREZ SOTO", fecha_nacimiento=date(1966, 1, 1),
+            comuna="Tomé", sector="FRUTILLARES", codigo_sector="A7", telefono="+56912345678",
+        )
+        HistoricoPaciente.objects.create(
+            rut="222222222", nombre="JUAN FALLECIDO", fecha_nacimiento=date(1940, 1, 1),
+            fecha_fallecimiento=date(2026, 5, 1), comuna="Penco",
+        )
+
+        def obs(tipo, rut, motivo, **extra):
+            return {
+                "tipo": tipo, "tipo_label": tipo, "periodo_label": "Agosto 2026", "archivo_nombre": "r.xlsx",
+                "hoja": "AGOSTO", "fila": 2, "motivo": motivo, "accion": "", "nombre": "ANA PEREZ SOTO",
+                "rut": rut, "edad": 60, "estado_revision": "PENDIENTE", "paciente_id": None, **extra,
+            }
+
+        self.importacion = ImportacionMensual.objects.create(
+            archivo=ContentFile(b"x", name="r.xlsx"), archivo_nombre="r.xlsx", mes=11, anio=2026,
+            mes_datos=8, anio_datos=2026, usuario=self.admin,
+            observaciones_revision=[
+                obs("ADVERTENCIA", "111111111", "Sector oficial vacío.", paciente_id=self.paciente.id),
+                obs("ADVERTENCIA", "111111111", "Kine no confirmado detectado: x.", paciente_id=self.paciente.id),
+                obs("RECURRENTE", "111111111", "Registro repetido en el sistema.",
+                    paciente_id=self.paciente.id, fecha_derivacion="10/06/2026"),
+                obs("ERROR", "333333333", "Nombre vacío"),
+                obs("RECURRENTE", "222222222", "Registro repetido en el sistema."),
+            ],
+        )
+        # El mismo paciente ya había aparecido en el corte de julio.
+        ImportacionMensual.objects.create(
+            archivo=ContentFile(b"x", name="j.xlsx"), archivo_nombre="j.xlsx", mes=11, anio=2026,
+            mes_datos=7, anio_datos=2026, usuario=self.admin,
+            observaciones_revision=[
+                obs("RECURRENTE", "111111111", "Registro repetido en el sistema.",
+                    paciente_id=self.paciente.id, fecha_derivacion="15/07/2026", estado_revision="RESUELTO"),
+            ],
+        )
+
+    def tearDown(self):
+        self.override_settings.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
+
+    def test_bandeja_trae_historico_resumen_y_ordena_errores_primero(self):
+        response = self.client.get("/api/importar/revision/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["items"][0]["tipo"], "ERROR")
+        # Advertencia de sector + recurrente que sigue en lista.
+        self.assertEqual(response.data["resumen"]["auto_resolubles"], 2)
+        self.assertEqual(response.data["resumen"]["fallecidos"], 1)
+        self.assertEqual(response.data["resumen"]["otra_comuna"], 1)
+        advertencia = next(i for i in response.data["items"] if i["revision_index"] == 0)
+        self.assertTrue(advertencia["auto_resoluble"])
+        self.assertEqual(advertencia["historico"]["sector_oficial"], "FRUTILLARES")
+        self.assertTrue(advertencia["historico"]["nombre_coincide"])
+
+    def test_filtro_por_alerta_fallecido(self):
+        response = self.client.get("/api/importar/revision/?alerta=FALLECIDO")
+        self.assertEqual([i["rut"] for i in response.data["items"]], ["222222222"])
+
+    def test_autoresolver_simula_y_luego_completa_sector(self):
+        simulado = self.client.post("/api/importar/revision/autoresolver/", {"simular": True}, format="json")
+        self.assertEqual(simulado.data["resueltas"], 2)
+        self.importacion.refresh_from_db()
+        self.assertEqual(self.importacion.observaciones_revision[0]["estado_revision"], "PENDIENTE")
+
+        aplicado = self.client.post("/api/importar/revision/autoresolver/", {}, format="json")
+        self.assertEqual(aplicado.data["advertencias"], 1)
+        self.assertEqual(aplicado.data["recurrentes"], 1)
+        self.assertEqual(aplicado.data["fichas_completadas"], 1)
+        # El recurrente de un paciente sin ficha (fallecido) queda para una persona.
+        self.importacion.refresh_from_db()
+        self.assertEqual(self.importacion.observaciones_revision[4]["estado_revision"], "PENDIENTE")
+        self.importacion.refresh_from_db()
+        self.assertEqual(self.importacion.observaciones_revision[0]["estado_revision"], "RESUELTO")
+        self.assertNotIn("historico", self.importacion.observaciones_revision[0])
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.sector_oficial, "FRUTILLARES")
+        self.assertEqual(self.paciente.sector_cesfam, "AZUL")
+        # La advertencia con otro motivo no se toca.
+        self.assertEqual(self.importacion.observaciones_revision[1]["estado_revision"], "PENDIENTE")
+
+    def test_accion_masiva_no_resuelve_errores_pero_si_los_descarta(self):
+        items = [{"importacion_id": self.importacion.id, "index": i} for i in (2, 3)]
+        resolver = self.client.post("/api/importar/revision/masiva/", {"accion": "RESOLVER", "items": items}, format="json")
+        self.assertEqual((resolver.data["procesadas"], resolver.data["omitidas"]), (1, 1))
+        descartar = self.client.post(
+            "/api/importar/revision/masiva/",
+            {"accion": "DESCARTAR", "items": [{"importacion_id": self.importacion.id, "index": 3}]},
+            format="json",
+        )
+        self.assertEqual(descartar.data["procesadas"], 1)
+        self.importacion.refresh_from_db()
+        self.assertEqual(self.importacion.observaciones_revision[2]["estado_revision"], "RESUELTO")
+        self.assertEqual(self.importacion.observaciones_revision[3]["estado_revision"], "DESCARTADO")
+
+    def test_recurrente_queda_en_lista_con_espera_acumulada_y_se_puede_deshacer(self):
+        resolver = self.client.post(
+            "/api/importar/revision/masiva/",
+            {"accion": "RESOLVER", "items": [{"importacion_id": self.importacion.id, "index": 2}]},
+            format="json",
+        )
+        self.assertEqual(resolver.data["procesadas"], 1)
+        self.paciente.refresh_from_db()
+        # Espera desde la primera derivación vista y 2 cortes (julio y agosto).
+        self.assertEqual(self.paciente.fecha_derivacion, date(2026, 6, 10))
+        self.assertEqual(self.paciente.n_meses_espera, 2)
+        self.assertEqual(self.paciente.estado, Paciente.Estado.PENDIENTE)
+
+        deshacer = self.client.post("/api/importar/revision/deshacer/", {"lote": resolver.data["lote"]}, format="json")
+        self.assertEqual(deshacer.data["deshechas"], 1)
+        self.assertEqual(deshacer.data["fichas_restauradas"], 1)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.fecha_derivacion, date(2026, 8, 3))
+        self.assertEqual(self.paciente.n_meses_espera, 1)
+        self.importacion.refresh_from_db()
+        obs = self.importacion.observaciones_revision[2]
+        self.assertEqual(obs["estado_revision"], "PENDIENTE")
+        self.assertNotIn("lote_resolucion", obs)
+
+    def test_deshacer_por_items_y_lote_de_autoresolucion(self):
+        auto = self.client.post("/api/importar/revision/autoresolver/", {}, format="json")
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.sector_oficial, "FRUTILLARES")
+        deshacer = self.client.post("/api/importar/revision/deshacer/", {"lote": auto.data["lote"]}, format="json")
+        self.assertEqual(deshacer.data["deshechas"], 2)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.sector_oficial, "")
+        self.assertEqual(self.paciente.fecha_derivacion, date(2026, 8, 3))
+
+        descartar = self.client.post(
+            "/api/importar/revision/masiva/",
+            {"accion": "DESCARTAR", "items": [{"importacion_id": self.importacion.id, "index": 3}]},
+            format="json",
+        )
+        self.assertEqual(descartar.data["procesadas"], 1)
+        uno = self.client.post(
+            "/api/importar/revision/deshacer/",
+            {"items": [{"importacion_id": self.importacion.id, "index": 3}]},
+            format="json",
+        )
+        self.assertEqual(uno.data["deshechas"], 1)
+        vacio = self.client.post("/api/importar/revision/deshacer/", {}, format="json")
+        self.assertEqual(vacio.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_accion_masiva_valida_la_entrada(self):
+        malo = self.client.post("/api/importar/revision/masiva/", {"accion": "BORRAR", "items": []}, format="json")
+        self.assertEqual(malo.status_code, status.HTTP_400_BAD_REQUEST)
+        vacio = self.client.post("/api/importar/revision/masiva/", {"accion": "RESOLVER", "items": []}, format="json")
+        self.assertEqual(vacio.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class SectorizacionTests(APITestCase):
+    def test_codigo_numerado_da_color_y_barrio_canonico(self):
+        from apps.importar.sectorizacion import sectorizar
+
+        self.assertEqual(
+            sectorizar("CARA7-0012", "FRUTILLARES"),
+            {"codigo": "A7", "sector_cesfam": "AZUL", "sector_oficial": "FRUTILLARES"},
+        )
+
+    def test_bellavista_usa_el_barrio_del_padron(self):
+        from apps.importar.sectorizacion import sectorizar
+
+        self.assertEqual(
+            sectorizar("CB1A003919", "LOMA ALTA (CB)"),
+            {"codigo": "CB", "sector_cesfam": "CESFAM BELLAVISTA", "sector_oficial": "LOMA ALTA"},
+        )
+
+    def test_codigo_sin_sector_valido_queda_solo_en_color(self):
+        from apps.importar.sectorizacion import codigo_desde_familia
+
+        # Igual que la macro: prueba dos digitos y luego uno; si ninguno sirve, solo color.
+        self.assertEqual(codigo_desde_familia("CARA12-0345"), "A12")
+        self.assertEqual(codigo_desde_familia("CARV0"), "V")

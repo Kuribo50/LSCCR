@@ -88,26 +88,26 @@ class UsuarioAdminTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("rut", response.data)
 
-    def test_usuario_administrativo_existente_sigue_funcionando(self):
+    def test_usuario_medico_aparece_en_listado(self):
         administrativo = Usuario.objects.create_user(
             rut="55.555.555-5",
             password="testpass123",
-            nombre="Administrativo Existente",
-            rol=Usuario.Rol.ADMINISTRATIVO,
+            nombre="Medico Existente",
+            rol=Usuario.Rol.MEDICO,
         )
 
         response = self.client.get("/api/usuarios/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         item = next(usuario for usuario in response.data if usuario["id"] == administrativo.id)
-        self.assertEqual(item["rol"], Usuario.Rol.ADMINISTRATIVO)
+        self.assertEqual(item["rol"], Usuario.Rol.MEDICO)
 
-    def test_admin_puede_cambiar_administrativo_existente_a_kine(self):
+    def test_admin_puede_cambiar_medico_a_kine(self):
         administrativo = Usuario.objects.create_user(
             rut="77.777.777-7",
             password="testpass123",
-            nombre="Administrativo Cambio",
-            rol=Usuario.Rol.ADMINISTRATIVO,
+            nombre="Medico Cambio",
+            rol=Usuario.Rol.MEDICO,
         )
 
         response = self.client.patch(

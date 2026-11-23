@@ -26,6 +26,8 @@ USUARIOS_DEMO = [
         "rut": "33333333K",
         "nombre": "Mane Sáez",
         "rol": Usuario.Rol.KINE,
+        # Profesional encargada en la demo: resuelve la Revisión de carga.
+        "es_encargado": True,
         "password": "Ccr2025*",
         "is_active": True,
         "is_staff": False,
@@ -44,6 +46,15 @@ USUARIOS_DEMO = [
         "rut": "88888888K",
         "nombre": "Karen Torres",
         "rol": Usuario.Rol.KINE,
+        "password": "Ccr2025*",
+        "is_active": True,
+        "is_staff": False,
+        "is_superuser": False,
+    },
+    {
+        "rut": "99999999K",
+        "nombre": "Médico CCR",
+        "rol": Usuario.Rol.MEDICO,
         "password": "Ccr2025*",
         "is_active": True,
         "is_staff": False,
@@ -89,6 +100,7 @@ class Command(BaseCommand):
             user.is_active = item.get("is_active", True)
             user.is_staff = item["is_staff"]
             user.is_superuser = item["is_superuser"]
+            user.es_encargado = item.get("es_encargado", False)
             user.set_password(item["password"])
             user.save()
 

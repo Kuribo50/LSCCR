@@ -20,6 +20,7 @@ import type { IconType } from "react-icons";
 import { animate, motion, useReducedMotion, type Variants } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import InicioMedico from "@/components/InicioMedico";
 import { formatearRut } from "@/lib/rut";
 import type {
   AgendaResumenDia,
@@ -135,6 +136,13 @@ const RESUMEN_VACIO: DashboardResumenOperativo = {
 // =============================================================================
 
 export default function InicioPage() {
+  const { user } = useAuth();
+  // El Médico solo opera la carga de derivaciones: su Inicio resume sus cargas.
+  if (user?.rol === "MEDICO") return <InicioMedico />;
+  return <InicioOperativo />;
+}
+
+function InicioOperativo() {
   const { user } = useAuth();
   const router = useRouter();
   const [resumen, setResumen] = useState<DashboardResumenOperativo>(RESUMEN_VACIO);

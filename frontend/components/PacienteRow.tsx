@@ -75,7 +75,7 @@ export default function PacienteRow({
     ["PENDIENTE", "RESCATE"].includes(paciente.estado) && 
     paciente.kine_asignado !== null &&
     ((usuario.rol === "KINE" && paciente.kine_asignado === usuario.id) || 
-     ["ADMIN", "ADMINISTRATIVO"].includes(usuario.rol));
+     usuario.rol === "ADMIN");
 
   return (
     <tr

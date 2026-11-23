@@ -301,7 +301,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[12px] font-bold text-slate-700">
-                          Sector oficial
+                          Sector territorial
                         </label>
                         <input
                           value={sectorOficial}
@@ -312,7 +312,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-[12px] font-bold text-slate-700">
-                          SectorCesfam
+                          Sector
                         </label>
                         <input
                           value={sectorCesfam}

@@ -52,6 +52,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "is_active",
             "date_joined",
             "requiere_cambio_password",
+            "es_encargado",
         )
         read_only_fields = ("id", "date_joined")
 
@@ -64,8 +65,14 @@ class UsuarioCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ("id", "rut", "nombre", "rol", "password", "is_active")
+        fields = ("id", "rut", "nombre", "rol", "password", "is_active", "es_encargado")
         read_only_fields = ("id",)
+
+    def validate(self, attrs):
+        # Solo un profesional (rol KINE) puede ser encargado.
+        if attrs.get("rol") != Usuario.Rol.KINE:
+            attrs["es_encargado"] = False
+        return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -82,10 +89,17 @@ class UsuarioPatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Usuario
-        fields = ("rut", "nombre", "rol", "is_active", "password")
+        fields = ("rut", "nombre", "rol", "is_active", "password", "es_encargado")
 
     def validate_rut(self, value):
         return validar_rut_usuario(value, self.instance)
+
+    def validate(self, attrs):
+        # Solo un profesional (rol KINE) puede ser encargado.
+        rol = attrs.get("rol", self.instance.rol if self.instance else None)
+        if rol != Usuario.Rol.KINE:
+            attrs["es_encargado"] = False
+        return attrs
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)

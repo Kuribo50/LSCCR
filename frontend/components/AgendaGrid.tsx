@@ -1,5 +1,7 @@
 "use client";
 
+import FiltroPildoras from "@/components/FiltroPildoras";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { FiAlertCircle } from "react-icons/fi";
@@ -152,46 +154,22 @@ export default function AgendaGrid({
     <div className="relative">
       {/* Filtro por categoria: ovalo arriba de la grilla; destaca una categoria y apaga las demas */}
       {categoriasPresentes.length > 0 && (
-        <div className="flex justify-center border-b border-slate-200 px-4 py-3 dark:border-ink-black-600">
-          <div
-            role="group"
-            aria-label="Filtrar por categoría"
-            className="flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-slate-200 bg-white p-1 shadow-[0_8px_24px_-12px_rgba(22,24,27,0.25)] dark:border-ink-black-600 dark:bg-ink-black-800"
-          >
-            {([null, ...categoriasPresentes] as Array<Categoria | null>).map((cat) => {
-              const activa = categoriaActiva === cat;
-              const total = cat ? citas.filter((p) => p.categoria === cat).length : citas.length;
-              return (
-                <button
-                  key={cat ?? "todas"}
-                  type="button"
-                  aria-pressed={activa}
-                  onClick={() => setCategoriaActiva(cat)}
-                  className={`relative flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-                    activa ? "text-slate-950 dark:text-white" : "text-slate-600 hover:text-slate-950 dark:text-ink-black-200"
-                  }`}
-                >
-                  {activa && (
-                    <motion.span
-                      layoutId="agenda-categoria-activa"
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-full bg-slate-100 dark:bg-ink-black-700"
-                      transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }}
-                    />
-                  )}
-                  {cat && (
-                    <span
-                      aria-hidden="true"
-                      className={`relative h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-ink-black-800 ${TONO_CATEGORIA[cat]?.dot ?? "bg-slate-400"}`}
-                    />
-                  )}
-                  <span className="relative">{cat ? CATEGORIA_LABELS[cat] ?? cat : "Todas"}</span>
-                  <span className="relative text-xs tabular-nums text-slate-400">{total}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <FiltroPildoras
+          franja
+          ariaLabel="Filtrar por categoría"
+          layoutId="agenda-categoria-activa"
+          valor={categoriaActiva ?? ""}
+          onChange={(v) => setCategoriaActiva(v ? (v as Categoria) : null)}
+          opciones={[
+            { value: "", label: "Todas", total: citas.length },
+            ...categoriasPresentes.map((cat) => ({
+              value: cat,
+              label: CATEGORIA_LABELS[cat] ?? cat,
+              dot: TONO_CATEGORIA[cat]?.dot ?? "bg-slate-400",
+              total: citas.filter((p) => p.categoria === cat).length,
+            })),
+          ]}
+        />
       )}
 
       <div ref={scrollRef} className="max-h-[min(560px,calc(100vh-280px))] overflow-auto overscroll-contain">

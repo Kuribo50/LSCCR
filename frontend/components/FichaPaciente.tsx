@@ -31,7 +31,6 @@ import {
   FiActivity,
   FiCalendar,
   FiChevronRight,
-  FiMessageSquare,
   FiAlertTriangle,
   FiClock,
   FiCopy,
@@ -54,6 +53,10 @@ import BadgeEstado from "./BadgeEstado";
 import BadgePrioridad from "./BadgePrioridad";
 import TimelinePaciente from "./TimelinePaciente";
 import SectorBadge from "./SectorBadge";
+import FondoPestana from "./FondoPestana";
+import { puedeCorregirDatos } from "@/lib/roles";
+import { AlertaPanel } from "./AlertaChip";
+import ObservacionesPaciente from "./ObservacionesPaciente";
 
 // Sub-modals rendered only when the user clicks an action — lazy-loaded.
 const CambiarEstadoModal = dynamic(() => import("./CambiarEstadoModal"), {
@@ -252,7 +255,7 @@ export default function FichaPaciente({
       `${paciente.id_ccr} · ${paciente.nombre}`,
       `RUT: ${formatearRut(paciente.rut)}`,
       `Estado: ${ESTADO_LABELS[paciente.estado]}`,
-      `Sector CESFAM: ${paciente.sector_cesfam || "-"}`,
+      `Sector: ${paciente.sector_cesfam || "-"}`,
       `Diagnóstico: ${paciente.diagnostico || "-"}`,
     ].join("\n");
     void navigator.clipboard?.writeText(resumen).then(
@@ -277,16 +280,14 @@ export default function FichaPaciente({
   const edadTexto = paciente.edad > 0 ? `${paciente.edad} años` : "Edad sin dato";
 
   const puedeCambiarEstado = useMemo(() => {
-    if (usuario.rol === "KINE" || usuario.rol === "ADMIN") return true;
-    return usuario.rol === "ADMINISTRATIVO" && Boolean(paciente.kine_asignado);
-  }, [usuario.rol, paciente.kine_asignado]);
+    // El Médico solo carga derivaciones: no cambia estados.
+    return usuario.rol === "KINE" || usuario.rol === "ADMIN";
+  }, [usuario.rol]);
 
   const puedeRegistrarLlamado =
     ["PENDIENTE", "RESCATE"].includes(paciente.estado) &&
     paciente.kine_asignado !== null &&
-    (usuario.rol === "ADMIN" ||
-      usuario.rol === "ADMINISTRATIVO" ||
-      usuario.rol === "KINE");
+    (usuario.rol === "ADMIN" || usuario.rol === "KINE");
 
   const puedeProgramar =
     ["PENDIENTE", "RESCATE", "INGRESADO"].includes(paciente.estado) &&
@@ -381,16 +382,28 @@ export default function FichaPaciente({
                 <BadgePrioridad prioridad={paciente.prioridad} />
                 <SectorBadge sector={paciente.sector_cesfam} />
               </div>
+              <AlertaPanel
+                alerta={paciente.alerta}
+                puedeResolver={puedeCorregirDatos(usuario)}
+                onResolver={async () => {
+                  const actualizado = await api.patch<Paciente>(`/pacientes/${paciente.id}/`, { alerta: "" });
+                  setPaciente(actualizado);
+                  toastSuccess("Observación marcada como revisada.");
+                  onRefresh();
+                }}
+              />
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <button type="button" onClick={() => router.push(`/paciente/${paciente.rut}`)} className="ccr-control-button">
                 <FiExternalLink size={14} aria-hidden="true" />
                 <span className="hidden sm:inline">Ficha completa</span>
               </button>
-              <button type="button" onClick={() => setMostrarEdicion(true)} className="ccr-control-button-primary">
-                <FiEdit2 size={14} aria-hidden="true" />
-                Editar
-              </button>
+              {usuario.rol !== "MEDICO" && (
+                <button type="button" onClick={() => setMostrarEdicion(true)} className="ccr-control-button-primary">
+                  <FiEdit2 size={14} aria-hidden="true" />
+                  Editar
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -443,8 +456,8 @@ export default function FichaPaciente({
                 <Field label="RUT" value={formatearRut(paciente.rut)} />
                 <Field label="Edad" value={paciente.edad > 0 ? `${paciente.edad} años` : ""} />
                 <Field label="Mayor de 60" value={paciente.mayor_60 ? "Sí" : "No"} />
-                <Field label="Sector CESFAM" value={paciente.sector_cesfam ? <SectorBadge sector={paciente.sector_cesfam} /> : ""} />
-                <Field label="Sector oficial" value={paciente.sector_oficial} />
+                <Field label="Sector" value={paciente.sector_cesfam ? <SectorBadge sector={paciente.sector_cesfam} /> : ""} />
+                <Field label="Sector territorial" value={paciente.sector_oficial} />
               </Section>
 
               <Section icon={<FiPhone size={15} />} title="Contacto">
@@ -472,7 +485,7 @@ export default function FichaPaciente({
 
               <Section icon={<FiActivity size={15} />} title="Seguimiento CCR">
                 <Field label="Estado" value={ESTADO_LABELS[paciente.estado]} />
-                <Field label="Kine asignado" value={kineNombre ?? <span className="font-semibold text-amber-700 dark:text-amber-300">Sin asignar</span>} />
+                <Field label="Profesional asignado" value={kineNombre ?? <span className="font-semibold text-amber-700 dark:text-amber-300">Sin asignar</span>} />
                 <Field label="Último cambio de estado" value={paciente.fecha_cambio_estado ? formatearFechaHoraCorta(paciente.fecha_cambio_estado) : ""} />
                 <Field label="Fecha de ingreso" value={paciente.fecha_ingreso ? formatearFecha(paciente.fecha_ingreso) : ""} />
                 <Field label="Fecha de egreso" value={paciente.fecha_egreso ? formatearFecha(paciente.fecha_egreso) : ""} />
@@ -510,12 +523,8 @@ export default function FichaPaciente({
               </Section>
             </div>
 
-            {paciente.observaciones && (
-              <Section icon={<FiMessageSquare size={15} />} title="Observaciones">
-                <p className="whitespace-pre-line py-2.5 text-[13px] font-medium leading-relaxed text-slate-700 dark:text-ink-black-100">
-                  {paciente.observaciones}
-                </p>
-              </Section>
+            {usuario.rol !== "MEDICO" && (
+              <ObservacionesPaciente pacienteId={paciente.id} usuario={usuario} />
             )}
 
             {/* ----- Historial de movimientos ----- */}
@@ -538,13 +547,16 @@ export default function FichaPaciente({
                       type="button"
                       onClick={() => setVistaHistorial(vista.id)}
                       aria-pressed={vistaHistorial === vista.id}
-                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                      className={`relative inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-bold outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
                         vistaHistorial === vista.id
-                          ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200"
+                          ? "text-blue-700 dark:text-blue-200"
                           : "text-slate-500 hover:text-slate-800 dark:text-ink-black-300"
                       }`}
                     >
-                      {vista.icon} {vista.label}
+                      {vistaHistorial === vista.id && <FondoPestana id={`ficha-historial-${paciente.id}`} />}
+                      <span className="relative z-10 inline-flex items-center gap-1.5">
+                        {vista.icon} {vista.label}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -617,10 +629,10 @@ export default function FichaPaciente({
               {paciente.estado === "INGRESADO" && puedeCambiarEstado && (
                 <AccionFicha icon={<FiAlertTriangle size={14} />} tono="ambar" label="Registrar inasistencia" onClick={() => setMostrarInasistencia(true)} />
               )}
-              {puedeCambiarEstado && (
+              {puedeCorregirDatos(usuario) && (
                 <AccionFicha
                   icon={<FiUserPlus size={14} />}
-                  label={paciente.kine_asignado ? "Cambiar kine" : "Asignar kine"}
+                  label={paciente.kine_asignado ? "Cambiar profesional" : "Asignar profesional"}
                   onClick={() => setMostrarEdicion(true)}
                 />
               )}
@@ -649,7 +661,7 @@ export default function FichaPaciente({
             </GrupoAcciones>
 
             <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-ink-black-600 dark:bg-ink-black-800">
-              <p className="text-[11px] font-bold text-slate-500 dark:text-ink-black-300">Kine responsable</p>
+              <p className="text-[11px] font-bold text-slate-500 dark:text-ink-black-300">Profesional responsable</p>
               <p className={`mt-0.5 text-[13px] font-extrabold ${kineNombre ? "text-slate-900 dark:text-ink-black-50" : "text-amber-700 dark:text-amber-300"}`}>
                 {kineNombre ?? "Sin asignar"}
               </p>
@@ -751,14 +763,14 @@ export default function FichaPaciente({
               ? "Atención reagendada correctamente."
               : "Atención programada correctamente."
           }
-          clearSuccessMessage="Cita eliminada. Paciente vuelve a pendientes de agenda."
+          clearSuccessMessage="Cita eliminada correctamente."
         />
       )}
 
       {mostrarEdicion && (
         <EditarPacienteModal
           paciente={paciente}
-          mode="full"
+          mode={puedeCorregirDatos(usuario) ? "full" : "contact-only"}
           onClose={() => setMostrarEdicion(false)}
           onGuardado={(actualizado) => {
             setPaciente(actualizado);

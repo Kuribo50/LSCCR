@@ -2,18 +2,55 @@
 
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
 import { getErrorMessage } from '@/lib/errors'
 import { useToast } from '@/lib/toast-context'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import LoaderKine from '@/components/LoaderKine'
+import { terminarNavegacion, useDestinoNavegacion } from '@/lib/navegacion'
+import { puedeAbrirRuta } from '@/lib/roles'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, refreshUser } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const destino = useDestinoNavegacion()
+  // Navegacion pedida desde el menu que todavia no llega.
+  const pendiente = destino !== null && destino !== pathname
+  const [loaderDesde, setLoaderDesde] = useState<number | null>(null)
+
+  useEffect(() => {
+    // Llego la pagina elegida: el menu vuelve a seguir la ruta real.
+    if (destino === pathname) terminarNavegacion()
+  }, [pathname, destino])
+
+  useEffect(() => {
+    // Seguridad: si la navegacion no llega (redireccion, error), soltar el destino.
+    if (!destino) return
+    const id = window.setTimeout(terminarNavegacion, 8000)
+    return () => window.clearTimeout(id)
+  }, [destino])
+
+  useEffect(() => {
+    // El loader solo aparece si la pagina demora mas de 300 ms en llegar.
+    // Una vez visible se queda al menos 500 ms para que no parpadee.
+    if (pendiente) {
+      if (loaderDesde !== null) return
+      const id = window.setTimeout(() => setLoaderDesde(Date.now()), 300)
+      return () => window.clearTimeout(id)
+    }
+    if (loaderDesde === null) return
+    const resto = Math.max(0, 500 - (Date.now() - loaderDesde))
+    const id = window.setTimeout(() => setLoaderDesde(null), resto)
+    return () => window.clearTimeout(id)
+  }, [pendiente, loaderDesde])
+
+  // La pagina queda montada (oculta) detras del loader, asi carga sus datos.
+  const cargandoPagina = loaderDesde !== null
 
   useEffect(() => {
     // Segunda barrera de proteccion en cliente. El middleware ya protege rutas,
@@ -23,14 +60,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [user, loading, router])
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100 dark:!bg-[#151515]">
-        <div className="animate-pulse rounded-2xl border border-gray-200 bg-white px-6 py-4 text-sm font-medium text-gray-700 shadow-sm dark:!border-[#262626] dark:!bg-[#0f0f10] dark:!text-ink-black-50">
-          Cargando entorno...
-        </div>
-      </div>
-    )
+  const rutaPermitida = !user || puedeAbrirRuta(user, pathname)
+  useEffect(() => {
+    // Una ruta que no corresponde al rol (o al encargado) vuelve a Inicio.
+    if (!rutaPermitida) router.replace('/inicio')
+  }, [rutaPermitida, router])
+
+  if (loading || !rutaPermitida) {
+    return <LoaderKine pantallaCompleta retrasoMs={0} />
   }
 
   if (!user) return null
@@ -46,7 +83,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Navbar user={user} onOpenSidebar={() => setMobileSidebarOpen(true)} />
         <main className="ccr-dashboard-main flex-1 overflow-y-auto bg-slate-100 dark:!bg-[#151515]">
           <div className="mx-auto w-full max-w-[1720px] px-3 py-3 sm:px-4 sm:py-4 lg:px-6">
-            {children}
+            {cargandoPagina && <LoaderKine retrasoMs={0} />}
+            <div className={cargandoPagina ? 'hidden' : undefined}>{children}</div>
           </div>
         </main>
       </div>

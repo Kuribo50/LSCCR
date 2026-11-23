@@ -18,6 +18,14 @@ class ImportacionDerivacionesSerializer(serializers.Serializer):
         return archivo
 
 
+class ImportacionTelefonosSerializer(serializers.Serializer):
+    archivo = serializers.FileField()
+    aplicar = serializers.BooleanField(required=False, default=False)
+
+    def validate_archivo(self, archivo):
+        return ImportacionDerivacionesSerializer().validate_archivo(archivo)
+
+
 class ImportacionMensualSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImportacionMensual

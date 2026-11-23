@@ -1,32 +1,68 @@
 "use client";
 
-import { type ClipboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ClipboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   FiAlertTriangle,
-  FiArchive,
+  FiCalendar,
   FiCheckCircle,
   FiClipboard,
   FiDownload,
   FiFileText,
   FiRefreshCw,
-  FiShield,
-  FiTrash2,
+  FiRepeat,
   FiUploadCloud,
+  FiUserPlus,
+  FiX,
 } from "react-icons/fi";
+import RevertirCarga from "@/components/RevertirCarga";
+import FondoPestana from "@/components/FondoPestana";
+import SelectFiltro from "@/components/SelectFiltro";
+import ImportarPrevisualizacion, {
+  type CorreccionesMap,
+} from "@/components/ImportarPrevisualizacion";
+import { puedeRevisarCarga, puedeCargarDerivaciones } from "@/lib/roles";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
 import type {
   ImportacionConflictoResponse,
-  ImportacionHistorialDetalle,
-  ImportacionHistorialItem,
-  ImportacionPreviewRegistro,
   ImportacionPreviewResultado,
   ImportacionResultado,
 } from "@/lib/types";
+
+/** Mes y año que menciona el nombre del archivo ("Derivaciones CCR Octubre 2026.xlsx"), si lo hay. */
+function periodoDesdeNombre(
+  nombre: string,
+): { mes: number; anio: number | null } | null {
+  const limpio = nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const idx = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+  ].findIndex((m) => limpio.includes(m));
+  if (idx < 0) return null;
+  const anio = limpio.match(/(20\d{2})/);
+  return { mes: idx + 1, anio: anio ? Number(anio[1]) : null };
+}
 
 // =============================================================================
 // Tipos, constantes y helpers de importacion
@@ -76,7 +112,13 @@ const SIGLAS_DESDE = [
 ];
 
 const SIGLAS_DESDE_SET = new Set(SIGLAS_DESDE.map(([sigla]) => sigla));
-const PRIORIDADES_PEGADO = new Set(["ALTA", "MEDIANA", "MEDIA", "MODERADA", "BAJA"]);
+const PRIORIDADES_PEGADO = new Set([
+  "ALTA",
+  "MEDIANA",
+  "MEDIA",
+  "MODERADA",
+  "BAJA",
+]);
 const PROFESIONALES_PEGADO = new Set([
   "KINESIOLOGO",
   "KINESIOLOGA",
@@ -111,7 +153,9 @@ type ModoImportacion = "archivo" | "pegado";
 
 function parsePastedRows(texto: string) {
   // Soporta pegado desde Excel/Sheets con tabulador, punto y coma o coma.
-  const lineas = texto.split(/\r?\n/).filter((linea) => linea.trim().length > 0);
+  const lineas = texto
+    .split(/\r?\n/)
+    .filter((linea) => linea.trim().length > 0);
   const muestra = lineas.slice(0, 20).join("\n");
   const tabuladores = (muestra.match(/\t/g) ?? []).length;
   const puntoYComa = (muestra.match(/;/g) ?? []).length;
@@ -174,7 +218,9 @@ function isPastedHeaderRow(fila: string[]) {
 }
 
 function looksLikePastedDate(valor: string) {
-  return /^(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})$/.test(valor.trim());
+  return /^(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})$/.test(
+    valor.trim(),
+  );
 }
 
 function looksLikePastedRut(valor: string) {
@@ -196,7 +242,12 @@ function normalizePastedDataRow(fila: string[]) {
   const rutIndex = limpia.findIndex(looksLikePastedRut);
   const edadIndex =
     rutIndex >= 0
-      ? limpia.findIndex((celda, index) => index > rutIndex && index <= rutIndex + 3 && looksLikePastedAge(celda))
+      ? limpia.findIndex(
+          (celda, index) =>
+            index > rutIndex &&
+            index <= rutIndex + 3 &&
+            looksLikePastedAge(celda),
+        )
       : -1;
   const desdeIndex =
     edadIndex >= 0
@@ -214,20 +265,38 @@ function normalizePastedDataRow(fila: string[]) {
   );
   const prioridadIndex = limpia.findIndex(
     (celda, index) =>
-      index > profesionalIndex && PRIORIDADES_PEGADO.has(normalizePastedLabel(celda)),
+      index > profesionalIndex &&
+      PRIORIDADES_PEGADO.has(normalizePastedLabel(celda)),
   );
 
-  if (dateIndex < 0 || rutIndex < 0 || edadIndex < 0 || profesionalIndex < 0 || prioridadIndex < 0) {
+  if (
+    dateIndex < 0 ||
+    rutIndex < 0 ||
+    edadIndex < 0 ||
+    profesionalIndex < 0 ||
+    prioridadIndex < 0
+  ) {
     return limpia;
   }
 
   const date = limpia[dateIndex] ?? "";
-  const nombre = limpia.slice(dateIndex + 1, rutIndex).filter(Boolean).join(" ").trim() || limpia[1] || "";
+  const nombre =
+    limpia
+      .slice(dateIndex + 1, rutIndex)
+      .filter(Boolean)
+      .join(" ")
+      .trim() ||
+    limpia[1] ||
+    "";
   const rut = limpia[rutIndex] ?? "";
   const edad = limpia[edadIndex] ?? "";
-  const desde = desdeIndex >= 0 ? limpia[desdeIndex] ?? "" : "";
+  const desde = desdeIndex >= 0 ? (limpia[desdeIndex] ?? "") : "";
   const diagnosticoStart = desdeIndex >= 0 ? desdeIndex + 1 : edadIndex + 1;
-  const diagnostico = limpia.slice(diagnosticoStart, profesionalIndex).filter(Boolean).join(" ").trim();
+  const diagnostico = limpia
+    .slice(diagnosticoStart, profesionalIndex)
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const tail = limpia.slice(prioridadIndex + 1);
 
   return [
@@ -252,101 +321,12 @@ function parsePastedDataRows(texto: string) {
     .filter((fila) => !isPastedHeaderRow(fila))
     .filter((fila) => {
       const noVacias = fila.filter(Boolean);
-      return noVacias.length > 0 && !(noVacias.length === 1 && looksLikePastedDate(noVacias[0]));
+      return (
+        noVacias.length > 0 &&
+        !(noVacias.length === 1 && looksLikePastedDate(noVacias[0]))
+      );
     })
     .map(normalizePastedDataRow);
-}
-
-function formatPeriodoDetectado(label: string) {
-  const match = label.match(/^(\d{4})-(\d{1,2})$/);
-  if (!match) return label;
-  const anio = match[1];
-  const mes = Number(match[2]);
-  return `${MESES[mes - 1] ?? match[2]} ${anio}`;
-}
-
-function estadoBadgeStyle(estado: ImportacionHistorialItem["estado"]) {
-  if (estado === "COMPLETADO") {
-    return { backgroundColor: "#e9f4fb", color: "#335fdb", borderColor: "#a8d4f0" };
-  }
-  if (estado === "CON_ERRORES") {
-    return { backgroundColor: "#FFF7ED", color: "#ca8702", borderColor: "#fdcb68" };
-  }
-  if (estado === "REEMPLAZADO") {
-    return { backgroundColor: "#F8FAFC", color: "#64748B", borderColor: "#CBD5E1" };
-  }
-  return { backgroundColor: "#e9f4fb", color: "#335fdb", borderColor: "#a8d4f0" };
-}
-
-function previewEstadoBadgeClass(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR") {
-    return "ccr-preview-status ccr-preview-status-error";
-  }
-  if (registro.estado === "DUPLICADO") {
-    return "ccr-preview-status ccr-preview-status-duplicate";
-  }
-  if (registro.estado === "REVISION") {
-    return "ccr-preview-status ccr-preview-status-duplicate";
-  }
-  return "ccr-preview-status ccr-preview-status-ok";
-}
-
-function previewEstadoLabel(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR") return registro.error || "Error";
-  if (registro.estado === "DUPLICADO") return "Recurrente";
-  if (registro.estado === "REVISION") return registro.motivo_revision || "Revisar";
-  return "Nuevo";
-}
-
-function PreviewMetric({
-  label,
-  value,
-  tone = "blue",
-}: {
-  label: string;
-  value: number;
-  tone?: "blue" | "green" | "amber" | "red";
-}) {
-  const toneClass = {
-    blue: "text-blue-800",
-    green: "text-[#1B5E3B]",
-    amber: "text-amber-700",
-    red: "text-red-700",
-  };
-  return (
-    <div className="rounded-xl border border-[#D4E4D4] bg-white px-3 py-3 text-center">
-      <p className={`text-2xl font-black ${toneClass[tone]}`}>{value}</p>
-      <p className="mt-1 text-[11px] font-semibold text-slate-500">{label}</p>
-    </div>
-  );
-}
-
-function PreviewCountBadges({
-  title,
-  counts,
-}: {
-  title: string;
-  counts?: Record<string, number>;
-}) {
-  const entries = Object.entries(counts ?? {}).filter(([, total]) => total > 0);
-  if (entries.length === 0) return null;
-  return (
-    <div className="rounded-xl border border-[#D4E4D4] bg-white px-3 py-2">
-      <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-        {title}
-      </p>
-      <div className="mt-2 flex max-h-20 flex-wrap gap-2 overflow-auto">
-        {entries.slice(0, 12).map(([label, total]) => (
-          <span
-            key={`${title}-${label}`}
-            className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-800"
-          >
-            {label}: {total}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // =============================================================================
@@ -358,72 +338,47 @@ export default function ImportarPage() {
   const { toast } = useToast();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [modoImportacion, setModoImportacion] = useState<ModoImportacion>("archivo");
+  const [modoImportacion, setModoImportacion] =
+    useState<ModoImportacion>("archivo");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [textoPegado, setTextoPegado] = useState("");
   const [preview, setPreview] = useState<ImportacionPreviewResultado | null>(
     null,
   );
   const [resultado, setResultado] = useState<ImportacionResultado | null>(null);
-  const [historial, setHistorial] = useState<ImportacionHistorialItem[]>([]);
-  const [detalleHistorial, setDetalleHistorial] = useState<
-    Record<string, ImportacionHistorialDetalle>
-  >({});
-  const [expandido, setExpandido] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const panelPreviewRef = useRef<HTMLDivElement>(null);
+  const hayPreview = preview !== null;
   const [importLoading, setImportLoading] = useState(false);
   const [autoPreviewPegado, setAutoPreviewPegado] = useState(false);
   const [confirmImportOpen, setConfirmImportOpen] = useState(false);
-  const [historialLoading, setHistorialLoading] = useState(false);
   const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
   const [conflicto, setConflicto] =
     useState<ImportacionConflictoResponse | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState(false);
-  const [mesGestion, setMesGestion] = useState(() => new Date().getMonth() + 1);
-  const [anioGestion, setAnioGestion] = useState(() => new Date().getFullYear());
+  // Mes de corte elegido por el usuario. 0 = detectarlo por las fechas de la planilla.
+  const [mesCorte, setMesCorte] = useState(0);
+  // true cuando el corte se preseleccionó por el nombre del archivo (no lo eligió el usuario).
+  const [corteDesdeNombre, setCorteDesdeNombre] = useState(false);
+  const [anioCorte, setAnioCorte] = useState(() => new Date().getFullYear());
+  // Los refs evitan que editar dispare de nuevo la previsualizacion automatica.
+  const periodoRef = useRef<{ mes: number; anio: number } | null>(null);
+  const correccionesRef = useRef<CorreccionesMap>({});
+  const periodoForzado =
+    mesCorte > 0 ? { mes: mesCorte, anio: anioCorte } : null;
 
-  const cargarHistorial = useCallback(async () => {
-    setHistorialLoading(true);
-    try {
-      const data = await api.get<ImportacionHistorialItem[]>(
-        "/importar/historial/",
-      );
-      setHistorial(data);
-    } catch {
-      setHistorial([]);
-    } finally {
-      setHistorialLoading(false);
-    }
+  /** Opciones comunes de previsualizar/importar: mes de corte y correcciones. */
+  const opcionesCarga = useCallback(() => {
+    const periodo = periodoRef.current;
+    const lista = Object.values(correccionesRef.current).filter(
+      (c) => c.descartar || Object.keys(c.campos).length > 0,
+    );
+    return {
+      periodo_mes: periodo?.mes,
+      periodo_anio: periodo?.anio,
+      correcciones: lista.length > 0 ? lista : undefined,
+    };
   }, []);
-
-  const cargarDetalleGestion = useCallback(
-    async (mes = mesGestion, anio = anioGestion) => {
-      try {
-        const data = await api.get<ImportacionHistorialDetalle>(
-          `/importar/historial/${mes}/${anio}/`,
-        );
-        setDetalleHistorial((prev) => ({ ...prev, [`${mes}-${anio}`]: data }));
-      } catch {
-        setDetalleHistorial((prev) => ({
-          ...prev,
-          [`${mes}-${anio}`]: {
-            mes,
-            anio,
-            mes_label: MESES[mes - 1] ?? String(mes),
-            items: [],
-          },
-        }));
-      }
-    },
-    [anioGestion, mesGestion],
-  );
-
-  const refrescarGestionActual = useCallback(async () => {
-    await cargarHistorial();
-    await cargarDetalleGestion(mesGestion, anioGestion);
-  }, [anioGestion, cargarDetalleGestion, cargarHistorial, mesGestion]);
 
   const handlePrevisualizar = useCallback(async () => {
     // Previsualizar no crea pacientes; solo pide al backend validacion,
@@ -437,22 +392,32 @@ export default function ImportarPage() {
     try {
       const form = new FormData();
       form.append("archivo", archivo);
+      const opciones = opcionesCarga();
+      if (opciones.periodo_mes) {
+        form.append("periodo_mes", String(opciones.periodo_mes));
+        form.append("periodo_anio", String(opciones.periodo_anio));
+      }
+      if (opciones.correcciones)
+        form.append("correcciones", JSON.stringify(opciones.correcciones));
       const data = await api.postForm<ImportacionPreviewResultado>(
         "/importar/previsualizar/",
         form,
       );
       setPreview(data);
       setConfirmImportOpen(false);
-      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
+      toast.info(`Archivo cargado: ${data.total} registros detectados.`);
     } catch (e: unknown) {
       setPreview(null);
-      const message = getErrorMessage(e, "No se pudo previsualizar el archivo.");
+      const message = getErrorMessage(
+        e,
+        "No se pudo previsualizar el archivo.",
+      );
       setError(message);
       toast.error(message);
     } finally {
       setPreviewLoading(false);
     }
-  }, [archivo, toast]);
+  }, [archivo, opcionesCarga, toast]);
 
   const handlePrevisualizarPegado = useCallback(async () => {
     // Mismo contrato que archivo, pero el backend recibe una planilla temporal
@@ -471,38 +436,30 @@ export default function ImportarPage() {
         "/importar/previsualizar-pegado/",
         {
           texto: textoPegado,
+          ...opcionesCarga(),
         },
       );
       setPreview(data);
       setConfirmImportOpen(false);
-      toast.info(`Previsualización cargada: ${data.total} registros detectados.`);
+      toast.info(`Archivo cargado: ${data.total} registros detectados.`);
     } catch (e: unknown) {
       setPreview(null);
-      const message = getErrorMessage(e, "No se pudo previsualizar la planilla pegada.");
+      const message = getErrorMessage(
+        e,
+        "No se pudo previsualizar la planilla pegada.",
+      );
       setError(message);
       toast.error(message);
     } finally {
       setPreviewLoading(false);
     }
-  }, [textoPegado, toast]);
+  }, [opcionesCarga, textoPegado, toast]);
 
   useEffect(() => {
-    if (user && !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
+    if (user && !puedeCargarDerivaciones(user)) {
       router.replace("/pacientes");
     }
   }, [user, router]);
-
-  useEffect(() => {
-    if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
-      void cargarHistorial();
-    }
-  }, [cargarHistorial, user]);
-
-  useEffect(() => {
-    if (user && ["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) {
-      void cargarDetalleGestion(mesGestion, anioGestion);
-    }
-  }, [anioGestion, cargarDetalleGestion, mesGestion, user]);
 
   // Auto-previsualiza al seleccionar archivo para detectar errores antes de importar.
   useEffect(() => {
@@ -512,101 +469,27 @@ export default function ImportarPage() {
   }, [archivo, handlePrevisualizar, modoImportacion]);
 
   useEffect(() => {
-    if (modoImportacion === "pegado" && autoPreviewPegado && textoPegado.trim()) {
+    if (
+      modoImportacion === "pegado" &&
+      autoPreviewPegado &&
+      textoPegado.trim()
+    ) {
       setAutoPreviewPegado(false);
       void handlePrevisualizarPegado();
     }
-  }, [autoPreviewPegado, handlePrevisualizarPegado, modoImportacion, textoPegado]);
+  }, [
+    autoPreviewPegado,
+    handlePrevisualizarPegado,
+    modoImportacion,
+    textoPegado,
+  ]);
 
-  const registrosPreview = useMemo(
-    () => preview?.registros ?? [],
-    [preview],
-  );
   const filasPegadas = useMemo(
     () => parsePastedDataRows(textoPegado).slice(0, 12),
     [textoPegado],
   );
-  const filasPlanillaPegado = filasPegadas.length > 0 ? filasPegadas : PEGADO_EMPTY_ROWS;
-  const historialAgrupado = useMemo(() => {
-    const grupos = new Map<
-      string,
-      {
-        key: string;
-        periodoLabel: string;
-        mes: number;
-        anio: number;
-        items: ImportacionHistorialItem[];
-        usuarios: string[];
-        activo: ImportacionHistorialItem | null;
-      }
-    >();
-
-    for (const item of historial) {
-      const mes = item.mes_datos ?? item.mes;
-      const anio = item.anio_datos ?? item.anio;
-      const key = `${mes}-${anio}`;
-      const existente = grupos.get(key);
-      if (existente) {
-        existente.items.push(item);
-      } else {
-        grupos.set(key, {
-          key,
-          periodoLabel: item.periodo_label,
-          mes,
-          anio,
-          items: [item],
-          usuarios: [],
-          activo: null,
-        });
-      }
-    }
-
-    return Array.from(grupos.values())
-      .map((grupo) => {
-        grupo.items.sort(
-          (a, b) =>
-            new Date(b.fecha_subida).getTime() -
-            new Date(a.fecha_subida).getTime(),
-        );
-        grupo.usuarios = Array.from(
-          new Set(
-            grupo.items
-              .map((item) => item.usuario_nombre)
-              .filter(Boolean) as string[],
-          ),
-        );
-        grupo.activo =
-          grupo.items.find((item) => item.estado !== "REEMPLAZADO") ??
-          grupo.items[0] ??
-          null;
-        return grupo;
-      })
-      .sort((a, b) => {
-        if (a.anio !== b.anio) return b.anio - a.anio;
-        return b.mes - a.mes;
-      });
-  }, [historial]);
-
-  async function cargarDetalle(item: ImportacionHistorialItem) {
-    const mes = item.mes_datos ?? item.mes;
-    const anio = item.anio_datos ?? item.anio;
-    const key = `${mes}-${anio}`;
-    if (detalleHistorial[key]) {
-      setExpandido(expandido === key ? null : key);
-      return;
-    }
-
-    try {
-      const data = await api.get<ImportacionHistorialDetalle>(
-        `/importar/historial/${mes}/${anio}/`,
-      );
-      setDetalleHistorial((prev) => ({ ...prev, [key]: data }));
-      setExpandido(expandido === key ? null : key);
-    } catch {
-      setExpandido(expandido === key ? null : key);
-    }
-  }
-
+  const filasPlanillaPegado =
+    filasPegadas.length > 0 ? filasPegadas : PEGADO_EMPTY_ROWS;
   async function importarArchivo(forzarReemplazo = false, suplementar = false) {
     // Confirmacion final: este paso si crea pacientes y observaciones de revision.
     if (!archivo) return;
@@ -623,6 +506,13 @@ export default function ImportarPage() {
       if (suplementar) {
         form.append("modo_suplementar", "true");
       }
+      const opciones = opcionesCarga();
+      if (opciones.periodo_mes) {
+        form.append("periodo_mes", String(opciones.periodo_mes));
+        form.append("periodo_anio", String(opciones.periodo_anio));
+      }
+      if (opciones.correcciones)
+        form.append("correcciones", JSON.stringify(opciones.correcciones));
       const data = await api.postForm<ImportacionResultado>(
         "/importar/derivaciones/",
         form,
@@ -630,12 +520,15 @@ export default function ImportarPage() {
       setResultado(data);
       setConfirmImportOpen(false);
       setConflicto(null);
-      if (data.errores_count || data.errores?.length) {
-        toast.warning("Importación completada con observaciones para revisar.");
+      const conError = data.errores_count ?? data.errores?.length ?? 0;
+      if (conError > 0) {
+        toast.warning(
+          `Importación realizada. ${conError} registro${conError !== 1 ? "s" : ""} con error ${conError !== 1 ? "quedaron" : "quedó"} en Revisión de carga.`,
+        );
       } else {
-        toast.success("Importación completada correctamente.");
+        toast.success("Importación realizada correctamente.");
       }
-      await refrescarGestionActual();
+      reiniciarFormulario();
     } catch (e: unknown) {
       if (
         e &&
@@ -644,9 +537,9 @@ export default function ImportarPage() {
         (e as ImportacionConflictoResponse).tipo === "conflicto_mes"
       ) {
         setConflicto(e as ImportacionConflictoResponse);
-        toast.warning("Ya existe una importación para ese periodo.");
+        toast.warning("Ya existe una carga para el periodo seleccionado.");
       } else {
-        const message = getErrorMessage(e, "Error al importar el archivo.");
+        const message = getErrorMessage(e, "No se pudo importar el archivo.");
         setError(message);
         toast.error(message);
       }
@@ -655,7 +548,72 @@ export default function ImportarPage() {
     }
   }
 
+  /** Deja el formulario listo para una nueva carga (el resultado se mantiene visible). */
+  function reiniciarFormulario() {
+    limpiarCorrecciones();
+    setArchivo(null);
+    setPreview(null);
+    setTextoPegado("");
+    setAutoPreviewPegado(false);
+    setMesCorte(0);
+    setCorteDesdeNombre(false);
+    periodoRef.current = null;
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function limpiarCorrecciones() {
+    correccionesRef.current = {};
+  }
+
+  function revalidar() {
+    return modoImportacion === "archivo"
+      ? handlePrevisualizar()
+      : handlePrevisualizarPegado();
+  }
+
+  function cambiarMesCorte(valor: string) {
+    const mes = Number(valor);
+    setCorteDesdeNombre(false);
+    setMesCorte(mes);
+    periodoRef.current = mes > 0 ? { mes, anio: anioCorte } : null;
+    setResultado(null);
+    setConflicto(null);
+    if (preview) void revalidar();
+  }
+
+  function cambiarAnioCorte(valor: string) {
+    const anio = Number(valor);
+    setCorteDesdeNombre(false);
+    setAnioCorte(anio);
+    periodoRef.current = mesCorte > 0 ? { mes: mesCorte, anio } : null;
+    setResultado(null);
+    setConflicto(null);
+    if (preview) void revalidar();
+  }
+
+  /** Selecciona el archivo y, si su nombre indica un mes, deja ese corte preseleccionado. */
+  function elegirArchivo(file: File) {
+    limpiarCorrecciones();
+    const detectado = periodoDesdeNombre(file.name);
+    if (detectado) {
+      const anio = detectado.anio ?? anioCorte;
+      setMesCorte(detectado.mes);
+      setAnioCorte(anio);
+      setCorteDesdeNombre(true);
+      periodoRef.current = { mes: detectado.mes, anio };
+      toast.info(
+        `Corte preseleccionado: ${MESES[detectado.mes - 1]} ${anio} (según el nombre del archivo).`,
+      );
+    }
+    setArchivo(file);
+    setPreview(null);
+    setResultado(null);
+    setError("");
+    setConflicto(null);
+  }
+
   function aplicarTextoPegado(texto: string, mensaje?: string) {
+    limpiarCorrecciones();
     setTextoPegado(texto);
     setPreview(null);
     setResultado(null);
@@ -670,7 +628,7 @@ export default function ImportarPage() {
     const texto = event.clipboardData.getData("text");
     if (!texto.trim()) return;
     event.preventDefault();
-    aplicarTextoPegado(texto, "Datos pegados en la grilla.");
+    aplicarTextoPegado(texto, "Datos pegados correctamente.");
   }
 
   async function pegarDesdePortapapeles() {
@@ -682,7 +640,7 @@ export default function ImportarPage() {
       }
       aplicarTextoPegado(texto, "Datos pegados desde el portapapeles.");
     } catch {
-      toast.error("No se pudo leer el portapapeles. Usa Ctrl + V dentro del recuadro.");
+      toast.error("No se pudo leer el portapapeles.");
     }
   }
 
@@ -701,17 +659,21 @@ export default function ImportarPage() {
           texto: textoPegado,
           forzar_reemplazo: forzarReemplazo,
           modo_suplementar: suplementar,
+          ...opcionesCarga(),
         },
       );
       setResultado(data);
       setConfirmImportOpen(false);
       setConflicto(null);
-      if (data.errores_count || data.errores?.length) {
-        toast.warning("Importación completada con observaciones para revisar.");
+      const conError = data.errores_count ?? data.errores?.length ?? 0;
+      if (conError > 0) {
+        toast.warning(
+          `Importación realizada. ${conError} registro${conError !== 1 ? "s" : ""} con error ${conError !== 1 ? "quedaron" : "quedó"} en Revisión de carga.`,
+        );
       } else {
-        toast.success("Importación completada correctamente.");
+        toast.success("Importación realizada correctamente.");
       }
-      await refrescarGestionActual();
+      reiniciarFormulario();
     } catch (e: unknown) {
       if (
         e &&
@@ -720,9 +682,9 @@ export default function ImportarPage() {
         (e as ImportacionConflictoResponse).tipo === "conflicto_mes"
       ) {
         setConflicto(e as ImportacionConflictoResponse);
-        toast.warning("Ya existe una importación para ese periodo.");
+        toast.warning("Ya existe una carga para el periodo seleccionado.");
       } else {
-        const message = getErrorMessage(e, "Error al importar la planilla pegada.");
+        const message = getErrorMessage(e, "No se pudo importar la planilla.");
         setError(message);
         toast.error(message);
       }
@@ -735,7 +697,7 @@ export default function ImportarPage() {
     setDescargandoPlantilla(true);
     setError("");
     try {
-      toast.info("Descarga de plantilla iniciada.");
+      toast.info("Descarga iniciada.");
       const blob = await api.getBlob("/importar/plantilla/");
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -755,637 +717,647 @@ export default function ImportarPage() {
     }
   }
 
-  async function handleReset() {
-    if (!resetConfirm) {
-      setResetConfirm(true);
-      return;
-    }
-    setResetLoading(true);
-    setError("");
-    setResetConfirm(false);
-    try {
-      await api.delete("/importar/reset/");
-      setHistorial([]);
-      setPreview(null);
-      setResultado(null);
-      setArchivo(null);
-      setTextoPegado("");
-      if (fileRef.current) fileRef.current.value = "";
-      await refrescarGestionActual();
-      window.dispatchEvent(new CustomEvent("ccr:refresh-sidebar"));
-      toast.success("Población reseteada correctamente.");
-    } catch (e: unknown) {
-      const message = getErrorMessage(e, "No se pudo resetear la población.");
-      setError(message);
-      toast.error(message);
-    } finally {
-      setResetLoading(false);
-    }
-  }
+  // Al terminar de analizar, lleva al usuario a la previsualización (queda debajo del formulario).
+  useEffect(() => {
+    if (!hayPreview) return;
+    panelPreviewRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, [hayPreview]);
 
-  if (!user || !["ADMIN", "ADMINISTRATIVO"].includes(user.rol)) return null;
+  if (!user || !puedeCargarDerivaciones(user)) return null;
+
+  const vistaPrevia = preview ? (
+    <ImportarPrevisualizacion preview={preview} />
+  ) : null;
+
+  // Cortes mensuales a los que irá la carga (según el mes elegido o las fechas de la planilla).
+  const periodosDestino: { mes: number; anio: number; total: number | null }[] =
+    (() => {
+      if (!preview) return [];
+      if (periodoForzado) return [{ ...periodoForzado, total: preview.total }];
+      const conteo = new Map<
+        string,
+        { mes: number; anio: number; total: number }
+      >();
+      for (const r of preview.registros) {
+        const m = (r.fecha_derivacion ?? "").match(
+          /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/,
+        );
+        if (!m) continue;
+        const mes = Number(m[2]);
+        if (mes < 1 || mes > 12) continue;
+        const clave = `${m[3]}-${mes}`;
+        const actual = conteo.get(clave);
+        if (actual) actual.total += 1;
+        else conteo.set(clave, { mes, anio: Number(m[3]), total: 1 });
+      }
+      return Array.from(conteo.values()).sort(
+        (a, b) => a.anio - b.anio || a.mes - b.mes,
+      );
+    })();
+
+  // Filas cuya fecha real cae en un mes distinto al corte elegido.
+  const filasFueraDelCorte: { mes: number; anio: number; total: number }[] =
+    (() => {
+      if (!preview || !periodoForzado) return [];
+      const conteo = new Map<
+        string,
+        { mes: number; anio: number; total: number }
+      >();
+      for (const r of preview.registros) {
+        const m = (r.fecha_derivacion ?? "").match(
+          /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/,
+        );
+        if (!m) continue;
+        const mes = Number(m[2]);
+        const anio = Number(m[3]);
+        if (mes === periodoForzado.mes && anio === periodoForzado.anio)
+          continue;
+        const clave = `${anio}-${mes}`;
+        const actual = conteo.get(clave);
+        if (actual) actual.total += 1;
+        else conteo.set(clave, { mes, anio, total: 1 });
+      }
+      return Array.from(conteo.values()).sort(
+        (a, b) => a.anio - b.anio || a.mes - b.mes,
+      );
+    })();
+  const totalFueraDelCorte = filasFueraDelCorte.reduce(
+    (a, p) => a + p.total,
+    0,
+  );
+
+  const hayOrigen =
+    modoImportacion === "archivo" ? !!archivo : !!textoPegado.trim();
+  // Acento del modo activo: verde para Subir Excel, azul para Pegar planilla.
+  const acento =
+    modoImportacion === "archivo"
+      ? { solido: "bg-emerald-600" }
+      : { solido: "bg-blue-600" };
+
   return (
     <div className="ccr-dashboard-content space-y-5">
-      <header className="ccr-panel ccr-dashboard-card overflow-hidden rounded-xl">
-        <div className="flex flex-col gap-5 p-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-white text-blue-700 shadow-sm dark:!border-[#262626] dark:!bg-[#202020] dark:!text-ink-black-300">
-              <FiUploadCloud size={24} />
-            </div>
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700 dark:!text-ink-black-300">
-                Gestión de derivaciones
-              </p>
-              <h1 className="mt-1 text-2xl font-black text-slate-900 dark:!text-white">
-                Importar derivaciones
-              </h1>
-              <p className="mt-1 max-w-2xl text-sm font-medium text-slate-600 dark:!text-ink-black-200">
-                Carga archivos Excel, revisa la previsualización y administra cortes mensuales sin salir del flujo.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Link href="/historial-mensual" className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs">
-              <FiArchive size={14} />
-              Historial mensual
-            </Link>
-            <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs">
-              <FiAlertTriangle size={14} />
-              Revisar observaciones
-            </Link>
-            {user?.rol === "ADMIN" && (
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={resetLoading}
-                className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                  resetConfirm
-                    ? "border-red-500 bg-red-600 text-white hover:bg-red-700"
-                    : "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100"
-                }`}
-              >
-                {resetConfirm ? <FiAlertTriangle size={14} /> : <FiTrash2 size={14} />}
-                {resetLoading
-                  ? "Reseteando..."
-                  : resetConfirm
-                    ? "Confirmar borrado"
-                    : "Resetear población"}
-              </button>
-            )}
-          </div>
-        </div>
-        {resetConfirm && user?.rol === "ADMIN" && (
-          <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs font-semibold text-red-700 dark:!border-red-500/30 dark:!bg-red-500/10 dark:!text-red-200">
-            Se eliminarán pacientes sin asignar. Los pacientes asignados se conservan.
-          </div>
-        )}
-      </header>
-
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <section className="grid grid-cols-1 gap-5">
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-100 bg-white p-1.5 shadow-sm dark:!border-[#262626] dark:!bg-[#111111]">
-            {[
-              { value: "archivo" as const, label: "Subir Excel", icon: FiFileText },
-              { value: "pegado" as const, label: "Pegar planilla", icon: FiClipboard },
-            ].map((opcion) => {
-              const Icon = opcion.icon;
-              const active = modoImportacion === opcion.value;
-              const isArchivo = opcion.value === "archivo";
-              return (
+          <div className="ccr-panel ccr-dashboard-card overflow-hidden rounded-2xl">
+            {/* Encabezado */}
+            <div className="flex flex-col gap-4 p-5 pb-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold text-gray-900 dark:!text-white">
+                  Importar derivaciones
+                </h1>
+                <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-ink-black-200">
+                  Carga una planilla, revisa la previsualización y confirma el
+                  corte mensual.
+                </p>
+                <ol className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                  {[
+                    { n: 1, label: "Origen de datos", done: hayOrigen },
+                    { n: 2, label: "Previsualización", done: !!preview },
+                    { n: 3, label: "Confirmación", done: !!resultado },
+                  ].map((paso, i) => (
+                    <li key={paso.n} className="inline-flex items-center gap-2">
+                      {i > 0 && (
+                        <span
+                          className="hidden h-px w-5 bg-slate-300 sm:block dark:bg-[#333]"
+                          aria-hidden
+                        />
+                      )}
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 ${
+                          paso.done
+                            ? `${acento.solido} text-white`
+                            : "bg-[var(--bg-elevated)] text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {paso.done ? (
+                          <FiCheckCircle size={12} />
+                        ) : (
+                          <span className="tabular-nums">{paso.n}</span>
+                        )}
+                        {paso.label}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <button
-                  key={opcion.value}
                   type="button"
-                  onClick={() => {
-                    setModoImportacion(opcion.value);
-                    setPreview(null);
-                    setResultado(null);
-                    setError("");
-                    setConflicto(null);
-                    setConfirmImportOpen(false);
-                    setAutoPreviewPegado(false);
-                  }}
-                  className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-black transition ${
-                    active && isArchivo
-                      ? "border-green-200 bg-green-600 text-white shadow-sm hover:bg-green-700"
-                      : active
-                        ? "border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
-                        : isArchivo
-                          ? "border-transparent text-green-700 hover:border-green-100 hover:bg-green-50 dark:!text-green-300 dark:hover:!bg-[#18251e]"
-                          : "border-transparent text-blue-700 hover:border-blue-100 hover:bg-blue-50 dark:!text-ink-black-300 dark:hover:!bg-[#202020]"
-                  }`}
+                  onClick={() => void descargarPlantilla()}
+                  disabled={descargandoPlantilla}
+                  className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Icon size={14} />
-                  {opcion.label}
+                  <FiDownload size={14} />
+                  {descargandoPlantilla ? "Descargando..." : "Plantilla .xlsx"}
                 </button>
-              );
-            })}
-          </div>
-
-          <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-base font-black text-slate-900 dark:!text-white">
-                Importación {modoImportacion === "archivo" ? "por Excel" : "por pegado"}
-              </h2>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void descargarPlantilla()}
-              disabled={descargandoPlantilla}
-              className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+
+            {/* Pestañas subrayadas: el color de la activa es verde (Excel) o azul (pegado) */}
+            <div
+              role="tablist"
+              className="flex gap-6 border-b border-slate-200 px-5 dark:!border-[#262626]"
             >
-              <FiDownload size={14} />
-              {descargandoPlantilla ? "Descargando..." : "Plantilla .xlsx"}
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 dark:!border-[#262626] dark:!bg-[#202020]">
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px]">
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
-                  Mes de referencia
-                </span>
-                <select
-                  value={mesGestion}
-                  onChange={(event) => {
-                    setMesGestion(Number(event.target.value));
-                    setPreview(null);
-                    setResultado(null);
-                    setError("");
-                    setConflicto(null);
-                  }}
-                  className="ccr-control-input px-3 py-2.5 text-sm font-semibold"
-                >
-                  {MESES.map((mes, index) => (
-                    <option key={`import-${mes}`} value={index + 1}>
-                      {mes}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
-                  Año de referencia
-                </span>
-                <select
-                  value={anioGestion}
-                  onChange={(event) => {
-                    setAnioGestion(Number(event.target.value));
-                    setPreview(null);
-                    setResultado(null);
-                    setError("");
-                    setConflicto(null);
-                  }}
-                  className="ccr-control-input px-3 py-2.5 text-sm font-semibold"
-                >
-                  {Array.from({ length: 7 }, (_, index) => new Date().getFullYear() + 1 - index).map((anio) => (
-                    <option key={`import-${anio}`} value={anio}>
-                      {anio}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
-              La previsualización e importación usan las fechas reales de la planilla. El periodo detectado aparecerá en el resumen.
-            </p>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {modoImportacion === "archivo" ? (
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
-                  Archivo Excel completo
-                </label>
-                <div
-                  className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition ${
-                    archivo
-                      ? "border-green-300 bg-green-50/70 dark:!border-[#1f4a35] dark:!bg-[#14251d]"
-                      : "border-green-200 bg-white hover:border-green-500 hover:bg-green-50/70 dark:!border-[#1f4a35] dark:!bg-[#111111] dark:hover:!bg-[#14251d]"
-                  }`}
-                  onClick={() => fileRef.current?.click()}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.currentTarget.style.borderColor = "#059669";
-                  }}
-                  onDragLeave={(event) => {
-                    event.currentTarget.style.borderColor = "";
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    event.currentTarget.style.borderColor = "";
-                    const file = event.dataTransfer.files?.[0];
-                    if (file) {
-                      setArchivo(file);
+              {[
+                {
+                  value: "archivo" as const,
+                  label: "Subir Excel",
+                  detalle: "Archivo .xlsx / .xls",
+                  icon: FiFileText,
+                  solido: "bg-emerald-600",
+                  texto: "text-emerald-700 dark:!text-emerald-300",
+                },
+                {
+                  value: "pegado" as const,
+                  label: "Pegar planilla",
+                  detalle: "Copiar desde Excel",
+                  icon: FiClipboard,
+                  solido: "bg-blue-600",
+                  texto: "text-blue-700 dark:!text-ink-black-100",
+                },
+              ].map((opcion) => {
+                const Icon = opcion.icon;
+                const active = modoImportacion === opcion.value;
+                return (
+                  <button
+                    key={opcion.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      limpiarCorrecciones();
+                      setModoImportacion(opcion.value);
                       setPreview(null);
                       setResultado(null);
                       setError("");
                       setConflicto(null);
-                    }
-                  }}
-                >
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl border border-green-200 bg-white text-green-700 shadow-sm transition group-hover:-translate-y-0.5 dark:!border-[#1f4a35] dark:!bg-[#202020] dark:!text-green-300">
-                    <FiFileText size={24} />
-                  </div>
-                  {archivo ? (
-                    <div className="mt-4">
-                      <p className="text-sm font-black text-green-800 dark:!text-white">{archivo.name}</p>
-                      <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
-                        {(archivo.size / 1024).toFixed(1)} KB · haz clic o arrastra para cambiar
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-4">
-                      <p className="text-sm font-bold text-slate-700 dark:!text-white">
-                        Arrastra el archivo aquí o selecciona desde tu equipo
-                      </p>
-                      <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-ink-black-400">Formatos: .xlsx / .xls</p>
-                    </div>
-                  )}
-                </div>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  className="hidden"
-                  onChange={(event) => {
-                    setArchivo(event.target.files?.[0] ?? null);
-                    setPreview(null);
-                    setResultado(null);
-                    setError("");
-                    setConflicto(null);
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <div className="mb-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => void pegarDesdePortapapeles()}
-                      className="ccr-control-button inline-flex shrink-0 items-center justify-center gap-2 px-3 py-2 text-xs"
-                    >
-                      <FiClipboard size={14} />
-                      Pegar datos
-                    </button>
-                  </div>
-                  <div
-                    tabIndex={0}
-                    role="group"
-                    aria-label="Grilla para pegar derivaciones"
-                    onPaste={handlePegarEnGrilla}
-                    className="ccr-data-table ccr-operational-table overflow-hidden rounded-xl border-2 border-dashed border-blue-200 bg-white outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:!border-[#262626] dark:!bg-[#111111]"
+                      setConfirmImportOpen(false);
+                      setAutoPreviewPegado(false);
+                    }}
+                    className={`relative inline-flex items-center gap-2.5 px-1 pb-3 pt-2 text-sm font-bold transition-colors duration-300 ${
+                      active
+                        ? opcion.texto
+                        : "text-slate-400 hover:text-slate-600 dark:!text-ink-black-400"
+                    }`}
                   >
-                    <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between dark:!border-[#262626] dark:!bg-[#202020]">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-slate-700 dark:!text-white">
-                          Grilla de pegado
-                        </p>
-                        <p className="text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
-                          Clic sobre la tabla y pega con Ctrl + V. No necesitas copiar encabezados.
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[11px] font-black text-blue-800 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-300">
-                          {previewLoading && modoImportacion === "pegado" ? "Previsualizando..." : `${filasPegadas.length} filas`}
-                        </span>
-                        {textoPegado.trim() && (
-                          <button
-                            type="button"
-                            onClick={() => aplicarTextoPegado("")}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-100"
-                          >
-                            Limpiar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="max-h-[360px] overflow-auto">
-                      <table className="w-full min-w-[1900px] table-fixed border-collapse text-[11px]">
-                        <thead className="sticky top-0 z-10">
-                          <tr>
-                            <th className="w-10 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center font-black text-slate-500 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-300">
-                              #
-                            </th>
-                            {PEGADO_HEADERS.map((header, index) => (
-                              <th
-                                key={header}
-                                style={{ width: PEGADO_COLUMN_WIDTHS[index] }}
-                                className="border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-left font-black uppercase tracking-[0.02em] text-slate-700 last:border-r-0 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-100"
-                              >
-                                {header}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filasPlanillaPegado.map((fila, rowIndex) => (
-                            <tr key={`${rowIndex}-${fila.join("-")}`} className="ccr-table-row">
-                              <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
-                                {rowIndex + 1}
-                              </td>
-                              {PEGADO_HEADERS.map((header, cellIndex) => {
-                                const value = fila[cellIndex] || "";
-                                const placeholder =
-                                  !filasPegadas.length && rowIndex === 0 && cellIndex === 0
-                                    ? "Pega aquí con Ctrl + V"
-                                    : "";
-                                return (
-                                  <td
-                                    key={`${header}-${cellIndex}`}
-                                    className="h-8 truncate border-b border-r border-slate-200 px-2 py-1 font-mono text-[11px] font-semibold text-slate-700 last:border-r-0 dark:!border-[#262626] dark:!text-ink-black-100"
-                                  >
-                                    {value || (
-                                      <span className="font-sans text-[11px] font-bold text-slate-300 dark:!text-[#566]">
-                                        {placeholder}
-                                      </span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <textarea
-                      value={textoPegado}
-                      onChange={(event) => aplicarTextoPegado(event.target.value)}
-                      placeholder={`2/2/2026\tELISA DEL CARMEN BUSTOS SILVA\t4989993-9\t75\tCAR\tCOXARTROSIS (GES)\tKINESIOLOGO\tALTA\t\t\t\t\t`}
-                      spellCheck={false}
-                      className="sr-only"
-                      tabIndex={-1}
+                    <Icon size={16} />
+                    <span className="flex flex-col items-start leading-tight">
+                      {opcion.label}
+                      <span className="text-[10px] font-semibold opacity-70">
+                        {opcion.detalle}
+                      </span>
+                    </span>
+                    {active && (
+                      <FondoPestana
+                        id="importar-modo"
+                        className={`!top-auto !h-[3px] rounded-full ${opcion.solido}`}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="p-5">
+              <div className="mt-4 rounded-xl bg-[var(--bg-elevated)] p-3">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--text-muted)]">
+                  Corte mensual
+                </p>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_130px]">
+                  <SelectFiltro
+                    label="Mes del corte"
+                    value={String(mesCorte)}
+                    onChange={cambiarMesCorte}
+                    opciones={[
+                      { value: "0", label: "Según fechas de la planilla" },
+                      ...MESES.map((mes, index) => ({
+                        value: String(index + 1),
+                        label: mes,
+                      })),
+                    ]}
+                  />
+                  <div
+                    className={
+                      mesCorte === 0 ? "pointer-events-none opacity-50" : ""
+                    }
+                  >
+                    <SelectFiltro
+                      label="Año"
+                      value={String(anioCorte)}
+                      onChange={cambiarAnioCorte}
+                      opciones={Array.from({ length: 7 }, (_, index) => {
+                        const anio = new Date().getFullYear() + 1 - index;
+                        return { value: String(anio), label: String(anio) };
+                      })}
                     />
                   </div>
                 </div>
+                {corteDesdeNombre && mesCorte > 0 && (
+                  <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                    <FiCheckCircle size={12} />
+                    Detectado por el nombre del archivo
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-[var(--text-muted)]">
+                  {mesCorte === 0
+                    ? "Cada derivación se agrupa en el mes de su fecha. Elige un mes si toda la planilla pertenece a un mismo corte."
+                    : `Toda la planilla se guardará como corte de ${MESES[mesCorte - 1]} ${anioCorte}. Las fechas de derivación no cambian.`}
+                </p>
               </div>
-            )}
 
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:!border-red-500/30 dark:!bg-red-500/10 dark:!text-red-200">
-                {error}
+              <div className="mt-5 space-y-4">
+                {modoImportacion === "archivo" ? (
+                  <div>
+                    <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:!text-ink-black-300">
+                      Archivo Excel completo
+                    </label>
+                    {!archivo && (
+                      <div
+                        className="group cursor-pointer rounded-2xl border-2 border-dashed border-blue-200 bg-[var(--bg-elevated)] p-8 text-center transition hover:border-blue-500 hover:bg-blue-50/70 dark:!border-[#262626] dark:hover:!bg-[#151b2e]"
+                        onClick={() => fileRef.current?.click()}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.currentTarget.style.borderColor = "#335fdb";
+                        }}
+                        onDragLeave={(event) => {
+                          event.currentTarget.style.borderColor = "";
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          event.currentTarget.style.borderColor = "";
+                          const file = event.dataTransfer.files?.[0];
+                          if (file) elegirArchivo(file);
+                        }}
+                      >
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-700 transition group-hover:-translate-y-0.5 dark:!bg-[#202020] dark:!text-ink-black-300">
+                          <FiFileText size={24} />
+                        </div>
+                        <div className="mt-4">
+                          <p className="text-sm font-bold text-slate-700 dark:!text-white">
+                            Arrastra el archivo aquí o selecciona desde tu
+                            equipo
+                          </p>
+                          <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-ink-black-400">
+                            Formatos: .xlsx / .xls
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      ref={fileRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        if (file) elegirArchivo(file);
+                        else {
+                          setArchivo(null);
+                          setPreview(null);
+                        }
+                      }}
+                    />
+                    {archivo && (
+                      <div
+                        ref={panelPreviewRef}
+                        className="ccr-data-table ccr-operational-table scroll-mt-4 overflow-hidden rounded-xl border-2 border-dashed border-blue-200 bg-white dark:!border-[#262626] dark:!bg-[#111111]"
+                      >
+                        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between dark:!border-[#262626] dark:!bg-[#202020]">
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-black uppercase tracking-wide text-slate-700 dark:!text-white">
+                              {archivo.name}
+                            </p>
+                            <p className="text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
+                              {(archivo.size / 1024).toFixed(1)} KB ·{" "}
+                              {previewLoading && !preview
+                                ? "Analizando archivo..."
+                                : `${preview?.total ?? 0} filas`}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fileRef.current?.click()}
+                            className="ccr-control-button inline-flex shrink-0 items-center justify-center gap-2 px-3 py-1.5 text-[11px]"
+                          >
+                            <FiFileText size={13} />
+                            Cambiar archivo
+                          </button>
+                        </div>
+                        <div>
+                          {vistaPrevia ?? (
+                            <div className="flex min-h-[160px] flex-col items-center justify-center text-center">
+                              {previewLoading ? (
+                                <>
+                                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                                  <p className="mt-3 text-sm font-bold text-slate-600 dark:!text-ink-black-100">
+                                    Analizando archivo...
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-sm font-semibold text-slate-500">
+                                  No hay previsualización disponible.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void pegarDesdePortapapeles()}
+                          className="ccr-control-button inline-flex shrink-0 items-center justify-center gap-2 px-3 py-2 text-xs"
+                        >
+                          <FiClipboard size={14} />
+                          Pegar datos
+                        </button>
+                      </div>
+                      <div
+                        tabIndex={0}
+                        role="group"
+                        aria-label="Grilla para pegar derivaciones"
+                        onPaste={handlePegarEnGrilla}
+                        className="ccr-data-table ccr-operational-table overflow-hidden rounded-xl border-2 border-dashed border-blue-200 bg-white outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:!border-[#262626] dark:!bg-[#111111]"
+                      >
+                        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between dark:!border-[#262626] dark:!bg-[#202020]">
+                          <div>
+                            <p className="text-[11px] font-black uppercase tracking-wide text-slate-700 dark:!text-white">
+                              Grilla de pegado
+                            </p>
+                            <p className="text-[11px] font-semibold text-slate-500 dark:!text-ink-black-200">
+                              Clic sobre la tabla y pega con Ctrl + V. No
+                              necesitas copiar encabezados.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-blue-100 bg-white px-2.5 py-1 text-[11px] font-black text-blue-800 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-300">
+                              {previewLoading && modoImportacion === "pegado"
+                                ? "Previsualizando..."
+                                : `${filasPegadas.length} filas`}
+                            </span>
+                            {textoPegado.trim() && (
+                              <button
+                                type="button"
+                                onClick={() => aplicarTextoPegado("")}
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 dark:!border-[#262626] dark:!bg-[#111111] dark:!text-ink-black-100"
+                              >
+                                Limpiar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="max-h-[360px] overflow-auto">
+                          <table className="w-full min-w-[1900px] table-fixed border-collapse text-[11px]">
+                            <thead className="sticky top-0 z-10">
+                              <tr>
+                                <th className="w-10 border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-center font-black text-slate-500 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-300">
+                                  #
+                                </th>
+                                {PEGADO_HEADERS.map((header, index) => (
+                                  <th
+                                    key={header}
+                                    style={{
+                                      width: PEGADO_COLUMN_WIDTHS[index],
+                                    }}
+                                    className="border-b border-r border-slate-300 bg-slate-100 px-2 py-2 text-left font-black uppercase tracking-[0.02em] text-slate-700 last:border-r-0 dark:!border-[#333] dark:!bg-[#202020] dark:!text-ink-black-100"
+                                  >
+                                    {header}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filasPlanillaPegado.map((fila, rowIndex) => (
+                                <tr
+                                  key={`${rowIndex}-${fila.join("-")}`}
+                                  className="ccr-table-row"
+                                >
+                                  <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
+                                    {rowIndex + 1}
+                                  </td>
+                                  {PEGADO_HEADERS.map((header, cellIndex) => {
+                                    const value = fila[cellIndex] || "";
+                                    const placeholder =
+                                      !filasPegadas.length &&
+                                      rowIndex === 0 &&
+                                      cellIndex === 0
+                                        ? "Pega aquí con Ctrl + V"
+                                        : "";
+                                    return (
+                                      <td
+                                        key={`${header}-${cellIndex}`}
+                                        className="h-8 truncate border-b border-r border-slate-200 px-2 py-1 font-mono text-[11px] font-semibold text-slate-700 last:border-r-0 dark:!border-[#262626] dark:!text-ink-black-100"
+                                      >
+                                        {value || (
+                                          <span className="font-sans text-[11px] font-bold text-slate-300 dark:!text-[#566]">
+                                            {placeholder}
+                                          </span>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <textarea
+                          value={textoPegado}
+                          onChange={(event) =>
+                            aplicarTextoPegado(event.target.value)
+                          }
+                          placeholder={`2/2/2026\tELISA DEL CARMEN BUSTOS SILVA\t4989993-9\t75\tCAR\tCOXARTROSIS (GES)\tKINESIOLOGO\tALTA\t\t\t\t\t`}
+                          spellCheck={false}
+                          className="sr-only"
+                          tabIndex={-1}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:!border-red-500/30 dark:!bg-red-500/10 dark:!text-red-200">
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmImportOpen(true)}
+                    disabled={
+                      importLoading ||
+                      !preview ||
+                      preview.total === 0 ||
+                      !hayOrigen
+                    }
+                    className="ccr-control-button ccr-control-button-primary inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FiCheckCircle size={16} />
+                    {importLoading ? "Importando..." : "Confirmar e importar"}
+                  </button>
+                  {hayOrigen && !previewLoading && !preview && (
+                    <button
+                      type="button"
+                      onClick={() => void revalidar()}
+                      className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-3 text-sm"
+                    >
+                      <FiRefreshCw size={15} />
+                      {modoImportacion === "archivo"
+                        ? "Reintentar previsualización"
+                        : "Previsualizar planilla"}
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setConfirmImportOpen(true)}
-                disabled={
-                  importLoading ||
-                  !preview ||
-                  preview.total === 0 ||
-                  (modoImportacion === "archivo" ? !archivo : !textoPegado.trim())
-                }
-                className="ccr-control-button ccr-control-button-primary inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <FiCheckCircle size={16} />
-                {importLoading ? "Importando..." : "Confirmar e importar"}
-              </button>
-              {(modoImportacion === "archivo" ? archivo : textoPegado.trim()) && !previewLoading && !preview && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    modoImportacion === "archivo"
-                      ? void handlePrevisualizar()
-                      : void handlePrevisualizarPegado()
-                  }
-                  className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-3 text-sm"
-                >
-                  <FiRefreshCw size={15} />
-                  {modoImportacion === "archivo" ? "Reintentar previsualización" : "Previsualizar planilla"}
-                </button>
-              )}
             </div>
           </div>
         </div>
-        </div>
 
-        <div className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-          {preview ? (
-            <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-base font-black text-slate-900 dark:!text-white">Previsualización del archivo</h2>
-                  <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
-                    Revisa el corte antes de guardar pacientes y observaciones.
-                  </p>
-                </div>
-                {(preview.errores_count ?? preview.errores.length) > 0 && (
-                  <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-2 text-xs">
-                    <FiAlertTriangle size={13} />
-                    Ir a revisión
-                  </Link>
-                )}
+        {modoImportacion === "pegado" && (preview || previewLoading) && (
+          <div
+            ref={panelPreviewRef}
+            className="ccr-panel ccr-dashboard-card scroll-mt-4 rounded-xl p-5"
+          >
+            {preview ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200 dark:!border-[#262626]">
+                {vistaPrevia}
               </div>
-
-              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-                <PreviewMetric label="Total detectados" value={preview.total} />
-                <PreviewMetric label="Válidos" value={preview.validos} tone="green" />
-                <PreviewMetric label="Con kine asignado" value={preview.con_kine_asignado ?? 0} tone="blue" />
-                <PreviewMetric label="Ingresados" value={preview.ingresados ?? 0} tone="green" />
-                <PreviewMetric label="Pendientes" value={preview.pendientes ?? 0} />
-                <PreviewMetric label="Históricos" value={preview.asignado_historico ?? 0} tone="amber" />
-                <PreviewMetric label="Recurrentes" value={preview.recurrentes ?? preview.duplicados} tone="amber" />
-                <PreviewMetric label="Errores" value={preview.errores_count ?? preview.errores.length} tone="red" />
-                <PreviewMetric label="Sin kine" value={preview.sin_kine_asignado ?? 0} />
-                <PreviewMetric label="Meses" value={Object.keys(preview.periodos_detectados ?? preview.meses_detectados).length} />
+            ) : previewLoading ? (
+              <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white text-center dark:!border-[#262626] dark:!bg-[#111111]">
+                <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                <p className="mt-4 text-sm font-bold text-slate-600 dark:!text-ink-black-100">
+                  Analizando planilla pegada...
+                </p>
               </div>
-
-              <div className="grid gap-2 lg:grid-cols-3">
-                <PreviewCountBadges
-                  title="Conteo por SectorCesfam"
-                  counts={preview.conteo_sector_cesfam}
-                />
-                <PreviewCountBadges
-                  title="Conteo por CATEGORIA"
-                  counts={preview.conteo_categoria}
-                />
-                <PreviewCountBadges
-                  title="Conteo por KINE ASIGNADO"
-                  counts={preview.conteo_kine_asignado}
-                />
-              </div>
-
-              {Object.keys(preview.periodos_detectados ?? preview.meses_detectados).length > 0 && (
-                <div className="rounded-xl border border-[#D4E4D4] bg-[#E7F3EC] px-3 py-2">
-                  <p className="text-[11px] font-black uppercase tracking-wide text-[#1B5E3B]">Periodos detectados</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(preview.periodos_detectados ?? preview.meses_detectados).map(([mes, total]) => (
-                      <span key={mes} className="rounded-full border border-[#D4E4D4] bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700">
-                        {formatPeriodoDetectado(mes)}: {total}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {registrosPreview.length > 0 ? (
-                <div className="ccr-preview-shell overflow-hidden rounded-xl">
-                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                    <p className="text-[11px] font-black uppercase tracking-wide text-slate-700">
-                      Registros detectados
-                    </p>
-                    <p className="text-[11px] font-bold text-blue-500">
-                      {preview.registros.length} registros
-                    </p>
-                  </div>
-                  <div className="max-h-[640px] overflow-auto">
-                    <table className="w-full min-w-[1280px] border-collapse text-xs">
-                      <thead className="sticky top-0 z-10 bg-white">
-                        <tr className="border-b border-slate-200">
-                          {[
-                            "Estado",
-                            "Hoja",
-                            "Fila",
-                            "Fecha",
-                            "SECTOR OFICIAL",
-                            "SectorCesfam",
-                            "Paciente",
-                            "RUT",
-                            "Edad",
-                            "KINE asignado",
-                            "Estado sugerido",
-                            "Diagnóstico",
-                            "Profesional",
-                            "Prioridad",
-                            "Categoría",
-                            "Asignado histórico",
-                          ].map((label) => (
-                            <th key={label} className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wide text-slate-500">
-                              {label}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {registrosPreview.map((registro, index) => (
-                          <tr key={`${registro.hoja ?? "SIN"}-${registro.fila}-${index}-compacto`} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
-                            <td className="px-3 py-2.5">
-                              <span className={`inline-flex max-w-[150px] items-center ${previewEstadoBadgeClass(registro)}`}>
-                                <span className="truncate">{previewEstadoLabel(registro)}</span>
-                              </span>
-                            </td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.hoja || "-"}</td>
-                            <td className="px-3 py-2.5 font-mono text-slate-500">{registro.fila}</td>
-                            <td className="px-3 py-2.5 text-slate-600">{registro.fecha_derivacion || "-"}</td>
-                            <td className="max-w-[150px] px-3 py-2.5 text-slate-600">
-                              <span className="block truncate">{registro.sector_oficial || "-"}</span>
-                            </td>
-                            <td className="max-w-[150px] px-3 py-2.5 font-semibold text-slate-600">
-                              <span className="block truncate">{registro.sector_cesfam || "-"}</span>
-                            </td>
-                            <td className="max-w-[210px] px-3 py-2.5 font-bold text-slate-800">
-                              <span className="block truncate">{registro.nombre || "-"}</span>
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-slate-600">{registro.rut || "-"}</td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.edad || "-"}</td>
-                            <td className="max-w-[170px] px-3 py-2.5 font-semibold text-slate-600">
-                              <span className="block truncate">{registro.kine_asignado || "Sin asignar"}</span>
-                            </td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.estado_sugerido || "PENDIENTE"}</td>
-                            <td className="max-w-[190px] px-3 py-2.5 text-slate-700">
-                              <span className="block truncate">{registro.diagnostico || "-"}</span>
-                            </td>
-                            <td className="max-w-[150px] px-3 py-2.5 text-slate-600">
-                              <span className="block truncate">{registro.profesional || "-"}</span>
-                            </td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.prioridad || "-"}</td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">{registro.categoria || "-"}</td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-600">
-                              {registro.asignado_historico ? "SI" : "NO"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-semibold text-amber-800 dark:!border-amber-300/40 dark:!bg-amber-400/15 dark:!text-amber-100">
-                  No se encontraron filas compatibles en el Excel. Revisa que la planilla tenga encabezados como Nombre, RUT, Diagnóstico y Fecha de derivación.
-                </div>
-              )}
-
-              {preview.errores.length > 0 && (
-                <div className="max-h-32 overflow-auto rounded-xl border border-red-100 bg-red-50 p-3 text-[11px] text-red-700 dark:!border-red-400/40 dark:!bg-red-500/15 dark:!text-red-100">
-                  <p className="mb-1 font-black">Errores detectados</p>
-                  {preview.errores.slice(0, 5).map((item, index) => (
-                    <p key={index}>Fila {item.fila}: {item.motivo}</p>
-                  ))}
-                  {preview.errores.length > 5 && <p>Y {preview.errores.length - 5} más.</p>}
-                </div>
-              )}
-            </div>
-          ) : previewLoading ? (
-            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white text-center dark:!border-[#262626] dark:!bg-[#111111]">
-              <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
-              <p className="mt-4 text-sm font-bold text-slate-600 dark:!text-ink-black-100">
-                {modoImportacion === "archivo" ? "Analizando archivo..." : "Analizando planilla pegada..."}
-              </p>
-            </div>
-          ) : (
-            <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white/80 text-center dark:!border-[#262626] dark:!bg-[#111111]">
-              <FiShield className="text-blue-300" size={38} />
-              <p className="mt-3 text-sm font-bold text-slate-500 dark:!text-ink-black-100">El resumen aparecerá aquí</p>
-              <p className="mt-1 text-xs text-slate-400 dark:!text-ink-black-400">
-                {modoImportacion === "archivo"
-                  ? "Selecciona un archivo para comenzar."
-                  : "Pega la planilla y previsualiza antes de importar."}
-              </p>
-            </div>
-          )}
-        </div>
+            ) : null}
+          </div>
+        )}
       </section>
 
       {resultado && (
         <section className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-          <h2 className="text-base font-black text-slate-900 dark:!text-white">Resultado final</h2>
-          <div className="mt-4 grid grid-cols-1 gap-3 text-center sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 dark:!border-[#262626] dark:!bg-[#111111]">
-              <p className="text-2xl font-black text-slate-900 dark:!text-white">{resultado.total}</p>
-              <p className="text-xs font-semibold text-slate-500 dark:!text-ink-black-200">Total detectado</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-black text-slate-900 dark:!text-white">
+              Resultado final
+            </h2>
+            {/* Durante 10 minutos quien cargó puede deshacer la subida completa. */}
+            {resultado.revertible_hasta && resultado.importaciones?.[0] && (
+              <RevertirCarga
+                corteId={resultado.importaciones[0].id}
+                hasta={resultado.revertible_hasta}
+                descripcion={resultado.importaciones
+                  .map((c) => c.periodo_label)
+                  .join(", ")}
+                onRevertida={() => {
+                  setResultado(null);
+                }}
+              />
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+            <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
+              <p className="text-2xl font-extrabold tabular-nums text-slate-900 dark:!text-white">
+                {resultado.total}
+              </p>
+              <p className="text-xs font-semibold text-slate-500 dark:!text-ink-black-200">
+                Total detectado
+              </p>
             </div>
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:!border-[#262626] dark:!bg-[#202020]">
-              <p className="text-2xl font-black text-blue-800 dark:!text-white">{resultado.importados}</p>
-              <p className="text-xs font-semibold text-blue-700 dark:!text-ink-black-200">Importados</p>
+            <div className="rounded-xl bg-blue-50 p-4 dark:!bg-[#202020]">
+              <p className="text-2xl font-extrabold tabular-nums text-blue-800 dark:!text-white">
+                {resultado.importados}
+              </p>
+              <p className="text-xs font-semibold text-blue-700 dark:!text-ink-black-200">
+                Importados
+              </p>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-2xl font-black text-amber-700">{resultado.duplicados}</p>
-              <p className="text-xs font-semibold text-amber-700">Duplicados</p>
+            <div className="rounded-xl bg-amber-50 p-4">
+              <p className="text-2xl font-extrabold tabular-nums text-amber-700">
+                {resultado.recurrentes ?? resultado.duplicados}
+              </p>
+              <p className="text-xs font-semibold text-amber-700">
+                Recurrentes
+              </p>
+            </div>
+            <div className="rounded-xl bg-red-50 p-4 dark:!bg-red-500/10">
+              <p className="text-2xl font-extrabold tabular-nums text-red-700">
+                {resultado.errores_count ?? resultado.errores.length}
+              </p>
+              <p className="text-xs font-semibold text-red-700">Con error</p>
             </div>
           </div>
+
+          {(resultado.telefonos_completados ?? 0) > 0 && (
+            <p className="mt-3 rounded-xl border border-green-200 bg-green-50 px-4 py-2 text-xs font-semibold text-green-800">
+              {resultado.telefonos_completados === 1
+                ? "Además se completó el teléfono de 1 paciente ya registrado."
+                : `Además se completaron los teléfonos de ${resultado.telefonos_completados} pacientes ya registrados.`}
+            </p>
+          )}
 
           {resultado.errores.length > 0 && (
             <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm dark:!border-[#262626] dark:!bg-[#202020] sm:flex-row sm:items-center sm:justify-between">
               <p className="font-semibold text-blue-900 dark:!text-white">
-                Solo los errores quedaron en revisión. Los válidos se cargaron y los recurrentes se registraron automáticamente en historial.
+                Solo los errores quedaron en revisión. Los válidos se cargaron y
+                los recurrentes se registraron automáticamente en historial.
               </p>
-              <Link href="/importar/revision" className="ccr-control-button ccr-control-button-primary inline-flex items-center justify-center gap-2 px-3 py-2 text-xs">
-                <FiAlertTriangle size={13} />
-                Abrir revisión
-              </Link>
+              {puedeRevisarCarga(user) ? (
+                <Link
+                  href="/importar/revision"
+                  className="ccr-control-button ccr-control-button-primary inline-flex items-center justify-center gap-2 px-3 py-2 text-xs"
+                >
+                  <FiAlertTriangle size={13} />
+                  Abrir revisión
+                </Link>
+              ) : (
+                <span className="text-xs font-bold text-blue-900 dark:!text-white">
+                  Los corrige el profesional encargado.
+                </span>
+              )}
             </div>
           )}
 
           {resultado.errores.length > 0 && (
             <div className="mt-4">
               <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs font-bold text-red-700 dark:!text-red-100">Detalle de errores enviados a revisión</p>
-                <Link href="/importar/revision" className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs">
-                  <FiAlertTriangle size={13} />
-                  Abrir revisión
-                </Link>
+                <p className="text-xs font-bold text-red-700 dark:!text-red-100">
+                  Detalle de errores enviados a revisión
+                </p>
+                {puedeRevisarCarga(user) && (
+                  <Link
+                    href="/importar/revision"
+                    className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs"
+                  >
+                    <FiAlertTriangle size={13} />
+                    Abrir revisión
+                  </Link>
+                )}
               </div>
               <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2 text-xs font-semibold text-amber-800 dark:!border-amber-300/30 dark:!bg-amber-400/10 dark:!text-amber-100">
-                Estos registros no se cargaron en lista de espera. Corrígelos o resuélvelos desde revisión.
+                Estos registros no se cargaron en lista de espera. El
+                profesional encargado los corrige o descarta en Revisión de
+                carga.
               </p>
               <div className="max-h-48 space-y-1 overflow-auto">
                 {resultado.errores.map((err, index) => (
-                  <div key={index} className="flex gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs">
-                    <span className="font-mono text-red-500">{err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}</span>
+                  <div
+                    key={index}
+                    className="flex gap-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs"
+                  >
+                    <span className="font-mono text-red-500">
+                      {err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}
+                    </span>
                     <span className="text-red-700">{err.motivo}</span>
                   </div>
                 ))}
@@ -1395,146 +1367,195 @@ export default function ImportarPage() {
         </section>
       )}
 
-      <section className="ccr-panel ccr-dashboard-card rounded-xl p-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-black text-slate-900 dark:!text-white">Historial de cortes mensuales</h2>
-            <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
-              Revisa qué se procesó, quién subió el corte y si un período fue reemplazado.
-            </p>
-          </div>
-          {historialLoading && <span className="text-xs font-semibold text-slate-400">Cargando historial...</span>}
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {historialAgrupado.map((grupo) => {
-            const expanded = expandido === grupo.key;
-            const detalle = detalleHistorial[grupo.key];
-            const activo = grupo.activo;
-            const tachado = activo?.estado === "REEMPLAZADO";
-
-            if (!activo) return null;
-
-            return (
-              <article key={grupo.key} className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm dark:!border-[#262626] dark:!bg-[#111111]" style={{ opacity: tachado ? 0.72 : 1 }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900 dark:!text-white" style={{ textDecoration: tachado ? "line-through" : "none" }}>
-                      {grupo.periodoLabel}
-                    </h3>
-                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:!text-ink-black-200">
-                      {grupo.items.length} corte{grupo.items.length !== 1 ? "s" : ""} registrado{grupo.items.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <span className="rounded-full border px-2.5 py-1 text-[11px] font-bold" style={estadoBadgeStyle(activo.estado)}>
-                    {activo.estado_label}
-                  </span>
-                </div>
-
-                <div className="mt-3 space-y-1 text-xs font-medium text-slate-600 dark:!text-ink-black-200">
-                  <p>{activo.registros_importados} registros importados</p>
-                  <p>Última carga: {new Date(activo.fecha_subida).toLocaleString("es-CL")}</p>
-                  <p>Usuario{grupo.usuarios.length !== 1 ? "s" : ""}: {grupo.usuarios.join(", ") || "No disponible"}</p>
-                </div>
-
-                <button type="button" onClick={() => void cargarDetalle(activo)} className="ccr-control-button mt-4 px-3 py-1.5 text-xs">
-                  {expanded ? "Ocultar detalle" : "Ver detalle"}
-                </button>
-
-                {expanded && (
-                  <div className="mt-3 space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3 dark:!border-[#262626] dark:!bg-[#202020]">
-                    {detalle?.items?.map((detalleItem) => (
-                      <div key={detalleItem.id} className="space-y-1 border-b border-blue-100 pb-2 last:border-b-0 last:pb-0 dark:!border-[#262626]">
-                        <p className="text-[11px] font-bold text-slate-700 dark:!text-white">
-                          {new Date(detalleItem.fecha_subida).toLocaleString("es-CL")}
-                        </p>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">
-                            Estado: {detalleItem.estado_label} · Duplicados: {detalleItem.duplicados}
-                          </p>
-                          <button type="button" onClick={() => router.push(`/lista-espera?importacion=${detalleItem.id}`)} className="text-[10px] font-black text-blue-700 hover:underline dark:!text-ink-black-300">
-                            Ver corte
-                          </button>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">
-                          Subido por: <span className="font-bold text-slate-700 dark:!text-white">{detalleItem.usuario_nombre || "No disponible"}</span>
-                        </p>
-                        {detalleItem.errores.length > 0 ? (
-                          <div className="space-y-1">
-                            {detalleItem.errores.map((err, index) => (
-                              <div key={`${detalleItem.id}-${index}`} className="rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">
-                                {err.hoja ? `${err.hoja} · ` : ""}Fila {err.fila}: {err.motivo}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-slate-500 dark:!text-ink-black-200">Sin errores registrados.</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
       {confirmImportOpen && preview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="ccr-panel w-full max-w-lg rounded-xl p-5">
-            <h2 className="text-lg font-black text-slate-900 dark:!text-white">
-              Confirmar importación
-            </h2>
-            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-ink-black-200">
-              Se subirá la planilla usando los periodos detectados por sus fechas reales. Revisa la previsualización antes de confirmar.
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-center text-xs sm:grid-cols-4">
-              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
-                <p className="text-lg font-black text-blue-800">{preview.total}</p>
-                <p className="font-bold text-slate-500">detectados</p>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirmar-importacion-titulo"
+          onClick={() => setConfirmImportOpen(false)}
+        >
+          <div
+            className="ccr-panel flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* Encabezado */}
+            <div className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-6 py-5 dark:!border-[#262626]">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:!bg-[#151b2e] dark:!text-ink-black-300">
+                <FiUploadCloud size={20} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="confirmar-importacion-titulo"
+                  className="text-lg font-black text-slate-900 dark:!text-white"
+                >
+                  Confirmar importación
+                </h2>
+                <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 dark:!text-ink-black-200">
+                  {modoImportacion === "archivo" && archivo
+                    ? archivo.name
+                    : "Planilla pegada"}{" "}
+                  · {preview.total} registros detectados
+                </p>
               </div>
-              <div className="rounded-xl border border-green-100 bg-green-50 px-3 py-2">
-                <p className="text-lg font-black text-green-700">{preview.validos}</p>
-                <p className="font-bold text-slate-500">nuevos</p>
-              </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
-                <p className="text-lg font-black text-amber-700">{preview.recurrentes ?? preview.duplicados}</p>
-                <p className="font-bold text-slate-500">recurrentes</p>
-              </div>
-              <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2">
-                <p className="text-lg font-black text-red-700">{preview.errores_count ?? preview.errores.length}</p>
-                <p className="font-bold text-slate-500">errores</p>
-              </div>
-            </div>
-            {(preview.errores_count ?? preview.errores.length) > 0 && (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
-                Hay errores en la previsualización. Esos registros no se cargarán en lista de espera y quedarán en revisión; los válidos y recurrentes se procesarán automáticamente.
-              </p>
-            )}
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setConfirmImportOpen(false)}
-                className="ccr-control-button px-4 py-2 text-sm"
+                aria-label="Cerrar"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:!bg-[#202020]"
               >
-                Cancelar
+                <FiX size={16} />
               </button>
-              <button
-                type="button"
-                disabled={importLoading}
-                onClick={() => {
-                  setConfirmImportOpen(false);
-                  if (modoImportacion === "archivo") {
-                    void importarArchivo(false);
-                  } else {
-                    void importarPegado(false);
-                  }
-                }}
-                className="ccr-control-button ccr-control-button-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {importLoading ? "Importando..." : "Sí, importar corte"}
-              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
+              {/* Corte de destino */}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Se registrará como corte de
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {periodosDestino.length > 0 ? (
+                    periodosDestino.map((p) => (
+                      <span
+                        key={`${p.anio}-${p.mes}`}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-800 dark:!bg-[#151b2e] dark:!text-ink-black-100"
+                      >
+                        <FiCalendar size={12} />
+                        {MESES[p.mes - 1]} {p.anio}
+                        {p.total != null && (
+                          <span className="font-semibold text-blue-500 dark:!text-ink-black-300">
+                            · {p.total}
+                          </span>
+                        )}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs font-semibold text-slate-500">
+                      Periodo según las fechas de la planilla
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-[11px] font-medium text-slate-500 dark:!text-ink-black-200">
+                  Las fechas reales de derivación no se modifican: definen el
+                  tiempo de espera de cada paciente.
+                </p>
+              </div>
+
+              {/* Qué ocurrirá */}
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Qué ocurrirá
+                </p>
+                <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-[#262626] dark:!border-[#262626]">
+                  {[
+                    {
+                      n: preview.nuevos ?? preview.validos,
+                      titulo: "Pacientes nuevos",
+                      detalle: "Se agregan a la lista de espera.",
+                      tono: "text-blue-700 bg-blue-50 dark:!bg-[#151b2e] dark:!text-ink-black-100",
+                      icono: <FiUserPlus size={15} />,
+                    },
+                    {
+                      n: preview.recurrentes ?? preview.duplicados,
+                      titulo: "Pacientes recurrentes",
+                      detalle:
+                        "Ya existen: se suma el diagnóstico a su registro.",
+                      tono: "text-amber-700 bg-amber-50 dark:!bg-amber-400/10",
+                      icono: <FiRepeat size={15} />,
+                    },
+                    {
+                      n: preview.errores_count ?? preview.errores.length,
+                      titulo: "Registros con error",
+                      detalle: "No se cargan; quedan en Revisión de carga.",
+                      tono: "text-red-700 bg-red-50 dark:!bg-red-500/10",
+                      icono: <FiAlertTriangle size={15} />,
+                    },
+                  ].map((fila) => (
+                    <li
+                      key={fila.titulo}
+                      className="flex items-center gap-3 px-4 py-3"
+                    >
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${fila.tono}`}
+                      >
+                        {fila.icono}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-800 dark:!text-white">
+                          {fila.titulo}
+                        </p>
+                        <p className="text-xs font-medium text-slate-500 dark:!text-ink-black-200">
+                          {fila.detalle}
+                        </p>
+                      </div>
+                      <span className="text-xl font-black tabular-nums text-slate-900 dark:!text-white">
+                        {fila.n}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {totalFueraDelCorte > 0 && periodoForzado && (
+                <div className="flex gap-2.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-xs font-semibold leading-relaxed text-blue-900 dark:!border-[#2b3f78] dark:!bg-[#151b2e] dark:!text-ink-black-100">
+                  <FiCalendar className="mt-0.5 shrink-0" size={14} />
+                  <p>
+                    {totalFueraDelCorte} registros tienen fecha de otro mes (
+                    {filasFueraDelCorte
+                      .map(
+                        (p) =>
+                          `${p.total} de ${MESES[p.mes - 1].toLowerCase()} ${p.anio}`,
+                      )
+                      .join(", ")}
+                    ). Se guardan en el corte de {MESES[periodoForzado.mes - 1]}{" "}
+                    {periodoForzado.anio}, pero conservan su fecha real de
+                    derivación.
+                  </p>
+                </div>
+              )}
+
+              {(preview.errores_count ?? preview.errores.length) > 0 && (
+                <div className="flex gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs font-semibold leading-relaxed text-amber-800 dark:!border-amber-400/30 dark:!bg-amber-400/10 dark:!text-amber-100">
+                  <FiAlertTriangle className="mt-0.5 shrink-0" size={14} />
+                  <p>
+                    Hay registros con error. Se importará el resto y los errores
+                    podrán corregirse después en Revisión de carga.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Acciones */}
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between dark:!border-[#262626] dark:!bg-[#181818]">
+              <p className="text-[11px] font-medium text-slate-500 dark:!text-ink-black-200">
+                Podrás deshacer la carga durante los primeros 10 minutos.
+              </p>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setConfirmImportOpen(false)}
+                  className="ccr-button-cancel px-4 text-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={importLoading}
+                  onClick={() => {
+                    setConfirmImportOpen(false);
+                    if (modoImportacion === "archivo") {
+                      void importarArchivo(false);
+                    } else {
+                      void importarPegado(false);
+                    }
+                  }}
+                  className="ccr-control-button ccr-control-button-primary inline-flex items-center justify-center gap-2 px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FiCheckCircle size={15} />
+                  {importLoading ? "Importando..." : "Importar corte"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1543,26 +1564,41 @@ export default function ImportarPage() {
       {conflicto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="ccr-panel w-full max-w-xl rounded-xl p-5">
-            <h2 className="text-lg font-black text-slate-900 dark:!text-white">Ya existen datos para estos meses</h2>
-            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-ink-black-200">{conflicto.mensaje}</p>
+            <h2 className="text-lg font-black text-slate-900 dark:!text-white">
+              Ya existen datos para estos meses
+            </h2>
+            <p className="mt-2 text-sm font-medium text-slate-600 dark:!text-ink-black-200">
+              {conflicto.mensaje}
+            </p>
 
             <div className="mt-4 space-y-2">
               {conflicto.conflictos.map((item) => (
-                <div key={`${item.mes}-${item.anio}-${item.importacion_id}`} className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-slate-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-ink-black-100">
-                  <p className="font-bold">{item.hoja} {item.anio}</p>
+                <div
+                  key={`${item.mes}-${item.anio}-${item.importacion_id}`}
+                  className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-sm text-slate-700 dark:!border-[#262626] dark:!bg-[#202020] dark:!text-ink-black-100"
+                >
+                  <p className="font-bold">
+                    {item.hoja} {item.anio}
+                  </p>
                   <p className="text-xs text-slate-500 dark:!text-ink-black-200">
-                    Importación previa: {item.importados_previos} registros · {new Date(item.fecha_subida_previa).toLocaleString("es-CL")}
+                    Importación previa: {item.importados_previos} registros ·{" "}
+                    {new Date(item.fecha_subida_previa).toLocaleString("es-CL")}
                   </p>
                 </div>
               ))}
             </div>
 
             <p className="mt-4 text-xs font-medium text-slate-500 dark:!text-ink-black-200">
-              Complementar suma meses de espera a pacientes existentes y agrega los nuevos sin borrar lo anterior.
+              Complementar suma meses de espera a pacientes existentes y agrega
+              los nuevos sin borrar lo anterior.
             </p>
 
             <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end sm:gap-3">
-              <button type="button" onClick={() => setConflicto(null)} className="ccr-control-button order-last px-4 py-2 text-sm sm:order-first">
+              <button
+                type="button"
+                onClick={() => setConflicto(null)}
+                className="ccr-button-cancel order-last px-4 text-sm sm:order-first"
+              >
                 Cancelar
               </button>
               <button
@@ -1585,7 +1621,7 @@ export default function ImportarPage() {
                 }
                 className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100"
               >
-              Sobrescribir y limpiar mes
+                Sobrescribir y limpiar mes
               </button>
             </div>
           </div>
