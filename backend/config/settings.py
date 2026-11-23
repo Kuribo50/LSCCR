@@ -203,8 +203,11 @@ if IS_PRODUCTION:
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", csrf_default)
 ENABLE_DJANGO_ADMIN = env_bool("DJANGO_ENABLE_ADMIN", not IS_PRODUCTION)
 
-if IS_PRODUCTION and SECRET_KEY in {"", "replace-me"}:
-    raise ImproperlyConfigured("DJANGO_SECRET_KEY insegura para producción.")
+SECRET_KEYS_DE_EJEMPLO = {"", "replace-me", "dev-only-change-me"}
+if IS_PRODUCTION and (SECRET_KEY in SECRET_KEYS_DE_EJEMPLO or len(SECRET_KEY) < 32):
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY insegura para producción: debe ser un valor aleatorio de al menos 32 caracteres."
+    )
 if IS_PRODUCTION and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("DJANGO_ALLOWED_HOSTS debe definirse en producción.")
 if IS_PRODUCTION and DEBUG:
@@ -264,6 +267,11 @@ DB_ENGINE = env("DJANGO_DB_ENGINE", "sqlite").lower()
 # PostgreSQL para coincidir con despliegue real.
 if DB_ENGINE == "postgres":
     pg = postgres_connection_from_env()
+    if IS_PRODUCTION and pg["PASSWORD"] in {"", "postgres", "change-me-local-only"}:
+        raise ImproperlyConfigured(
+            "La contraseña de PostgreSQL no puede ser la de ejemplo en producción "
+            "(defina POSTGRES_PASSWORD o DATABASE_URL)."
+        )
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",

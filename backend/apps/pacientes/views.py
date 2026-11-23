@@ -7,6 +7,7 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.usuarios.models import Usuario
@@ -1676,7 +1677,11 @@ class ObservacionPacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
         if self.action == "list":
             if not paciente:
                 return qs.none()
-            qs = qs.filter(paciente_id=paciente)
+            try:
+                paciente_id = int(paciente)
+            except ValueError:
+                raise ValidationError({"paciente": "Debe ser el id numérico del paciente."})
+            qs = qs.filter(paciente_id=paciente_id)
         return qs
 
     def _sincronizar(self, paciente):

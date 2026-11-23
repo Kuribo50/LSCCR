@@ -2,7 +2,7 @@ import csv
 import json
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from django.core.exceptions import ValidationError
@@ -48,7 +48,7 @@ from .revision import (
     indice_recurrencias,
     restaurar_paciente,
 )
-from .reversion import MINUTOS_REVERSION, estado_reversion, revertible_hasta, revertir_carga
+from .reversion import MINUTOS_REVERSION, cortes_del_lote, estado_reversion, revertible_hasta, revertir_carga
 from .telefonos import leer_excel_telefonos
 
 
@@ -2216,6 +2216,47 @@ class ResumenCargasView(APIView):
                 for item in recientes
             ],
         })
+
+
+class CargasRevertiblesView(APIView):
+    """Cargas (una por subida) que el usuario aún puede revertir.
+
+    Sirve para avisarle en cualquier pantalla, aunque haya salido de Importar o
+    haya hecho más de una carga. El Administrador ve las de todos; el resto, las suyas.
+    """
+
+    permission_classes = [IsAdminOrMedicoRole]
+
+    def get(self, request):
+        ahora = timezone.now()
+        desde = ahora - timedelta(minutes=MINUTOS_REVERSION)
+        recientes = (
+            ImportacionMensual.objects.exclude(lote="")
+            .filter(fecha_subida__gte=desde)
+            .order_by("id")
+        )
+        lotes_vistos: set[str] = set()
+        items = []
+        for corte in recientes:
+            if corte.lote in lotes_vistos:
+                continue
+            lotes_vistos.add(corte.lote)
+            cortes = cortes_del_lote(corte)
+            if not all(estado_reversion(c, request.user, ahora)["revertible"] for c in cortes):
+                continue
+            primero = cortes[0]
+            items.append({
+                "lote": primero.lote,
+                "corte_id": primero.id,
+                "archivo_nombre": primero.archivo_nombre or primero.archivo.name.rsplit("/", 1)[-1],
+                "periodos": [c.periodo_label for c in cortes],
+                "pacientes_creados": Paciente.objects.filter(importacion_origen__in=cortes).count(),
+                "usuario_nombre": primero.usuario.nombre if primero.usuario else None,
+                "fecha_subida": primero.fecha_subida.isoformat(),
+                "revertible_hasta": revertible_hasta(primero).isoformat(),
+            })
+        items.sort(key=lambda item: item["fecha_subida"], reverse=True)
+        return Response({"ahora": ahora.isoformat(), "items": items})
 
 
 class CompletarTelefonosView(APIView):

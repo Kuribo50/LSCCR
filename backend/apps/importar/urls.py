@@ -15,6 +15,7 @@ from .views import (
     ObservacionesRevisionMasivaView,
     PlantillaImportacionView,
     PlantillaTelefonosView,
+    CargasRevertiblesView,
     ResumenCargasView,
     PrevisualizarDerivacionesPegadasView,
     PrevisualizarDerivacionesView,
@@ -41,4 +42,5 @@ urlpatterns = [
     re_path(r"^importar/telefonos/?$", CompletarTelefonosView.as_view(), name="importar-telefonos"),
     re_path(r"^importar/telefonos/plantilla/?$", PlantillaTelefonosView.as_view(), name="importar-telefonos-plantilla"),
     re_path(r"^importar/resumen-cargas/?$", ResumenCargasView.as_view(), name="importar-resumen-cargas"),
+    re_path(r"^importar/cargas-revertibles/?$", CargasRevertiblesView.as_view(), name="importar-cargas-revertibles"),
 ]

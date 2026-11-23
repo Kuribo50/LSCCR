@@ -41,6 +41,9 @@ razonable de uso funcional.
 
 ## Pendientes para produccion
 
+Checklist operativo (variables, respaldos, rollback, limites y monitoreo):
+[DESPLIEGUE_PRODUCCION.md](DESPLIEGUE_PRODUCCION.md).
+
 - Definir variables de entorno de produccion y rotar secretos.
 - Configurar `DJANGO_PRODUCTION=true`, `DJANGO_DEBUG=false`,
   `DJANGO_ALLOWED_HOSTS` y `DJANGO_CSRF_TRUSTED_ORIGINS`.

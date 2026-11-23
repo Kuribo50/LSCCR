@@ -1120,6 +1120,54 @@ class ReversionCargaTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
 
+    def test_cargas_revertibles_lista_una_por_subida(self):
+        data = self.cargar()
+        response = self.client.get("/api/importar/cargas-revertibles/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["items"]), 1)
+        item = response.data["items"][0]
+        self.assertEqual(item["lote"], data["lote"])
+        self.assertEqual(item["corte_id"], data["importaciones"][0]["id"])
+        self.assertEqual(item["pacientes_creados"], 1)
+        self.assertTrue(item["revertible_hasta"])
+
+    def test_cargas_revertibles_incluye_mas_de_una_subida(self):
+        data = self.cargar()
+        ImportacionMensual.objects.create(
+            archivo=ContentFile(b"otra", name="otra.xlsx"),
+            archivo_nombre="otra.xlsx",
+            mes=9, anio=2025, mes_datos=9, anio_datos=2025,
+            usuario=self.medico, lote="lote-otra-subida",
+            total_registros=0, registros_importados=0,
+        )
+        response = self.client.get("/api/importar/cargas-revertibles/")
+        self.assertEqual(len(response.data["items"]), 2)
+        self.assertEqual({i["lote"] for i in response.data["items"]}, {data["lote"], "lote-otra-subida"})
+
+    def test_cargas_revertibles_no_muestra_vencidas_ni_ajenas(self):
+        self.cargar()
+        ImportacionMensual.objects.update(fecha_subida=timezone.now() - timedelta(minutes=11))
+        self.assertEqual(self.client.get("/api/importar/cargas-revertibles/").data["items"], [])
+
+        ImportacionMensual.objects.all().delete()
+        self.cargar()
+        otro = Usuario.objects.create_user(rut="88888888-8", password="x", nombre="Otro Medico", rol=Usuario.Rol.MEDICO)
+        self.client.force_authenticate(otro)
+        self.assertEqual(self.client.get("/api/importar/cargas-revertibles/").data["items"], [])
+        # El administrador ve las de todos.
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(len(self.client.get("/api/importar/cargas-revertibles/").data["items"]), 1)
+
+    def test_cargas_revertibles_sin_permiso(self):
+        kine = Usuario.objects.create_user(rut="77777777-7", password="x", nombre="Kine", rol=Usuario.Rol.KINE)
+        self.client.force_authenticate(kine)
+        self.assertEqual(self.client.get("/api/importar/cargas-revertibles/").status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_carga_revertida_deja_de_aparecer(self):
+        data = self.cargar()
+        self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(self.client.get("/api/importar/cargas-revertibles/").data["items"], [])
+
     def test_medico_no_elimina_periodo_completo(self):
         self.cargar()
         response = self.client.delete("/api/importar/historial/7/2025/")

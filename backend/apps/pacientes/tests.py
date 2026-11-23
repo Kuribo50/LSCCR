@@ -1494,6 +1494,11 @@ class ObservacionesPacienteTests(APITestCase):
         self.paciente.refresh_from_db()
         self.assertEqual(self.paciente.observaciones, "Llamar en la tarde")
 
+    def test_filtro_paciente_no_numerico_responde_400(self):
+        self.client.force_authenticate(self.kine)
+        r = self.client.get(f"{self.url}?paciente=abc")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_texto_vacio_y_medico(self):
         self.assertEqual(self.crear(self.kine, texto="   ").status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(self.crear(self.medico).status_code, status.HTTP_403_FORBIDDEN)
