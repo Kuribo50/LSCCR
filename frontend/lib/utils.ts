@@ -19,6 +19,20 @@ export function normalizeRut(value: string) {
 }
 
 /**
+ * Quita las tildes y marcas diacríticas, sin cambiar mayúsculas ni minúsculas.
+ */
+export function sinAcentos(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Pasa a mayúscula solo la primera letra (el resto queda igual).
+ */
+export function capitalizarInicial(texto: string) {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+/**
  * Normalise a search string: strip diacritics and lowercase (es-CL).
  */
 export function normalizeSearchText(value: string) {
@@ -63,10 +77,10 @@ export function calcularDiasDesde(fecha: string | null | undefined): number {
  * null/undefined/invalid values and `"Sin fecha"` when the caller explicitly
  * uses `formatDateDisplay`.
  */
-export function formatearFecha(fecha: string | null | undefined) {
-  if (!fecha) return "-";
+export function formatearFecha(fecha: string | null | undefined, vacio = "-") {
+  if (!fecha) return vacio;
   const parsed = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return "-";
+  if (Number.isNaN(parsed.getTime())) return vacio;
   return parsed.toLocaleDateString("es-CL");
 }
 

@@ -9,6 +9,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { useToast } from '@/lib/toast-context'
 import Sidebar from '@/components/Sidebar'
 import Navbar from '@/components/Navbar'
+import CargasRevertibles from '@/components/CargasRevertibles'
 import LoaderKine from '@/components/LoaderKine'
 import { terminarNavegacion, useDestinoNavegacion } from '@/lib/navegacion'
 import { puedeAbrirRuta } from '@/lib/roles'
@@ -88,6 +89,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+      {/* Cargas de derivaciones que aún se pueden revertir, en cualquier pantalla. */}
+      <CargasRevertibles />
       {/* Backend bloquea la navegacion cuando admin exige cambio de clave. */}
       {user.requiere_cambio_password && (
         <CambioPasswordObligatorio onLogout={logout} onPasswordChanged={refreshUser} />

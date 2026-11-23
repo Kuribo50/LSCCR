@@ -24,6 +24,7 @@ import type { PaginatedResponse, Rol, Usuario } from "@/lib/types";
 import { ROL_LABELS } from "@/lib/types";
 import { TableSkeleton } from "@/components/Skeleton";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { normalizeRut, normalizeSearchText } from "@/lib/utils";
 
 const ROL_BADGE_CLASSES: Record<Rol, string> = {
   ADMIN: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
@@ -36,18 +37,6 @@ const ROLES_SELECCIONABLES = ROLES_NUEVOS.map((rol) => ({
   value: rol,
   label: ROL_LABELS[rol],
 }));
-
-function normalizarBusqueda(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLocaleLowerCase("es-CL")
-    .trim();
-}
-
-function normalizarRut(value: string) {
-  return value.toLowerCase().replace(/[^0-9k]/g, "");
-}
 
 function etiquetaRolTabla(rol: Rol) {
   return ROL_LABELS[rol];
@@ -84,10 +73,10 @@ export default function UsuariosPage() {
     () =>
       usuarios.filter((usuario) => {
         if (busqueda.trim()) {
-          const queryTexto = normalizarBusqueda(busqueda);
-          const queryRut = normalizarRut(busqueda);
-          const coincideNombre = normalizarBusqueda(usuario.nombre).includes(queryTexto);
-          const coincideRut = normalizarRut(usuario.rut).includes(queryRut);
+          const queryTexto = normalizeSearchText(busqueda);
+          const queryRut = normalizeRut(busqueda);
+          const coincideNombre = normalizeSearchText(usuario.nombre).includes(queryTexto);
+          const coincideRut = normalizeRut(usuario.rut).includes(queryRut);
           if (!coincideNombre && !coincideRut) return false;
         }
 

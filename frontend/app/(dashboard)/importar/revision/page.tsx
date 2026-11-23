@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
@@ -34,9 +35,9 @@ import LoaderKine from "@/components/LoaderKine";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import SectorBadge from "@/components/SectorBadge";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
-import { formatDateDisplay } from "@/lib/utils";
+import { formatDateDisplay, sinAcentos } from "@/lib/utils";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import type { Categoria, Prioridad } from "@/lib/types";
+import type { Categoria, Paciente, Prioridad } from "@/lib/types";
 import type {
   ImportacionRevisionActionResultado,
   ImportacionRevisionAlerta,
@@ -52,6 +53,8 @@ import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import FiltroPildoras from "@/components/FiltroPildoras";
 import Autocompletar from "@/components/Autocompletar";
 import { useEntradaFilas } from "@/lib/useEntradaFilas";
+
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr: false });
 
 // =============================================================================
 // Filtros, tipos y helpers
@@ -142,7 +145,7 @@ function normalizarTerritorial(valor?: string) {
 }
 
 function normalizarSector(valor?: string) {
-  return (valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim();
+  return sinAcentos(valor ?? "").toUpperCase().trim();
 }
 
 function sectorValido(valor?: string) {
@@ -221,7 +224,7 @@ function separarObservaciones(texto: string): string[] {
       if (!t) return false;
       const clave = t.match(/^([^:]{1,32}):/)?.[1];
       if (!clave) return true;
-      const norm = clave.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      const norm = sinAcentos(clave).toLowerCase().trim();
       return !CLAVES_DATOS_CARGA.has(norm);
     })
     // Sin repetidas (la planilla a veces trae la misma nota dos veces).
@@ -492,6 +495,7 @@ export default function RevisionImportacionPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
   const [data, setData] = useState<ImportacionRevisionResultado | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -569,6 +573,15 @@ export default function RevisionImportacionPage() {
   }, [traerRevision]);
 
   useCargaAlMontar(traerRevision, Boolean(user && puedeRevisarCarga(user)));
+
+  // La ficha necesita el paciente completo, no solo el resumen de la observación.
+  async function abrirFicha(pacienteId: number) {
+    try {
+      setFichaPaciente(await api.get<Paciente>(`/pacientes/${pacienteId}/`));
+    } catch (e) {
+      toast.error(getErrorMessage(e, "No se pudo abrir la ficha del paciente."));
+    }
+  }
 
   const opcionesFiltro = useMemo(() => {
     const contar = (valor: (i: ImportacionRevisionItem) => string | undefined) => {
@@ -1701,13 +1714,14 @@ export default function RevisionImportacionPage() {
 
               {/* Acciones */}
               <div className="flex shrink-0 flex-col gap-2 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
-                {seleccionado.paciente_rut && user?.rol !== "MEDICO" && (
-                  <Link
-                    href={`/paciente/${limpiarRut(seleccionado.paciente_rut)}`}
+                {seleccionado.paciente_id && user?.rol !== "MEDICO" && (
+                  <button
+                    type="button"
+                    onClick={() => void abrirFicha(seleccionado.paciente_id as number)}
                     className="ccr-control-button inline-flex items-center justify-center gap-2 px-3 py-2 text-xs sm:mr-auto"
                   >
                     <FiExternalLink size={13} /> Abrir ficha
-                  </Link>
+                  </button>
                 )}
                 {pendiente ? (
                   <>
@@ -1750,6 +1764,15 @@ export default function RevisionImportacionPage() {
 
       {/* El encargado completa también los teléfonos que faltan (no entra a Importar). */}
       <CompletarTelefonos />
+
+      {fichaPaciente && user && (
+        <FichaPaciente
+          paciente={fichaPaciente}
+          usuario={user}
+          onClose={() => setFichaPaciente(null)}
+          onRefresh={() => void cargarRevision()}
+        />
+      )}
     </div>
   );
 }

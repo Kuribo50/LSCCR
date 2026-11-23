@@ -4,6 +4,7 @@ import { puedeCargarDerivaciones } from "@/lib/roles";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
+import { useAlCambiarCargas } from "@/lib/cargasEventos";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -314,6 +315,8 @@ export default function HistorialMensualPage() {
     setExpandido(null);
     void cargarHistorial();
   }, [cargarHistorial]);
+  // También cuando se revierte (o se sube) una carga desde otra pantalla.
+  useAlCambiarCargas(recargarTrasRevertir);
 
   const cargarDetalle = useCallback(
     async (grupo: HistorialGrupo) => {

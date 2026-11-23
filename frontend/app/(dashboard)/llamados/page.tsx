@@ -175,21 +175,43 @@ function Llamados() {
     return () => window.clearTimeout(t);
   }, [ultimo]);
 
-  // Flechas arriba/abajo para recorrer la lista.
+  // Teclado: flechas para recorrer la lista; 1-4 para registrar el resultado del
+  // llamado al paciente seleccionado; Ctrl+Z para deshacer el último.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (modal || ficha || edicion) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (!ultimo || ocupado) return;
+        e.preventDefault();
+        void deshacer();
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const i = seleccionado ? orden.findIndex((p) => p.id === seleccionado.id) : -1;
+        const sig = orden[Math.min(orden.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))];
+        if (sig) setSeleccionId(sig.id);
+        return;
+      }
+
+      if (!seleccionado || ocupado || e.repeat) return;
+      if (e.key === "1") setModal({ paciente: seleccionado, resultado: "CONTESTA_CONFIRMADO" });
+      else if (e.key === "2") void noContestaRapido(seleccionado);
+      else if (e.key === "3") setModal({ paciente: seleccionado, resultado: "REAGENDAR_LLAMADO" });
+      else if (e.key === "4") setModal({ paciente: seleccionado });
+      else return;
       e.preventDefault();
-      const i = seleccionado ? orden.findIndex((p) => p.id === seleccionado.id) : -1;
-      const sig = orden[Math.min(orden.length - 1, Math.max(0, i + (e.key === "ArrowDown" ? 1 : -1)))];
-      if (sig) setSeleccionId(sig.id);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [edicion, ficha, modal, orden, seleccionado]);
+    // deshacer y noContestaRapido leen el estado actual; se recrean en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edicion, ficha, modal, ocupado, orden, seleccionado, ultimo]);
 
   /** Aplica el paciente actualizado a la cola y deja seleccionado al siguiente. */
   function aplicarRegistro(antes: Paciente, despues: Paciente, resultado: ResultadoLlamado) {
@@ -816,22 +838,29 @@ function Detalle({
             Si no contesta: {efectoNo.texto.replace(/^Intento \d+ de \d+( sin respuesta| en Rescate)?: /, "").toLowerCase()}
           </p>
         )}
+        <p className="mb-2 hidden text-[10.5px] font-medium text-slate-400 lg:block">
+          Teclado: ↑ ↓ recorrer la lista · 1–4 registrar el resultado · Ctrl+Z deshacer el último
+        </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={ocupado} onClick={() => onResultado("CONTESTA_CONFIRMADO")} className="ccr-control-button-primary flex-1 justify-center disabled:opacity-50 sm:flex-none">
             <FiCheckCircle size={14} aria-hidden="true" />
             Contesta y agenda
+            <Atajo tecla="1" />
           </button>
           <button type="button" disabled={ocupado} onClick={onNoContesta} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
             <FiPhoneMissed size={14} aria-hidden="true" />
             No contesta
+            <Atajo tecla="2" />
           </button>
           <button type="button" disabled={ocupado} onClick={() => onResultado("REAGENDAR_LLAMADO")} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
             <FiClock size={14} aria-hidden="true" />
             Volver a llamar
+            <Atajo tecla="3" />
           </button>
           <button type="button" disabled={ocupado} onClick={() => onResultado()} className="ccr-control-button justify-center disabled:opacity-50 sm:ml-auto">
             <FiMoreHorizontal size={14} aria-hidden="true" />
             Otro resultado
+            <Atajo tecla="4" />
           </button>
         </div>
       </footer>
@@ -842,6 +871,18 @@ function Detalle({
 // -----------------------------------------------------------------------------
 // Impresion
 // -----------------------------------------------------------------------------
+
+/** Indicador de la tecla de atajo; solo en pantallas con teclado. */
+function Atajo({ tecla }: { tecla: string }) {
+  return (
+    <kbd
+      aria-hidden="true"
+      className="ml-1 hidden rounded border border-current/25 px-1 text-[10px] font-bold leading-4 opacity-70 lg:inline-block"
+    >
+      {tecla}
+    </kbd>
+  );
+}
 
 function TablaImpresion({ titulo, pacientes }: { titulo: string; pacientes: Paciente[] }) {
   return (

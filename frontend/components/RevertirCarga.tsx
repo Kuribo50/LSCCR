@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { FiRotateCcw } from "react-icons/fi";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { api } from "@/lib/api";
+import { avisarCargaRevertida } from "@/lib/cargasEventos";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
 
@@ -64,6 +65,7 @@ export default function RevertirCarga({
           : `Carga revertida: se quitaron ${data.pacientes_eliminados} pacientes.`,
       );
       setConfirmando(false);
+      avisarCargaRevertida(corteId);
       onRevertida();
     } catch (e: unknown) {
       toast.error(getErrorMessage(e, "No se pudo revertir la carga."));

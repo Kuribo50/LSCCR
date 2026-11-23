@@ -912,14 +912,16 @@ export default function ListaEsperaPage() {
         email,
       };
 
-      if (observacionExtra) {
-        const base = (asignarPaciente.observaciones ?? "").trim();
-        payload.observaciones = base
-          ? `${base}\n${observacionExtra}`
-          : observacionExtra;
-      }
-
       await api.patch<Paciente>(`/pacientes/${asignarPaciente.id}/`, payload);
+      // La observación entra a la lista de observaciones (cualquier profesional puede
+      // agregarla); el campo `observaciones` del paciente solo lo corrige el encargado.
+      if (observacionExtra) {
+        await api.post("/observaciones-paciente/", {
+          paciente: asignarPaciente.id,
+          texto: observacionExtra,
+          tipo: "GENERAL",
+        });
+      }
       await api.post(`/pacientes/${asignarPaciente.id}/asignar/`);
       setAsignarPaciente(null);
       toastSuccess(`Paciente "${nombrePaciente}" asignado a tu cartera.`);

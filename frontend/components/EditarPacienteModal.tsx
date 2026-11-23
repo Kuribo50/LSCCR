@@ -16,6 +16,7 @@ import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
 import { puedeCorregirDatos } from "@/lib/roles";
+import { formatearFecha } from "@/lib/utils";
 
 interface Props {
   paciente: Paciente;
@@ -64,13 +65,6 @@ function calcularEdadExacta(fechaNacimiento: string): number | null {
   }
 
   return edad >= 0 ? edad : 0;
-}
-
-function formatearFecha(fecha: string | null | undefined) {
-  if (!fecha) return "Sin dato";
-  const parsed = new Date(fecha.includes("T") ? fecha : `${fecha}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return "Sin dato";
-  return parsed.toLocaleDateString("es-CL");
 }
 
 function toForm(p: Paciente): FormState {
@@ -316,7 +310,7 @@ export default function EditarPacienteModal({
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span>{paciente.id_ccr}</span>
               <span className="text-slate-300" aria-hidden="true">·</span>
-              <span>Derivado el {formatearFecha(paciente.fecha_derivacion)}</span>
+              <span>Derivado el {formatearFecha(paciente.fecha_derivacion, "Sin dato")}</span>
             </p>
           </div>
           <button

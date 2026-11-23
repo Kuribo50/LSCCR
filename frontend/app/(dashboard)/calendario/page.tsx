@@ -45,7 +45,7 @@ import {
   FiChevronDown,
   FiUsers,
 } from "react-icons/fi";
-import { normalizeRut, normalizeSearchText } from "@/lib/utils";
+import { capitalizarInicial, normalizeRut, normalizeSearchText } from "@/lib/utils";
 
 // =============================================================================
 // Helpers de fecha y reglas locales de calendario
@@ -67,10 +67,6 @@ function dateFromParam(value: string | null) {
   const date = fromDateKey(value);
   if (Number.isNaN(date.getTime()) || toDateKey(date) !== value) return null;
   return date;
-}
-
-function capitalizarInicial(texto: string) {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 function formatDay(dateKey: string) {

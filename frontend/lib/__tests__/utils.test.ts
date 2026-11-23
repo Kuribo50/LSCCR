@@ -10,6 +10,8 @@ import {
   dateSortValue,
   getResponsableLabel,
   multiSelectFilter,
+  sinAcentos,
+  capitalizarInicial,
 } from "../utils";
 
 // ---------------------------------------------------------------------------
@@ -327,5 +329,26 @@ describe("multiSelectFilter", () => {
     it("returns false for non-empty array", () => {
       expect(multiSelectFilter.autoRemove(["A"])).toBe(false);
     });
+  });
+});
+
+describe("sinAcentos", () => {
+  it("quita tildes sin cambiar mayúsculas", () => {
+    expect(sinAcentos("Ñuñoa Árbol Éxito")).toBe("Nunoa Arbol Exito");
+  });
+});
+
+describe("capitalizarInicial", () => {
+  it("sube solo la primera letra", () => {
+    expect(capitalizarInicial("noviembre de 2026")).toBe("Noviembre de 2026");
+    expect(capitalizarInicial("")).toBe("");
+  });
+});
+
+describe("formatearFecha con texto alternativo", () => {
+  it("usa el valor vacío indicado", () => {
+    expect(formatearFecha(null, "Sin dato")).toBe("Sin dato");
+    expect(formatearFecha("no-es-fecha", "Sin dato")).toBe("Sin dato");
+    expect(formatearFecha(null)).toBe("-");
   });
 });

@@ -8,122 +8,31 @@ import { usePathname, useRouter } from "next/navigation";
 import { Button, Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { motion, useReducedMotion } from "framer-motion";
 import {
-  FiAlertTriangle,
-  FiBarChart2,
-  FiCalendar,
   FiChevronLeft,
-  FiClock,
-  FiGrid,
-  FiLayers,
-  FiGitCommit,
-  FiClipboard,
-  FiPhone,
   FiSearch,
-  FiUpload,
-  FiUsers,
   FiX,
-  FiUser,
-  FiUserX,
 } from "react-icons/fi";
-import type { IconType } from "react-icons";
 import { api } from "@/lib/api";
 import logoHorizontal from "../public/logoHorizontal.png";
 import type {
   DashboardResumenOperativo,
   ImportacionRevisionResultado,
   Paciente,
-  Rol,
   Usuario,
 } from "@/lib/types";
 import FichaPaciente from "./FichaPaciente";
 import CommandPalette from "./CommandPalette";
 import { esEncargado } from "@/lib/roles";
+import { ORDEN_SECCIONES, SECTION_LABELS, menuParaUsuario, type CountKey, type Item } from "@/lib/menu";
 
 const BRAND_ALT = "Centro Comunitario de Rehabilitación CESFAM Dr. Alberto Reyes";
 const SIDEBAR_ICON_SRC = "/icon.ico";
 type SidebarBrandMode = "desktop" | "mobile" | "compact";
 
-type CountKey =
-  | "total"
-  | "mios"
-  | "rescates"
-  | "cola"
-  | "egresos"
-  | "agendaHoy"
-  | "revision";
 type SidebarCounts = Record<CountKey, number>;
-
-interface Item {
-  href: string;
-  label: string;
-  icon: IconType;
-  section: "principal" | "gestion" | "analisis" | "admin";
-  tone: string;
-  countKey?: CountKey;
-}
-
-const BASE_ITEMS: Record<Rol, Item[]> = {
-  KINE: [
-    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
-    { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
-    { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
-    { href: "/grupos", label: "Grupos", icon: FiLayers, section: "gestion", tone: "text-sky-700" },
-    { href: "/llamados", label: "Llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
-    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
-    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
-    { href: "/inasistencias", label: "Inasistencias", icon: FiUserX, section: "gestion", tone: "text-rose-700" },
-    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
-    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
-  ],
-  // Médico: solo carga y verifica derivaciones de TrakCare (ver lib/roles.ts).
-  MEDICO: [
-    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-    { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-  ],
-  ADMIN: [
-    { href: "/inicio", label: "Inicio", icon: FiGrid, section: "principal", tone: "text-blue-700" },
-    { href: "/calendario", label: "Agenda", icon: FiCalendar, section: "principal", tone: "text-indigo-700", countKey: "agendaHoy" },
-    { href: "/lista-espera", label: "Lista de espera", icon: FiClipboard, section: "principal", tone: "text-cyan-700", countKey: "total" },
-    { href: "/mis-pacientes", label: "Ingresados", icon: FiUsers, section: "gestion", tone: "text-sky-700", countKey: "mios" },
-    { href: "/grupos", label: "Grupos", icon: FiLayers, section: "gestion", tone: "text-sky-700" },
-    { href: "/llamados", label: "Llamados", icon: FiPhone, section: "gestion", tone: "text-blue-700", countKey: "cola" },
-    { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-    { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
-    { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-    { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "gestion", tone: "text-indigo-700", countKey: "egresos" },
-    { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "gestion", tone: "text-indigo-700" },
-    { href: "/inasistencias", label: "Inasistencias", icon: FiUserX, section: "gestion", tone: "text-rose-700" },
-    { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "gestion", tone: "text-rose-700" },
-    { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
-    { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
-  ],
-};
-
-const SECTION_LABELS: Record<Item["section"], string> = {
-  principal: "Principal",
-  gestion: "Gestión",
-  analisis: "Análisis",
-  admin: "Administración",
-};
 
 function classes(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
-}
-
-// El profesional encargado también carga derivaciones, ve los cortes y resuelve la revisión.
-const ITEMS_ENCARGADO: Item[] = [
-  { href: "/importar", label: "Importar derivaciones", icon: FiUpload, section: "gestion", tone: "text-cyan-700" },
-  { href: "/importar/revision", label: "Revisión de carga", icon: FiAlertTriangle, section: "gestion", tone: "text-amber-700", countKey: "revision" },
-  { href: "/historial-mensual", label: "Historial de cortes", icon: FiClock, section: "gestion", tone: "text-indigo-700" },
-];
-
-function itemsConEncargado(base: Item[]): Item[] {
-  const sinRepetidos = ITEMS_ENCARGADO.filter((extra) => !base.some((item) => item.href === extra.href));
-  const despuesDe = base.findIndex((item) => item.href === "/llamados");
-  if (despuesDe < 0) return [...base, ...sinRepetidos];
-  return [...base.slice(0, despuesDe + 1), ...sinRepetidos, ...base.slice(despuesDe + 1)];
 }
 
 function SidebarBrand({ mode = "desktop" }: { mode?: SidebarBrandMode }) {
@@ -215,7 +124,7 @@ function SidebarNav({
   compact: boolean;
   onNavigate?: () => void;
 }) {
-  const sectionOrder: Item["section"][] = ["principal", "gestion", "analisis", "admin"];
+  const sectionOrder = ORDEN_SECCIONES;
   const reduceMotion = useReducedMotion();
   // Un id por instancia: el menu de escritorio y el movil no comparten indicador.
   const indicatorId = onNavigate ? "sidebar-active-mobile" : "sidebar-active-desktop";
@@ -346,7 +255,7 @@ export default function Sidebar({
   const [searchOverlayOpen, setSearchOverlayOpen] = useState(false);
   // El profesional encargado suma Importar, Revisión de carga e Historial de cortes.
   const items = useMemo(
-    () => (encargado ? itemsConEncargado(BASE_ITEMS[rol]) : BASE_ITEMS[rol]),
+    () => menuParaUsuario(rol, encargado),
     [rol, encargado],
   );
 

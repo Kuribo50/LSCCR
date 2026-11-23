@@ -8,6 +8,7 @@ import Link from "next/link";
 import { FiCheckCircle, FiClock, FiFileText, FiPhoneOff, FiRefreshCw, FiUploadCloud } from "react-icons/fi";
 import RevertirCarga, { formatoRestante, useSegundosRestantes } from "@/components/RevertirCarga";
 import { useAuth } from "@/lib/auth-context";
+import { useAlCambiarCargas } from "@/lib/cargasEventos";
 import { getErrorMessage } from "@/lib/errors";
 import { useAPI } from "@/lib/swr";
 import type { CargaReciente, ResumenCargas } from "@/lib/types";
@@ -68,6 +69,7 @@ function EstadoCarga({ carga, onRevertida }: { carga: CargaReciente; onRevertida
 export default function InicioMedico() {
   const { user } = useAuth();
   const { data, error, isLoading, mutate } = useAPI<ResumenCargas>("/importar/resumen-cargas/");
+  useAlCambiarCargas(() => void mutate());
   const nombre = (user?.nombre ?? "").split(" ")[0] || "equipo CCR";
 
   return (

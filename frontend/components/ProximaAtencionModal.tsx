@@ -24,6 +24,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { TONO_CATEGORIA } from "./AgendaGrid";
+import { capitalizarInicial } from "@/lib/utils";
 
 interface Props {
   paciente: Paciente;
@@ -65,13 +66,9 @@ function fechaHoraLocalDefault() {
   return `${toKey(now)}T${pad(Math.min(Math.max(now.getHours() + 1, 8), 17))}:00`;
 }
 
-function capitalizar(texto: string) {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
-
 function fechaLarga(key: string) {
   if (!key) return "Elegir fecha";
-  return capitalizar(
+  return capitalizarInicial(
     new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "numeric", month: "long" }).format(fromKey(key)),
   );
 }
@@ -156,7 +153,7 @@ export function CalendarioDesplegable({
           <FiChevronLeft size={15} />
         </button>
         <p className="text-sm font-bold text-slate-950 dark:text-white">
-          {capitalizar(new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(mes))}
+          {capitalizarInicial(new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(mes))}
         </p>
         <button
           type="button"

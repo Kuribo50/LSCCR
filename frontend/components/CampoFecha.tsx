@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { FiCalendar, FiChevronLeft, FiChevronRight, FiX } from "react-icons/fi";
+import { capitalizarInicial } from "@/lib/utils";
 
 type Vista = "dias" | "meses" | "anios";
 
@@ -26,10 +27,6 @@ export function fechaHoyKey() {
 function fromKey(key: string) {
   const d = new Date(`${key}T00:00:00`);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function capitalizar(texto: string) {
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 function fechaLegible(key: string) {
@@ -146,7 +143,7 @@ export default function CampoFecha({
   const inicioDecada = mes.getFullYear() - (mes.getFullYear() % 12);
   const titulo =
     vista === "dias"
-      ? capitalizar(new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(mes))
+      ? capitalizarInicial(new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" }).format(mes))
       : vista === "meses"
         ? String(mes.getFullYear())
         : `${inicioDecada} – ${inicioDecada + 11}`;

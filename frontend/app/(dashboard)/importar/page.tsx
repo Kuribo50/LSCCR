@@ -39,12 +39,14 @@ import type {
   ImportacionPreviewResultado,
   ImportacionResultado,
 } from "@/lib/types";
+import { sinAcentos } from "@/lib/utils";
+import { avisarCargaImportada, useAlCambiarCargas } from "@/lib/cargasEventos";
 
 /** Mes y año que menciona el nombre del archivo ("Derivaciones CCR Octubre 2026.xlsx"), si lo hay. */
 function periodoDesdeNombre(
   nombre: string,
 ): { mes: number; anio: number | null } | null {
-  const limpio = nombre.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const limpio = sinAcentos(nombre).toLowerCase();
   const idx = [
     "enero",
     "febrero",
@@ -204,11 +206,7 @@ function splitDelimitedLine(linea: string, delimitador: string) {
 }
 
 function normalizePastedLabel(valor: string) {
-  return valor
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .trim();
+  return sinAcentos(valor).toUpperCase().trim();
 }
 
 function isPastedHeaderRow(fila: string[]) {
@@ -346,6 +344,13 @@ export default function ImportarPage() {
     null,
   );
   const [resultado, setResultado] = useState<ImportacionResultado | null>(null);
+
+  // Si la carga se revierte desde otra parte (aviso global o Historial), el resultado ya no aplica.
+  useAlCambiarCargas(({ revertida }) => {
+    if (revertida && resultado?.importaciones?.some((corte) => corte.id === revertida.corteId)) {
+      setResultado(null);
+    }
+  });
   const [error, setError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const panelPreviewRef = useRef<HTMLDivElement>(null);
@@ -494,6 +499,7 @@ export default function ImportarPage() {
         form,
       );
       setResultado(data);
+      avisarCargaImportada();
       setConfirmImportOpen(false);
       setConflicto(null);
       const conError = data.errores_count ?? data.errores?.length ?? 0;
@@ -641,6 +647,7 @@ export default function ImportarPage() {
         },
       );
       setResultado(data);
+      avisarCargaImportada();
       setConfirmImportOpen(false);
       setConflicto(null);
       const conError = data.errores_count ?? data.errores?.length ?? 0;

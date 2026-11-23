@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useCargaAlMontar } from '@/lib/useCargaAlMontar'
 import { FiAlertTriangle, FiDownload, FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
 import { esEncargado } from '@/lib/roles'
-import { descargarBlob } from '@/lib/utils'
+import { descargarBlob, normalizeRut, normalizeSearchText } from '@/lib/utils'
 import { formatearRut } from '@/lib/rut'
 import { useAuth } from '@/lib/auth-context'
 import { api } from '@/lib/api'
@@ -42,18 +42,6 @@ const MESES = [
   { value: '11', label: 'Noviembre' },
   { value: '12', label: 'Diciembre' },
 ]
-
-function normalizeRut(value: string) {
-  return value.toLowerCase().replace(/[^0-9k]/g, '')
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLocaleLowerCase('es-CL')
-    .trim()
-}
 
 function toCapitalizedWords(value: string) {
   const normalized = String(value ?? '')

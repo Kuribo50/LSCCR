@@ -2,17 +2,20 @@
 
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
-import Link from "next/link";
+import dynamic from "next/dynamic";
 import { FiAlertTriangle, FiChevronDown, FiExternalLink, FiRefreshCw, FiSearch, FiUserX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/lib/toast-context";
 import { getErrorMessage } from "@/lib/errors";
 import { esEncargado } from "@/lib/roles";
 import { formatearRut, limpiarRut } from "@/lib/rut";
-import type { InasistenciasResumen, InasistenciaPacienteResumen } from "@/lib/types";
+import type { InasistenciasResumen, InasistenciaPacienteResumen, Paciente } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
 import SelectFiltro from "@/components/SelectFiltro";
 import { TableSkeleton } from "@/components/Skeleton";
+
+const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr: false });
 
 // =============================================================================
 // Filtros y helpers
@@ -75,6 +78,8 @@ function ContadorInasistencias({ item }: { item: InasistenciaPacienteResumen }) 
 
 export default function InasistenciasPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
   const [data, setData] = useState<InasistenciasResumen | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -111,6 +116,15 @@ export default function InasistenciasPage() {
     setError("");
     await traer();
   }, [traer]);
+
+  // La ficha necesita el paciente completo, no solo el resumen de inasistencias.
+  async function abrirFicha(pacienteId: number) {
+    try {
+      setFichaPaciente(await api.get<Paciente>(`/pacientes/${pacienteId}/`));
+    } catch (e) {
+      toast.error(getErrorMessage(e, "No se pudo abrir la ficha del paciente."));
+    }
+  }
 
   useCargaAlMontar(traer);
 
@@ -296,13 +310,16 @@ export default function InasistenciasPage() {
                         </td>
                         <td className="px-3 py-3">
                           <span className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/paciente/${limpiarRut(item.rut)}`}
-                              onClick={(e) => e.stopPropagation()}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void abrirFicha(item.paciente_id);
+                              }}
                               className="ccr-control-button inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px]"
                             >
                               <FiExternalLink size={11} /> Ficha
-                            </Link>
+                            </button>
                             <FiChevronDown
                               size={15}
                               className={`text-slate-400 transition-transform ${expandido ? "rotate-180" : ""}`}
@@ -349,6 +366,15 @@ export default function InasistenciasPage() {
           </div>
         )}
       </section>
+
+      {fichaPaciente && user && (
+        <FichaPaciente
+          paciente={fichaPaciente}
+          usuario={user}
+          onClose={() => setFichaPaciente(null)}
+          onRefresh={() => void cargar()}
+        />
+      )}
     </div>
   );
 }

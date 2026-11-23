@@ -913,3 +913,20 @@ export interface ObservacionPaciente {
   actualizado_en: string;
   puede_editar: boolean;
 }
+
+/** Una subida de derivaciones que el usuario aún puede revertir (GET /importar/cargas-revertibles/). */
+export interface CargaRevertible {
+  lote: string;
+  corte_id: number;
+  archivo_nombre: string;
+  periodos: string[];
+  pacientes_creados: number;
+  usuario_nombre: string | null;
+  fecha_subida: string;
+  revertible_hasta: string;
+}
+
+export interface CargasRevertiblesResultado {
+  ahora: string;
+  items: CargaRevertible[];
+}
