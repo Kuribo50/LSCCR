@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -533,9 +534,16 @@ export default function RevisionImportacionPage() {
     if (user && !puedeRevisarCarga(user)) router.replace("/inicio");
   }, [user, router]);
 
-  const cargarRevision = useCallback(async () => {
+  // Al cambiar los filtros se vuelve a mostrar el estado de carga (ajuste durante el render).
+  const filtrosClave = `${estado}|${tipo}|${alerta}`;
+  const [filtrosCargados, setFiltrosCargados] = useState(filtrosClave);
+  if (filtrosCargados !== filtrosClave) {
+    setFiltrosCargados(filtrosClave);
     setLoading(true);
     setError("");
+  }
+
+  const traerRevision = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       params.set("estado", estado);
@@ -554,9 +562,13 @@ export default function RevisionImportacionPage() {
     }
   }, [alerta, estado, tipo, toast]);
 
-  useEffect(() => {
-    if (user && puedeRevisarCarga(user)) void cargarRevision();
-  }, [cargarRevision, user]);
+  const cargarRevision = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traerRevision();
+  }, [traerRevision]);
+
+  useCargaAlMontar(traerRevision, Boolean(user && puedeRevisarCarga(user)));
 
   const opcionesFiltro = useMemo(() => {
     const contar = (valor: (i: ImportacionRevisionItem) => string | undefined) => {

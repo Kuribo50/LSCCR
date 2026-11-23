@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, ModalOverlay, Dialog } from "react-aria-components";
@@ -295,9 +296,7 @@ export default function FichaPaciente({
     (usuario.rol === "ADMIN" ||
       (usuario.rol === "KINE" && paciente.kine_asignado === usuario.id));
 
-  const cargarHistorial = useCallback(async (id: number) => {
-    setLoadingHistorial(true);
-    setError("");
+  const traerHistorial = useCallback(async (id: number) => {
     try {
       const data = await api.get<HistorialCompletoPaciente>(
         `/pacientes/${id}/historial-completo/`,
@@ -330,15 +329,29 @@ export default function FichaPaciente({
     }
   }, [toastWarning]);
 
-  useEffect(() => {
+  const cargarHistorial = useCallback(async (id: number) => {
+    setLoadingHistorial(true);
+    setError("");
+    await traerHistorial(id);
+  }, [traerHistorial]);
+
+  // Si el padre entrega otro paciente, se reinicia la ficha (ajuste durante el render).
+  const [pacienteAplicado, setPacienteAplicado] = useState(pacienteInicial);
+  if (pacienteAplicado !== pacienteInicial) {
+    setPacienteAplicado(pacienteInicial);
     setPaciente(pacienteInicial);
     setLlamados([]);
     setInasistencias([]);
     setAcciones([]);
     setError("");
     setLoadingHistorial(true);
-    void cargarHistorial(pacienteInicial.id);
-  }, [cargarHistorial, pacienteInicial]);
+  }
+
+  const traerHistorialInicial = useCallback(
+    () => traerHistorial(pacienteInicial.id),
+    [traerHistorial, pacienteInicial],
+  );
+  useCargaAlMontar(traerHistorialInicial);
 
   // Scroll locking is handled by react-aria ModalOverlay.
 

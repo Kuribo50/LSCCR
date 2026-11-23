@@ -7,6 +7,7 @@ import type {
   VisibilityState,
   SortingState,
 } from '@tanstack/react-table'
+import { useMontado } from '../useMontado'
 
 type PersistedTableState = {
   globalSearch: string
@@ -74,28 +75,28 @@ export function usePersistentTableState({
   const [state, setState] = useState<PersistedTableState>(mergedInitialState)
   const [hasHydrated, setHasHydrated] = useState(false)
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
+  // Hidrata desde localStorage una vez montado en el cliente (y si cambia la clave),
+  // como ajuste de estado durante el render en vez de un efecto.
+  const montado = useMontado()
+  const [claveHidratada, setClaveHidratada] = useState<string | null>(null)
+  if (montado && claveHidratada !== storageKey) {
+    setClaveHidratada(storageKey)
+    let hidratado = mergedInitialState
     try {
       const raw = window.localStorage.getItem(storageKey)
-      if (!raw) {
-        setState(mergedInitialState)
-        setHasHydrated(true)
-        return
+      if (raw) {
+        const parsed = JSON.parse(raw) as StoredPayload
+        // Versionado simple para poder invalidar preferencias cuando cambie la
+        // forma de la tabla sin migraciones complejas en cliente.
+        const persistedState = parsed?.version === 1 ? parsed.state : undefined
+        hidratado = sanitizeState(persistedState, mergedInitialState)
       }
-
-      const parsed = JSON.parse(raw) as StoredPayload
-      // Versionado simple para poder invalidar preferencias cuando cambie la
-      // forma de la tabla sin migraciones complejas en cliente.
-      const persistedState = parsed?.version === 1 ? parsed.state : undefined
-      setState(sanitizeState(persistedState, mergedInitialState))
     } catch {
-      setState(mergedInitialState)
-    } finally {
-      setHasHydrated(true)
+      hidratado = mergedInitialState
     }
-  }, [storageKey, mergedInitialState])
+    setState(hidratado)
+    setHasHydrated(true)
+  }
 
   useEffect(() => {
     if (!hasHydrated || typeof window === 'undefined') return

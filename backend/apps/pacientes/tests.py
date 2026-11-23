@@ -1482,6 +1482,18 @@ class ObservacionesPacienteTests(APITestCase):
         self.paciente.refresh_from_db()
         self.assertEqual(self.paciente.observaciones, "")
 
+    def test_no_se_puede_mover_observacion_a_otro_paciente(self):
+        otro_paciente = Paciente.objects.create(
+            rut="900000032", nombre="OTRO PACIENTE", edad=30, diagnostico="Hombro",
+            categoria=Paciente.Categoria.LUMBAGOS, prioridad=Paciente.Prioridad.ALTA,
+            fecha_derivacion=timezone.localdate(),
+        )
+        obs_id = self.crear(self.kine).data["id"]
+        r = self.client.patch(f"{self.url}{obs_id}/", {"paciente": otro_paciente.id}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.observaciones, "Llamar en la tarde")
+
     def test_texto_vacio_y_medico(self):
         self.assertEqual(self.crear(self.kine, texto="   ").status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(self.crear(self.medico).status_code, status.HTTP_403_FORBIDDEN)

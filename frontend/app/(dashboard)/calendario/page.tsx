@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { useSearchParams } from "next/navigation";
 import { Modal, ModalOverlay, Dialog } from "react-aria-components";
 import { api } from "@/lib/api";
@@ -169,10 +170,8 @@ export default function CalendarioPage() {
   // Actividades grupales: `null` cerrado; `{}` lista; `{ id }` detalle de una actividad.
   const [grupoAbierto, setGrupoAbierto] = useState<{ id?: number } | null>(null);
 
-  const cargar = useCallback(async () => {
+  const traer = useCallback(async () => {
     if (!user) return;
-    setLoading(true);
-    setError("");
     try {
       // KINE ve solo su cartera; ADMIN puede planificar global.
       const endpoint = user.rol === "KINE" ? "/pacientes/?solo_mios=1" : "/pacientes/";
@@ -187,23 +186,27 @@ export default function CalendarioPage() {
     }
   }, [toast, user]);
 
-  useEffect(() => {
-    if (user) void cargar();
-  }, [cargar, user]);
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traer();
+  }, [traer]);
 
-  useEffect(() => {
+  useCargaAlMontar(traer);
+
+  // Ajustes de estado durante el render (en vez de efectos): seguir la fecha de la URL
+  // y mantener la fecha seleccionada dentro del mes visible.
+  const [fechaParamAplicada, setFechaParamAplicada] = useState<string | null>(null);
+  if (fechaParamAplicada !== fechaParam) {
+    setFechaParamAplicada(fechaParam);
     const fechaUrl = dateFromParam(fechaParam);
-    if (!fechaUrl) return;
-    const dateKey = toDateKey(fechaUrl);
-    setMesActual(new Date(fechaUrl.getFullYear(), fechaUrl.getMonth(), 1));
-    setFechaSeleccionada(dateKey);
-  }, [fechaParam]);
-
-  useEffect(() => {
-    if (!sameMonth(fechaSeleccionada, mesActual)) {
-      setFechaSeleccionada(toDateKey(new Date(mesActual.getFullYear(), mesActual.getMonth(), 1)));
+    if (fechaUrl) {
+      setMesActual(new Date(fechaUrl.getFullYear(), fechaUrl.getMonth(), 1));
+      setFechaSeleccionada(toDateKey(fechaUrl));
     }
-  }, [mesActual, fechaSeleccionada]);
+  } else if (!sameMonth(fechaSeleccionada, mesActual)) {
+    setFechaSeleccionada(toDateKey(new Date(mesActual.getFullYear(), mesActual.getMonth(), 1)));
+  }
 
   function actualizarPaciente(actualizado: Paciente) {
     setPacientes((prev) => prev.map((item) => (item.id === actualizado.id ? actualizado : item)));

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { FiCheck, FiEdit2, FiMessageSquare, FiPlus, FiTrash2, FiX } from "react-icons/fi";
 import { BsPin, BsPinFill } from "react-icons/bs";
 import { api } from "@/lib/api";
@@ -75,8 +76,14 @@ export default function ObservacionesPaciente({
   const [guardando, setGuardando] = useState(false);
   const puedeEscribir = usuario.rol === "ADMIN" || usuario.rol === "KINE";
 
-  const cargar = useCallback(async () => {
+  // Al cambiar de paciente se vuelve a mostrar la carga (ajuste durante el render).
+  const [pacienteCargado, setPacienteCargado] = useState(pacienteId);
+  if (pacienteCargado !== pacienteId) {
+    setPacienteCargado(pacienteId);
     setCargando(true);
+  }
+
+  const traer = useCallback(async () => {
     try {
       setItems(await api.get<ObservacionPaciente[]>(`/observaciones-paciente/?paciente=${pacienteId}`));
     } catch (e) {
@@ -86,9 +93,12 @@ export default function ObservacionesPaciente({
     }
   }, [pacienteId, toastError]);
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    await traer();
+  }, [traer]);
+
+  useCargaAlMontar(traer);
 
   const visibles = useMemo(
     () => (filtro === "TODOS" ? items : items.filter((o) => o.tipo === filtro)),

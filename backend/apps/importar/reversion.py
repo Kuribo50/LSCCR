@@ -24,6 +24,7 @@ from apps.pacientes.models import (
     InasistenciaPaciente,
     LlamadoPaciente,
     MovimientoPaciente,
+    ObservacionPaciente,
     Paciente,
     RegistroAgendaPaciente,
 )
@@ -32,6 +33,8 @@ from apps.usuarios.models import Usuario
 from .models import ImportacionMensual
 
 MINUTOS_REVERSION = 10
+# Holgura para distinguir lo que escribió la propia carga de lo que otros hicieron después.
+HOLGURA_CARGA = timedelta(minutes=2)
 
 
 def cortes_del_lote(importacion: ImportacionMensual) -> list[ImportacionMensual]:
@@ -67,6 +70,27 @@ def estado_reversion(importacion: ImportacionMensual, usuario, ahora=None) -> di
     }
 
 
+def _hay_trabajo_posterior(cortes: list[ImportacionMensual], ids_pacientes: list[int]) -> bool:
+    """Movimientos u observaciones de los pacientes creados que no escribió la carga.
+
+    Los escritos por la propia carga son del mismo usuario y de la misma hora; los
+    de otros usuarios, o posteriores a la ventana de la subida, son trabajo real
+    que borrar el paciente destruiría en cascada.
+    """
+    if not ids_pacientes:
+        return False
+    usuarios_carga = {c.usuario_id for c in cortes}
+    limite = max(c.fecha_subida for c in cortes) + HOLGURA_CARGA
+    movimientos = MovimientoPaciente.objects.filter(paciente_id__in=ids_pacientes)
+    observaciones = ObservacionPaciente.objects.filter(paciente_id__in=ids_pacientes)
+    return (
+        movimientos.exclude(usuario_id__in=usuarios_carga).exists()
+        or movimientos.filter(fecha__gt=limite).exists()
+        or observaciones.exclude(autor_id__in=usuarios_carga).exists()
+        or observaciones.filter(creado_en__gt=limite).exists()
+    )
+
+
 @transaction.atomic
 def revertir_carga(importacion: ImportacionMensual, usuario) -> dict:
     cortes = cortes_del_lote(importacion)
@@ -83,10 +107,16 @@ def revertir_carga(importacion: ImportacionMensual, usuario) -> dict:
         LlamadoPaciente.objects.filter(paciente_id__in=ids_creados).exists()
         or RegistroAgendaPaciente.objects.filter(paciente_id__in=ids_creados).exists()
         or InasistenciaPaciente.objects.filter(paciente_id__in=ids_creados).exists()
+        or _hay_trabajo_posterior(cortes, ids_creados)
     )
     if con_gestion:
         raise ValidationError(
-            {"detail": "Algún paciente de esta carga ya tiene llamados o citas registrados; no se puede revertir."}
+            {
+                "detail": (
+                    "Algún paciente de esta carga ya tiene llamados, citas, asignaciones, "
+                    "cambios de estado u observaciones registrados; no se puede revertir."
+                )
+            }
         )
 
     # Los efectos sobre pacientes existentes se guardan igual en cada corte del lote.

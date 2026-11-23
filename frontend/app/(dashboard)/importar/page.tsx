@@ -351,7 +351,6 @@ export default function ImportarPage() {
   const panelPreviewRef = useRef<HTMLDivElement>(null);
   const hayPreview = preview !== null;
   const [importLoading, setImportLoading] = useState(false);
-  const [autoPreviewPegado, setAutoPreviewPegado] = useState(false);
   const [confirmImportOpen, setConfirmImportOpen] = useState(false);
   const [descargandoPlantilla, setDescargandoPlantilla] = useState(false);
   const [conflicto, setConflicto] =
@@ -380,10 +379,10 @@ export default function ImportarPage() {
     };
   }, []);
 
-  const handlePrevisualizar = useCallback(async () => {
+  const handlePrevisualizar = useCallback(async (archivoElegido: File | null = archivo) => {
     // Previsualizar no crea pacientes; solo pide al backend validacion,
     // conteos y observaciones de revision antes de confirmar importacion.
-    if (!archivo) return;
+    if (!archivoElegido) return;
     setPreviewLoading(true);
     setError("");
     setResultado(null);
@@ -391,7 +390,7 @@ export default function ImportarPage() {
 
     try {
       const form = new FormData();
-      form.append("archivo", archivo);
+      form.append("archivo", archivoElegido);
       const opciones = opcionesCarga();
       if (opciones.periodo_mes) {
         form.append("periodo_mes", String(opciones.periodo_mes));
@@ -419,10 +418,10 @@ export default function ImportarPage() {
     }
   }, [archivo, opcionesCarga, toast]);
 
-  const handlePrevisualizarPegado = useCallback(async () => {
+  const handlePrevisualizarPegado = useCallback(async (texto: string = textoPegado) => {
     // Mismo contrato que archivo, pero el backend recibe una planilla temporal
     // generada desde texto pegado.
-    if (!textoPegado.trim()) {
+    if (!texto.trim()) {
       setError("Pega las filas de datos desde la hoja de cálculo.");
       return;
     }
@@ -435,7 +434,7 @@ export default function ImportarPage() {
       const data = await api.post<ImportacionPreviewResultado>(
         "/importar/previsualizar-pegado/",
         {
-          texto: textoPegado,
+          texto,
           ...opcionesCarga(),
         },
       );
@@ -460,29 +459,6 @@ export default function ImportarPage() {
       router.replace("/pacientes");
     }
   }, [user, router]);
-
-  // Auto-previsualiza al seleccionar archivo para detectar errores antes de importar.
-  useEffect(() => {
-    if (modoImportacion === "archivo" && archivo) {
-      void handlePrevisualizar();
-    }
-  }, [archivo, handlePrevisualizar, modoImportacion]);
-
-  useEffect(() => {
-    if (
-      modoImportacion === "pegado" &&
-      autoPreviewPegado &&
-      textoPegado.trim()
-    ) {
-      setAutoPreviewPegado(false);
-      void handlePrevisualizarPegado();
-    }
-  }, [
-    autoPreviewPegado,
-    handlePrevisualizarPegado,
-    modoImportacion,
-    textoPegado,
-  ]);
 
   const filasPegadas = useMemo(
     () => parsePastedDataRows(textoPegado).slice(0, 12),
@@ -554,7 +530,6 @@ export default function ImportarPage() {
     setArchivo(null);
     setPreview(null);
     setTextoPegado("");
-    setAutoPreviewPegado(false);
     setMesCorte(0);
     setCorteDesdeNombre(false);
     periodoRef.current = null;
@@ -610,6 +585,8 @@ export default function ImportarPage() {
     setResultado(null);
     setError("");
     setConflicto(null);
+    // Auto-previsualiza al seleccionar archivo para detectar errores antes de importar.
+    void handlePrevisualizar(file);
   }
 
   function aplicarTextoPegado(texto: string, mensaje?: string) {
@@ -620,8 +597,9 @@ export default function ImportarPage() {
     setError("");
     setConflicto(null);
     setConfirmImportOpen(false);
-    setAutoPreviewPegado(Boolean(texto.trim()));
     if (mensaje) toast.success(mensaje);
+    // Auto-previsualiza el texto pegado.
+    if (texto.trim()) void handlePrevisualizarPegado(texto);
   }
 
   function handlePegarEnGrilla(event: ClipboardEvent<HTMLDivElement>) {
@@ -896,7 +874,7 @@ export default function ImportarPage() {
                       setError("");
                       setConflicto(null);
                       setConfirmImportOpen(false);
-                      setAutoPreviewPegado(false);
+                      if (opcion.value === "archivo" && archivo) void handlePrevisualizar(archivo);
                     }}
                     className={`relative inline-flex items-center gap-2.5 px-1 pb-3 pt-2 text-sm font-bold transition-colors duration-300 ${
                       active

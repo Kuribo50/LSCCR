@@ -625,6 +625,12 @@ class ObservacionPacienteSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("id", "autor", "autor_nombre", "creado_en", "actualizado_en", "puede_editar")
 
+    def validate_paciente(self, valor):
+        # Una observación no cambia de paciente: se borra y se crea en el otro.
+        if self.instance is not None and valor.pk != self.instance.paciente_id:
+            raise serializers.ValidationError("No se puede mover una observación a otro paciente.")
+        return valor
+
     def validate_texto(self, valor):
         valor = (valor or "").strip()
         if not valor:

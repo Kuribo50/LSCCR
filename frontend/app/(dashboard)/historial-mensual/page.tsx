@@ -3,6 +3,7 @@
 import { puedeCargarDerivaciones } from "@/lib/roles";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -119,9 +120,7 @@ export default function HistorialMensualPage() {
     }
   }, [user, router]);
 
-  const cargarHistorial = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const traerHistorial = useCallback(async () => {
     try {
       const data = await api.get<ImportacionHistorialItem[]>(
         "/importar/historial/",
@@ -137,11 +136,13 @@ export default function HistorialMensualPage() {
     }
   }, [toastError]);
 
-  useEffect(() => {
-    if (user && puedeCargarDerivaciones(user)) {
-      void cargarHistorial();
-    }
-  }, [user, cargarHistorial]);
+  const cargarHistorial = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traerHistorial();
+  }, [traerHistorial]);
+
+  useCargaAlMontar(traerHistorial, Boolean(user && puedeCargarDerivaciones(user)));
 
   const grupos = useMemo<HistorialGrupo[]>(() => {
     const mapa = new Map<string, HistorialGrupo>();

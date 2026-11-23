@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useCargaAlMontar } from '@/lib/useCargaAlMontar'
 import { FiAlertTriangle, FiDownload, FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
 import { esEncargado } from '@/lib/roles'
 import { descargarBlob } from '@/lib/utils'
@@ -122,9 +123,7 @@ export default function EgresosPage() {
   const [showTableFilters, setShowTableFilters] = useState(false)
   const [seleccionado, setSeleccionado] = useState<Paciente | null>(null)
 
-  const cargar = useCallback(async () => {
-    setLoading(true)
-    setError('')
+  const traer = useCallback(async () => {
     try {
       // El profesional ve sus egresos; el encargado y el administrador, todos.
       if (user?.rol === 'KINE' && !esEncargado(user)) {
@@ -142,9 +141,13 @@ export default function EgresosPage() {
     }
   }, [user])
 
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
+  const cargar = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    await traer()
+  }, [traer])
+
+  useCargaAlMontar(traer)
 
   const kineOptions = useMemo(
     () =>

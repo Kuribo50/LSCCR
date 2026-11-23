@@ -122,6 +122,8 @@ function alternarTema(): boolean {
   return next;
 }
 
+const SIN_PACIENTES: Paciente[] = [];
+
 export default function CommandPalette({
   isOpen,
   onClose,
@@ -137,19 +139,27 @@ export default function CommandPalette({
 
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [patients, setPatients] = useState<Paciente[]>([]);
-  const [loadingPatients, setLoadingPatients] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  // Resultado de la última búsqueda: `term` dice a qué consulta corresponde.
+  const [resultados, setResultados] = useState<{ term: string; items: Paciente[] }>({ term: "", items: [] });
+  const [activeIndexRaw, setActiveIndex] = useState(0);
   const [isDark, setIsDark] = useState(false);
 
-  // Al abrir: limpia estado, sincroniza tema y enfoca el input.
+  // Al abrir: limpia el estado y sincroniza el tema (ajuste durante el render).
+  const [estabaAbierto, setEstabaAbierto] = useState(false);
+  if (estabaAbierto !== isOpen) {
+    setEstabaAbierto(isOpen);
+    if (isOpen) {
+      setQuery("");
+      setDebouncedQuery("");
+      setResultados({ term: "", items: [] });
+      setActiveIndex(0);
+      setIsDark(temaActualEsOscuro());
+    }
+  }
+
+  // Al abrir: enfoca el input.
   useEffect(() => {
     if (!isOpen) return;
-    setQuery("");
-    setDebouncedQuery("");
-    setPatients([]);
-    setActiveIndex(0);
-    setIsDark(temaActualEsOscuro());
     const id = window.setTimeout(() => inputRef.current?.focus(), 30);
     return () => window.clearTimeout(id);
   }, [isOpen]);
@@ -164,30 +174,27 @@ export default function CommandPalette({
   useEffect(() => {
     if (!isOpen) return;
     const term = debouncedQuery;
-    if (!buscarPacientes || term.length < 2) {
-      setPatients([]);
-      setLoadingPatients(false);
-      return;
-    }
+    if (!buscarPacientes || term.length < 2) return;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    setLoadingPatients(true);
     api
       .get<Paciente[] | PaginatedResponse<Paciente>>(
         `/pacientes/?search=${encodeURIComponent(term)}`,
       )
       .then((data) => {
         if (requestIdRef.current !== requestId) return;
-        setPatients(unwrapResults(data).slice(0, PATIENT_LIMIT));
+        setResultados({ term, items: unwrapResults(data).slice(0, PATIENT_LIMIT) });
       })
       .catch(() => {
         if (requestIdRef.current !== requestId) return;
-        setPatients([]);
-      })
-      .finally(() => {
-        if (requestIdRef.current === requestId) setLoadingPatients(false);
+        setResultados({ term, items: [] });
       });
   }, [buscarPacientes, debouncedQuery, isOpen]);
+
+  // Sin búsqueda activa (consulta corta o desactivada) no se muestran pacientes.
+  const busquedaActiva = buscarPacientes && debouncedQuery.length >= 2;
+  const patients = busquedaActiva ? resultados.items : SIN_PACIENTES;
+  const loadingPatients = busquedaActiva && resultados.term !== debouncedQuery;
 
   const actions: PaletteEntry[] = useMemo(() => {
     return [
@@ -275,20 +282,15 @@ export default function CommandPalette({
   }, [actions, debouncedQuery, navItems, onClose, onSelectPatient, onViewAllPatients, patients, router]);
 
   // Mantiene el indice activo dentro de rango cuando cambian los resultados.
-  useEffect(() => {
-    setActiveIndex((prev) => {
-      if (entries.length === 0) return 0;
-      return Math.min(prev, entries.length - 1);
-    });
-  }, [entries.length]);
+  const activeIndex = entries.length === 0 ? 0 : Math.min(activeIndexRaw, entries.length - 1);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((prev) => (entries.length ? (prev + 1) % entries.length : 0));
+      setActiveIndex(entries.length ? (activeIndex + 1) % entries.length : 0);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveIndex((prev) => (entries.length ? (prev - 1 + entries.length) % entries.length : 0));
+      setActiveIndex(entries.length ? (activeIndex - 1 + entries.length) % entries.length : 0);
     } else if (event.key === "Enter") {
       event.preventDefault();
       entries[activeIndex]?.run();

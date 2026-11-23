@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { FiEye, FiPhoneCall, FiRefreshCw, FiSearch } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -44,9 +45,7 @@ export default function RiesgoAbandonoPage() {
   const [error, setError] = useState("");
   const [seleccionado, setSeleccionado] = useState<PacienteRiesgo | null>(null);
 
-  const cargar = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  const traer = useCallback(async () => {
     try {
       const res = await api.get<RiesgoAbandonoResponse>("/pacientes/riesgo-abandono/");
       setData(res);
@@ -57,9 +56,13 @@ export default function RiesgoAbandonoPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traer();
+  }, [traer]);
+
+  useCargaAlMontar(traer);
 
   const resumen = data?.resumen;
   const pacientes = data?.pacientes ?? [];

@@ -1,6 +1,7 @@
 'use client'
 
-import { use, useCallback, useEffect, useState } from 'react'
+import { use, useCallback, useState } from 'react'
+import { useCargaAlMontar } from '@/lib/useCargaAlMontar'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FiArrowLeft, FiEdit3, FiPhone, FiRefreshCw } from 'react-icons/fi'
@@ -27,10 +28,16 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
   const [cambiarEstadoPaciente, setCambiarEstadoPaciente] = useState<PacienteConMovimientos | null>(null)
   const [registrarContactoPaciente, setRegistrarContactoPaciente] = useState<PacienteConMovimientos | null>(null)
 
-  const loadPerfil = useCallback(async () => {
+  // Al cambiar de paciente se vuelve a mostrar la carga (ajuste durante el render).
+  const [rutCargado, setRutCargado] = useState(rut)
+  if (rutCargado !== rut) {
+    setRutCargado(rut)
+    setLoading(true)
+    setError('')
+  }
+
+  const traerPerfil = useCallback(async () => {
     try {
-      setLoading(true)
-      setError('')
       const data = await api.get<PerfilPaciente>(`/pacientes/perfil/${rut}/`)
       setPerfil(data)
     } catch (e: unknown) {
@@ -44,9 +51,13 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
     }
   }, [rut])
 
-  useEffect(() => {
-    void loadPerfil()
-  }, [loadPerfil])
+  const loadPerfil = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    await traerPerfil()
+  }, [traerPerfil])
+
+  useCargaAlMontar(traerPerfil)
 
   async function handleCambiarEstado(estado: Estado, notas: string) {
     if (!cambiarEstadoPaciente) return

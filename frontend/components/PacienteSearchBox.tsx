@@ -192,7 +192,7 @@ export default function PacienteSearchBox({
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const [history, setHistory] = useState<Paciente[]>([]);
+  const [history, setHistory] = useState<Paciente[]>(() => loadHistory());
 
   const searchTerm = useMemo(() => terminoParaApi(query), [query]);
   const canSearch = searchTerm.length >= MIN_SEARCH_LENGTH;
@@ -222,10 +222,6 @@ export default function PacienteSearchBox({
     : "/pacientes";
 
   useEffect(() => {
-    setHistory(loadHistory());
-  }, []);
-
-  useEffect(() => {
     if (!autoFocus) return;
     const timeout = window.setTimeout(() => {
       inputRef.current?.focus();
@@ -244,22 +240,29 @@ export default function PacienteSearchBox({
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
-  useEffect(() => {
-    if (!canSearch) {
-      requestIdRef.current += 1;
-      setSuggestionGroups([]);
-      setLoading(false);
-      setSearched(false);
-      setError("");
-      setHighlightedIndex(showHistory && visibleHistory.length > 0 ? 0 : -1);
-      return;
-    }
-
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    setLoading(true);
+  // Al cambiar la búsqueda (o el historial visible) se reinicia el panel durante el
+  // render, en vez de en un efecto.
+  const claveBusqueda = canSearch
+    ? `b:${searchTerm}:${user?.id ?? 0}`
+    : `h:${showHistory}:${visibleHistory.length}`;
+  const [claveAplicada, setClaveAplicada] = useState(claveBusqueda);
+  if (claveAplicada !== claveBusqueda) {
+    setClaveAplicada(claveBusqueda);
     setSearched(false);
     setError("");
+    if (canSearch) {
+      setLoading(true);
+    } else {
+      setSuggestionGroups([]);
+      setLoading(false);
+      setHighlightedIndex(showHistory && visibleHistory.length > 0 ? 0 : -1);
+    }
+  }
+
+  useEffect(() => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    if (!canSearch) return;
 
     const timeout = window.setTimeout(async () => {
       try {
@@ -292,7 +295,7 @@ export default function PacienteSearchBox({
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [canSearch, searchTerm, showHistory, user, visibleHistory.length]);
+  }, [canSearch, searchTerm, user]);
 
   function clearSearch() {
     requestIdRef.current += 1;

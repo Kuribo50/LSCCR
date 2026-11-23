@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import type { ReactNode } from "react";
 import {
   FiActivity,
@@ -102,9 +103,16 @@ export default function EstadisticasPage() {
   const [error, setError] = useState("");
   const [exportandoResponsables, setExportandoResponsables] = useState(false);
 
-  const cargarReportes = useCallback(async () => {
+  // Al cambiar el periodo se vuelve a mostrar el estado de carga (ajuste durante el render).
+  const periodoClave = `${mes}-${anio}`;
+  const [periodoCargado, setPeriodoCargado] = useState(periodoClave);
+  if (periodoCargado !== periodoClave) {
+    setPeriodoCargado(periodoClave);
     setLoading(true);
     setError("");
+  }
+
+  const traerReportes = useCallback(async () => {
     try {
       const [resumenData, responsableData, serieData] = await Promise.all([
         api.get<ReporteResumenMensual>(`/reportes/resumen/?mes=${mes}&anio=${anio}`),
@@ -123,9 +131,13 @@ export default function EstadisticasPage() {
     }
   }, [mes, anio, toastError]);
 
-  useEffect(() => {
-    void cargarReportes();
-  }, [cargarReportes]);
+  const cargarReportes = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traerReportes();
+  }, [traerReportes]);
+
+  useCargaAlMontar(traerReportes);
 
   const tendencia = useMemo(
     () =>

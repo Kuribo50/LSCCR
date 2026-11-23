@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { Button } from "react-aria-components";
 import {
   FiActivity,
@@ -148,7 +149,7 @@ function InicioOperativo() {
   const [resumen, setResumen] = useState<DashboardResumenOperativo>(RESUMEN_VACIO);
   const [alertas, setAlertas] = useState<AlertasOperativas | null>(null);
   const [loading, setLoading] = useState(true);
-  const [alertasLoading, setAlertasLoading] = useState(false);
+  const [alertasLoading, setAlertasLoading] = useState(true);
   const [error, setError] = useState("");
   const [alertasError, setAlertasError] = useState("");
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
@@ -158,18 +159,12 @@ function InicioOperativo() {
     return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   });
   const [agendaResumen, setAgendaResumen] = useState<AgendaResumenDia[]>([]);
-  const [agendaLoading, setAgendaLoading] = useState(false);
+  const [agendaLoading, setAgendaLoading] = useState(true);
   const [agendaError, setAgendaError] = useState("");
 
-  const cargarDashboard = useCallback(async (options?: { silent?: boolean }) => {
+  const traerDashboard = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return;
     const silent = options?.silent ?? false;
-    if (!silent) {
-      setLoading(true);
-      setAlertasLoading(true);
-      setError("");
-      setAlertasError("");
-    }
     try {
       // Resumen y alertas se cargan separados para que una falla parcial no
       // deje inutilizable todo el dashboard.
@@ -202,25 +197,38 @@ function InicioOperativo() {
     }
   }, [user]);
 
-  useEffect(() => {
-    void cargarDashboard();
-  }, [cargarDashboard]);
+  const cargarDashboard = useCallback(async () => {
+    setLoading(true);
+    setAlertasLoading(true);
+    setError("");
+    setAlertasError("");
+    await traerDashboard();
+  }, [traerDashboard]);
+
+  useCargaAlMontar(traerDashboard);
 
   useEffect(() => {
     if (!user) return;
     // Refresco liviano de contadores operativos. No reemplaza eventos
     // `ccr:refresh-sidebar`, solo mantiene el dashboard vigente.
     const intervalId = window.setInterval(() => {
-      void cargarDashboard({ silent: true });
+      void traerDashboard({ silent: true });
     }, 45000);
 
     return () => window.clearInterval(intervalId);
-  }, [cargarDashboard, user]);
+  }, [traerDashboard, user]);
 
-  const cargarAgendaResumen = useCallback(async () => {
-    if (!user) return;
+  // Al cambiar el mes del mini calendario se vuelve a mostrar la carga (ajuste durante el render).
+  const mesAgendaClave = toMonthKey(mesMiniCalendario);
+  const [mesAgendaCargado, setMesAgendaCargado] = useState(mesAgendaClave);
+  if (mesAgendaCargado !== mesAgendaClave) {
+    setMesAgendaCargado(mesAgendaClave);
     setAgendaLoading(true);
     setAgendaError("");
+  }
+
+  const traerAgendaResumen = useCallback(async () => {
+    if (!user) return;
     try {
       const data = await api.get<AgendaResumenDia[]>(
         `/pacientes/agenda-resumen/?mes=${toMonthKey(mesMiniCalendario)}`,
@@ -234,9 +242,13 @@ function InicioOperativo() {
     }
   }, [mesMiniCalendario, user]);
 
-  useEffect(() => {
-    void cargarAgendaResumen();
-  }, [cargarAgendaResumen]);
+  const cargarAgendaResumen = useCallback(async () => {
+    setAgendaLoading(true);
+    setAgendaError("");
+    await traerAgendaResumen();
+  }, [traerAgendaResumen]);
+
+  useCargaAlMontar(traerAgendaResumen);
 
   const accionesPrioritarias = useMemo(() => {
     if (!alertas) return [];

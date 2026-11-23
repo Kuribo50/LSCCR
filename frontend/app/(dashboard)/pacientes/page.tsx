@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { FiPhone, FiPlus, FiSearch, FiTable, FiX } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
@@ -46,13 +46,19 @@ export default function PacientesPage() {
   const isEgresoParams = searchParams.get('is_egreso') === '1' || pathname === '/egresos'
   const isSearchResults = pathname === '/pacientes' && Boolean(searchUrl)
 
-  useEffect(() => {
-    setSoloMios(searchParams.get('solo_mios') === '1' || pathname === '/mis-pacientes')
-  }, [searchParams, pathname])
+  // Sincroniza el estado con la URL durante el render (en vez de efectos).
+  const soloMiosUrl = searchParams.get('solo_mios') === '1' || pathname === '/mis-pacientes'
+  const [soloMiosAplicado, setSoloMiosAplicado] = useState(soloMiosUrl)
+  if (soloMiosAplicado !== soloMiosUrl) {
+    setSoloMiosAplicado(soloMiosUrl)
+    setSoloMios(soloMiosUrl)
+  }
 
-  useEffect(() => {
+  const [searchUrlAplicada, setSearchUrlAplicada] = useState(searchUrl)
+  if (searchUrlAplicada !== searchUrl) {
+    setSearchUrlAplicada(searchUrl)
     setSearch(searchUrl)
-  }, [searchUrl])
+  }
 
   // SWR: construir path dinamico a partir de los filtros activos.
   const swrPath = useMemo(() => {

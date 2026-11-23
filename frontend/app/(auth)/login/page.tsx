@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { formatearRut, rutParaApi } from "@/lib/rut";
+import { useMontado } from "@/lib/useMontado";
 import logoHorizontal from "../../../public/logoHorizontal.png";
 import type { IconType } from "react-icons";
 import {
@@ -139,13 +140,15 @@ export default function LoginPage() {
   const [error, setError] = useState<{ title: string; detail: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // Preferencias locales del login: no participan en autenticacion backend.
+  // Preferencias locales del login (no participan en autenticacion backend): se leen
+  // una vez montado en el cliente, como ajuste de estado durante el render.
+  const montado = useMontado();
+  const [preferenciasAplicadas, setPreferenciasAplicadas] = useState(false);
+  if (montado && !preferenciasAplicadas) {
+    setPreferenciasAplicadas(true);
     const savedTheme = window.localStorage.getItem(LOGIN_THEME_KEY);
     const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
-    const shouldUseDark = savedTheme ? savedTheme === "dark" : Boolean(prefersDark);
-    setDarkMode(shouldUseDark);
-    document.documentElement.classList.toggle("dark", shouldUseDark);
+    setDarkMode(savedTheme ? savedTheme === "dark" : Boolean(prefersDark));
 
     const savedRemember = window.localStorage.getItem(REMEMBER_SESSION_KEY);
     const shouldRemember = savedRemember !== "false";
@@ -156,7 +159,12 @@ export default function LoginPage() {
       setRut(formatearRut(savedRut));
       setSelectedQuickRut(savedRut.replace(/[^0-9Kk]/g, "").toUpperCase());
     }
-  }, []);
+  }
+
+  // Refleja el tema en <html> (efecto sobre el DOM, sin setState).
+  useEffect(() => {
+    if (preferenciasAplicadas) document.documentElement.classList.toggle("dark", darkMode);
+  }, [darkMode, preferenciasAplicadas]);
 
   function toggleDarkMode() {
     const next = !darkMode;

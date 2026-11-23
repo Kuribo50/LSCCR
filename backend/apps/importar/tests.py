@@ -1100,6 +1100,26 @@ class ReversionCargaTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
 
+    def test_no_revierte_si_otro_usuario_ya_trabajo_el_paciente(self):
+        from apps.pacientes.models import ObservacionPaciente
+
+        data = self.cargar()
+        nuevo = Paciente.objects.get(rut="222222222")
+        ObservacionPaciente.objects.create(paciente=nuevo, texto="Llamar mañana", autor=self.admin)
+        response = self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
+    def test_no_revierte_si_otro_usuario_cambio_el_estado(self):
+        data = self.cargar()
+        nuevo = Paciente.objects.get(rut="222222222")
+        MovimientoPaciente.objects.create(
+            paciente=nuevo, usuario=self.admin, estado_anterior="PENDIENTE", estado_nuevo="INGRESADO"
+        )
+        response = self.revertir(data["importaciones"][0]["id"])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Paciente.objects.filter(rut="222222222").exists())
+
     def test_medico_no_elimina_periodo_completo(self):
         self.cargar()
         response = self.client.delete("/api/importar/historial/7/2025/")

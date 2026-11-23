@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
+import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import Link from "next/link";
 import { FiAlertTriangle, FiChevronDown, FiExternalLink, FiRefreshCw, FiSearch, FiUserX } from "react-icons/fi";
 import { api } from "@/lib/api";
@@ -83,9 +84,15 @@ export default function InasistenciasPage() {
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState<number | null>(null);
 
-  const cargar = useCallback(async () => {
+  // Al cambiar el periodo se vuelve a mostrar el estado de carga (ajuste durante el render).
+  const [periodoCargado, setPeriodoCargado] = useState(periodo);
+  if (periodoCargado !== periodo) {
+    setPeriodoCargado(periodo);
     setLoading(true);
     setError("");
+  }
+
+  const traer = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (periodo) params.set("desde", hace(Number(periodo)));
@@ -99,9 +106,13 @@ export default function InasistenciasPage() {
     }
   }, [periodo]);
 
-  useEffect(() => {
-    void cargar();
-  }, [cargar]);
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    await traer();
+  }, [traer]);
+
+  useCargaAlMontar(traer);
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const kines = useMemo(
