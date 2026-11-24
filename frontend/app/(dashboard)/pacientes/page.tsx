@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { FiPhone, FiPlus, FiSearch, FiTable, FiX } from 'react-icons/fi'
+import { FiLink, FiPhone, FiPlus, FiRefreshCw, FiSearch, FiTable, FiX } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
 import { useAPI, unwrapResults } from '@/lib/swr'
 import type { Paciente, PaginatedResponse, Usuario, Categoria, Prioridad, Estado } from '@/lib/types'
@@ -11,6 +11,9 @@ import PacienteTable from '@/components/PacienteTable'
 import ColaDeLlamados from '@/components/ColaDeLlamados'
 import { TableSkeleton } from '@/components/Skeleton'
 import CrearPacienteModal from '@/components/CrearPacienteModal'
+import FiltroPildoras from '@/components/FiltroPildoras'
+import MenuAcciones from '@/components/MenuAcciones'
+import { useToast } from '@/lib/toast-context'
 
 type Vista = 'tabla' | 'cola'
 
@@ -21,6 +24,7 @@ const ESTADOS = Object.entries(ESTADO_LABELS) as [Estado, string][]
 
 export default function PacientesPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -83,6 +87,18 @@ export default function PacientesPage() {
     isLoading: loading,
     mutate: mutatePacientes,
   } = useAPI<Paciente[] | PaginatedResponse<Paciente>>(swrPath)
+
+  const [refrescando, setRefrescando] = useState(false)
+
+  // Actualizar de verdad: vuelve a pedir los pacientes y muestra el loader mientras llegan.
+  async function actualizarPacientes() {
+    setRefrescando(true)
+    try {
+      await Promise.all([mutatePacientes(), new Promise((r) => setTimeout(r, 400))])
+    } finally {
+      setRefrescando(false)
+    }
+  }
 
   const pacientes = useMemo(() => {
     const rawList = unwrapResults(swrPacientesData)
@@ -170,158 +186,152 @@ export default function PacientesPage() {
 
   return (
     <div className={`space-y-4 ${vista === 'cola' ? '' : 'ccr-page-fill'}`}>
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700 dark:text-blue-200">
-            Índice de pacientes
-          </p>
-          <h1 className="mt-1 text-xl font-black text-slate-950 dark:text-[color:var(--text-primary)]">
-            {isSearchResults
-              ? 'Resultados de búsqueda'
-              : isEgresoParams
-                ? 'Egresos Históricos'
-                : pathname === '/mis-pacientes'
-                  ? 'Mis pacientes'
-                  : pathname === '/pacientes'
-                  ? 'Pacientes'
-                  : 'Lista de Espera'}
-          </h1>
-          {isSearchResults && (
-            <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2.5 py-1 text-xs font-bold text-blue-500">
-              <FiSearch size={12} />
-              <span className="truncate">Búsqueda: {searchUrl}</span>
-            </p>
-          )}
-          {mes && anio && (
-            <p className="mt-2 inline-block rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2.5 py-1 text-xs font-bold text-blue-500">
-              Mostrando ingresados en: {new Date(parseInt(anio), parseInt(mes) - 1).toLocaleString('es-CL', { month: 'long', year: 'numeric' })}
-            </p>
-          )}
-          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
-            {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''}
-            {loading ? ' · cargando…' : ''}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {puedeCrear && (
-            <button
-              type="button"
-              onClick={() => setCrearPacienteOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            >
-              <FiPlus size={14} />
-              Nuevo paciente
-            </button>
-          )}
-          {puedeVerCola && (
-            <div className="flex overflow-hidden rounded-lg border border-blue-200 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] text-xs font-black shadow-sm">
-              <button
-                type="button"
-                onClick={() => setVista('tabla')}
-                className={`inline-flex items-center gap-1 px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-blue-100 ${vista === 'tabla' ? 'bg-blue-500 text-white' : 'text-blue-500 hover:bg-blue-50'}`}
-              >
-                <FiTable size={13} />
-                Tabla
-              </button>
-              <button
-                type="button"
-                onClick={() => setVista('cola')}
-                className={`inline-flex items-center gap-1 px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-blue-100 ${vista === 'cola' ? 'bg-blue-500 text-white' : 'text-blue-500 hover:bg-blue-50'}`}
-              >
-                <FiPhone size={13} />
-                Contactabilidad
-              </button>
+      <h1 className="sr-only">
+        {isSearchResults ? "Resultados de búsqueda" : isEgresoParams ? "Egresos históricos" : pathname === "/mis-pacientes" ? "Mis pacientes" : "Pacientes"}
+      </h1>
+
+      <div className="ccr-panel rounded-2xl p-4">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+          <div className="relative min-w-[200px] flex-1 sm:max-w-sm">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} aria-hidden="true" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, RUT, sector o diagnóstico"
+              aria-label="Buscar pacientes"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="ccr-control-input w-full pl-9 pr-3"
+            />
+          </div>
+
+          <div className="w-48 shrink-0">
+            <FiltroPildoras
+              ariaLabel="Filtrar por categoría"
+              valor={filtroCategoria}
+              onChange={setFiltroCategoria}
+              opciones={[
+                { value: "", label: "Todas las categorías" },
+                ...categoriaOptions.map(([k, v]) => ({ value: k, label: v })),
+              ]}
+            />
+          </div>
+          <div className="w-44 shrink-0">
+            <FiltroPildoras
+              ariaLabel="Filtrar por prioridad"
+              valor={filtroPrioridad}
+              onChange={setFiltroPrioridad}
+              opciones={[
+                { value: "", label: "Todas las prioridades" },
+                ...prioridadOptions.map(([k, v]) => ({ value: k, label: v })),
+              ]}
+            />
+          </div>
+          <div className="w-48 shrink-0">
+            <FiltroPildoras
+              ariaLabel="Filtrar por estado"
+              valor={filtroEstado}
+              onChange={setFiltroEstado}
+              opciones={
+                isEgresoParams
+                  ? [
+                      { value: "", label: "Cualquier egreso" },
+                      { value: "ALTA_MEDICA", label: "Alta médica" },
+                      { value: "EGRESO_VOLUNTARIO", label: "Egreso voluntario" },
+                      { value: "EGRESO_ADMINISTRATIVO", label: "Egreso administrativo" },
+                      { value: "ABANDONO", label: "Abandono" },
+                      { value: "DERIVADO", label: "Derivado" },
+                    ]
+                  : [{ value: "", label: "Todos los estados" }, ...estadoOptions.map(([k, v]) => ({ value: k, label: v }))]
+              }
+            />
+          </div>
+          {kineOptions.length > 0 && (
+            <div className="w-52 shrink-0">
+              <FiltroPildoras
+                ariaLabel="Filtrar por profesional"
+                valor={filtroKine}
+                onChange={setFiltroKine}
+                opciones={[
+                  { value: "", label: "Todos los profesionales" },
+                  ...kineOptions.map((k) => ({ value: String(k.id), label: k.nombre })),
+                ]}
+              />
             </div>
           )}
+          {user.rol === "KINE" && (
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-[color:var(--text-secondary)]">
+              <input type="checkbox" checked={soloMios} onChange={(e) => setSoloMios(e.target.checked)} className="accent-blue-500" />
+              Solo mis pacientes
+            </label>
+          )}
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {puedeVerCola && (
+              <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900" role="tablist" aria-label="Vista">
+                {(
+                  [
+                    ["tabla", "Tabla", FiTable],
+                    ["cola", "Contactabilidad", FiPhone],
+                  ] as const
+                ).map(([id, label, Icono]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={vista === id}
+                    onClick={() => setVista(id)}
+                    className={`inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                      vista === id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+                    }`}
+                  >
+                    <Icono size={12} aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                aria-label="Quitar todos los filtros"
+                title="Quitar filtros"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 outline-none transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-900/60 dark:bg-transparent dark:text-red-300"
+              >
+                <FiX size={15} aria-hidden="true" />
+              </button>
+            )}
+            {puedeCrear && (
+              <button type="button" onClick={() => setCrearPacienteOpen(true)} className="ccr-control-button-primary">
+                <FiPlus size={14} aria-hidden="true" />
+                Nuevo paciente
+              </button>
+            )}
+            <MenuAcciones
+              acciones={[
+                {
+                  label: "Actualizar",
+                  detalle: `${pacientes.length} paciente${pacientes.length !== 1 ? "s" : ""} en la vista`,
+                  tono: "azul",
+                  icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                  onClick: () => void actualizarPacientes(),
+                },
+                {
+                  label: "Copiar enlace",
+                  detalle: "De esta vista con sus filtros",
+                  tono: "gris",
+                  icon: <FiLink size={13} aria-hidden="true" />,
+                  onClick: () => {
+                    void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                  },
+                },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
-      <div
-        className="grid gap-2 rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] px-4 py-3 shadow-sm sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,1fr))_auto]"
-      >
-        <input
-          type="text"
-          placeholder="Buscar por nombre, RUT, sector o diagnóstico…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-3 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        />
-
-        <select
-          value={filtroCategoria}
-          onChange={(e) => setFiltroCategoria(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        >
-          <option value="">Todas las categorías</option>
-          {categoriaOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-
-        <select
-          value={filtroPrioridad}
-          onChange={(e) => setFiltroPrioridad(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        >
-          <option value="">Todas las prioridades</option>
-          {prioridadOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-
-        <select
-          value={filtroEstado}
-          onChange={(e) => setFiltroEstado(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        >
-          {isEgresoParams ? (
-            <>
-              <option value="">Cualquier tipo de Egreso</option>
-              <option value="ALTA_MEDICA">Alta Médica</option>
-              <option value="EGRESO_VOLUNTARIO">Egreso Voluntario</option>
-              <option value="EGRESO_ADMINISTRATIVO">Egreso administrativo</option>
-              <option value="ABANDONO">Abandono</option>
-              <option value="DERIVADO">Derivado</option>
-            </>
-          ) : (
-            <>
-              <option value="">Todos los estados</option>
-              {estadoOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </>
-          )}
-        </select>
-
-        {kineOptions.length > 0 && (
-          <select
-            value={filtroKine}
-            onChange={(e) => setFiltroKine(e.target.value)}
-            className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          >
-            <option value="">Todos los profesionales asignados</option>
-            {kineOptions.map((k) => <option key={k.id} value={k.id}>{k.nombre}</option>)}
-          </select>
-        )}
-
-        {user.rol === 'KINE' && (
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-[color:var(--text-secondary)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={soloMios}
-              onChange={(e) => setSoloMios(e.target.checked)}
-              className="accent-blue-500"
-            />
-            Solo mis pacientes
-          </label>
-        )}
-
-        <button
-          type="button"
-          onClick={limpiarFiltros}
-          disabled={!hasActiveFilters}
-          className="inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-slate-500 dark:text-[color:var(--text-muted)] transition hover:bg-slate-50 dark:hover:bg-[var(--bg-elevated)] hover:text-slate-700 dark:hover:text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <FiX size={13} />
-          Limpiar
-        </button>
-      </div>
-
-      {loading ? (
+      {loading || refrescando ? (
         <div className="ccr-fill ccr-panel ccr-data-table rounded-lg bg-white dark:bg-[var(--bg-card)] p-3">
           <TableSkeleton rows={7} />
         </div>
