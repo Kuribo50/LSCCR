@@ -28,7 +28,7 @@ import { useAPI, unwrapResults } from "@/lib/swr";
 import { useToast } from "@/lib/toast-context";
 import type { Categoria, GrupoPacientes, HistorialGrupo, MovimientoGrupoTipo, Paciente, Usuario } from "@/lib/types";
 import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import { formatearFechaHoraCorta, normalizeRut, normalizeSearchText } from "@/lib/utils";
+import { formatearFechaHoraCorta, normalizeRut, normalizeSearchText, nombreLegible } from "@/lib/utils";
 import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
@@ -38,11 +38,7 @@ import SelectFiltro from "./SelectFiltro";
 // -----------------------------------------------------------------------------
 
 export const INPUT =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
-
-export function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
-}
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-500 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
 
 export function Bloque({ titulo, descripcion, children }: { titulo: string; descripcion: string; children: ReactNode }) {
   return (
@@ -98,7 +94,7 @@ export function SelectorPacientes({
   return (
     <div>
       <div className="relative">
-        <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} aria-hidden="true" />
+        <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} aria-hidden="true" />
         <input
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
@@ -109,7 +105,7 @@ export function SelectorPacientes({
         />
       </div>
       <ul className="custom-scrollbar mt-2 max-h-64 overflow-y-auto rounded-lg border border-slate-200 p-1 dark:border-ink-black-600">
-        {visibles.length === 0 && <li className="px-3 py-4 text-center text-xs font-medium text-slate-400">{vacio}</li>}
+        {visibles.length === 0 && <li className="px-3 py-4 text-center text-xs font-medium text-slate-500 dark:text-slate-400">{vacio}</li>}
         {visibles.map((c) => {
           const marcado = seleccion.includes(c.id);
           return (
@@ -135,7 +131,7 @@ export function SelectorPacientes({
                 <span className={`min-w-0 flex-1 truncate text-[13px] ${marcado ? "font-bold text-slate-900 dark:text-ink-black-50" : "font-medium text-slate-700 dark:text-ink-black-200"}`}>
                   {nombreLegible(c.nombre)}
                 </span>
-                <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400">{formatearRut(c.rut)}</span>
+                <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">{formatearRut(c.rut)}</span>
               </button>
             </li>
           );
@@ -231,7 +227,7 @@ export function ListaGrupos({
       )}
 
       {cargando ? (
-        <p className="py-10 text-center text-sm font-semibold text-slate-400">Cargando grupos…</p>
+        <p className="py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Cargando grupos…</p>
       ) : visibles.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 px-6 py-10 text-center dark:border-ink-black-600">
           <FiUsers className="mx-auto text-slate-300" size={26} aria-hidden="true" />
@@ -257,7 +253,7 @@ export function ListaGrupos({
                 onClick={() => (agregando ? onElegirParaAgregar(g) : onAbrir(g.id))}
                 className="flex min-w-0 flex-1 items-center gap-4 rounded-xl px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
               >
-                <FiUsers size={17} className="shrink-0 text-slate-400" aria-hidden="true" />
+                <FiUsers size={17} className="shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true" />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="truncate text-[14px] font-extrabold text-slate-900 dark:text-ink-black-50">{g.nombre}</span>
@@ -464,7 +460,7 @@ const MOVIMIENTO_META: Record<MovimientoGrupoTipo, { icon: IconType; tono: strin
 const ESTADO_ACTIVIDAD: Record<string, string> = {
   PROGRAMADA: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200",
   REALIZADA: "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200",
-  CANCELADA: "bg-white text-slate-400 line-through ring-1 ring-inset ring-slate-200 dark:bg-transparent dark:ring-ink-black-600",
+  CANCELADA: "bg-white text-slate-500 dark:text-slate-400 line-through ring-1 ring-inset ring-slate-200 dark:bg-transparent dark:ring-ink-black-600",
 };
 
 function fechaCorta(iso: string) {
@@ -483,7 +479,7 @@ function Indicador({ label, valor, detalle }: { label: string; valor: ReactNode;
     >
       <p className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">{label}</p>
       <p className="mt-0.5 truncate text-[17px] font-extrabold tabular-nums text-slate-950 dark:text-white">{valor}</p>
-      {detalle && <p className="truncate text-[11px] font-medium text-slate-400">{detalle}</p>}
+      {detalle && <p className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{detalle}</p>}
     </motion.div>
   );
 }
@@ -532,7 +528,7 @@ export function DetalleGrupo({
   }, [agregando, reducir]);
 
   if (!grupo) {
-    return <p className="flex-1 px-6 py-10 text-center text-sm font-semibold text-slate-400">Cargando grupo…</p>;
+    return <p className="flex-1 px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Cargando grupo…</p>;
   }
   const g = grupo;
   const puedeEditar = usuario.rol === "ADMIN" || g.responsable === usuario.id;
@@ -769,7 +765,7 @@ export function DetalleGrupo({
 
               {g.miembros.length > 6 && (
                 <div className="relative mb-2">
-                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={13} aria-hidden="true" />
                   <input
                     value={filtroMiembros}
                     onChange={(e) => setFiltroMiembros(e.target.value)}
@@ -781,11 +777,11 @@ export function DetalleGrupo({
               )}
 
               {g.miembros.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-400 dark:border-ink-black-600">
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400 dark:border-ink-black-600">
                   El grupo no tiene pacientes todavía.
                 </p>
               ) : miembrosVisibles.length === 0 ? (
-                <p className="px-4 py-4 text-center text-xs font-medium text-slate-400">Sin coincidencias.</p>
+                <p className="px-4 py-4 text-center text-xs font-medium text-slate-500 dark:text-slate-400">Sin coincidencias.</p>
               ) : (
                 <ul className="grid grid-cols-1 gap-1.5 min-[1500px]:grid-cols-2">
                   {miembrosVisibles.map((m, i) => {
@@ -848,7 +844,7 @@ export function DetalleGrupo({
                               )}
                             </span>
                             {otros.length > 0 && (
-                              <span className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-400">
+                              <span className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                                 También en
                                 {otros.map((o) => (
                                   <span
@@ -898,7 +894,7 @@ export function DetalleGrupo({
           {pestana === "actividades" && (
             <div className="p-3">
               {actividades.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-400 dark:border-ink-black-600">
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400 dark:border-ink-black-600">
                   Este grupo aún no ha sido citado a ninguna actividad.
                 </p>
               ) : (
@@ -931,7 +927,7 @@ export function DetalleGrupo({
           {pestana === "historial" && (
             <div className="px-4 py-3">
               {movimientos.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-400 dark:border-ink-black-600">
+                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400 dark:border-ink-black-600">
                   Sin movimientos registrados.
                 </p>
               ) : (
@@ -949,12 +945,12 @@ export function DetalleGrupo({
                         <div className={`min-w-0 flex-1 ${ultimo ? "" : "pb-3.5"}`}>
                           <div className="flex flex-wrap items-baseline gap-x-2">
                             <p className="text-[13px] font-bold text-slate-900 dark:text-ink-black-50">{mv.titulo}</p>
-                            <time dateTime={mv.fecha} className="ml-auto text-[11px] font-semibold tabular-nums text-slate-400">
+                            <time dateTime={mv.fecha} className="ml-auto text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">
                               {formatearFechaHoraCorta(mv.fecha)}
                             </time>
                           </div>
                           {mv.descripcion && <p className="mt-0.5 text-xs leading-relaxed text-slate-600 dark:text-ink-black-200">{mv.descripcion}</p>}
-                          <p className="text-[11px] font-medium text-slate-400">{mv.usuario_nombre ?? "Sistema"}</p>
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{mv.usuario_nombre ?? "Sistema"}</p>
                         </div>
                       </li>
                     );
@@ -1047,7 +1043,7 @@ export function GrupoModal({
               type="button"
               onClick={onClose}
               aria-label="Cerrar"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
             >
               <FiX size={18} />
             </button>
@@ -1065,3 +1061,5 @@ export function GrupoModal({
     </ModalOverlay>
   );
 }
+
+export { nombreLegible };

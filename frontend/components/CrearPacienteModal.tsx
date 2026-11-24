@@ -148,20 +148,20 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm [animation:fade_150ms_ease-out]"
       isDismissable
     >
-      <Modal className="w-full max-w-[900px] overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-2xl outline-none [animation:zoom_150ms_ease-out]">
+      <Modal className="w-full max-w-[900px] overflow-hidden rounded-2xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] shadow-2xl outline-none [animation:zoom_150ms_ease-out]">
         <Dialog className="flex max-h-[90vh] flex-col outline-none">
           {({ close }) => (
             <>
-              <header className="flex shrink-0 items-center justify-between border-b border-blue-100 bg-white px-6 py-4">
+              <header className="flex shrink-0 items-center justify-between border-b border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] px-6 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-500">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] text-blue-500">
                     <FiUserPlus size={20} />
                   </div>
                   <div>
-                    <h2 className="text-base font-black text-slate-950">
+                    <h2 className="text-base font-black text-slate-950 dark:text-[color:var(--text-primary)]">
                       Ingreso Manual de Paciente
                     </h2>
-                    <p className="text-[13px] font-semibold text-slate-500">
+                    <p className="text-[13px] font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
                       Formulario avanzado para nuevos ingresos a la lista base.
                     </p>
                   </div>
@@ -170,7 +170,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                   type="button"
                   onClick={close}
                   aria-label="Cerrar ingreso manual de paciente"
-                  className="rounded-lg p-2 text-slate-500 transition hover:bg-blue-50 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="rounded-lg p-2 text-slate-500 dark:text-[color:var(--text-muted)] transition hover:bg-blue-50 dark:hover:bg-[var(--brand-light)] hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   <FiX size={20} />
                 </button>
@@ -185,11 +185,11 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                 )}
 
                 <form id="crear-paciente-form" onSubmit={handleSubmit} className="space-y-4">
-                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Identificacion</h3>
+                  <div className="rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Identificacion</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5 sm:col-span-1">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           RUT
                         </label>
                         <input
@@ -197,11 +197,11 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={rut}
                           onChange={handleRutChange}
                           placeholder="Sin puntos, con guión"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] font-semibold text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Nombre Completo
                         </label>
                         <input
@@ -209,17 +209,17 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={nombre}
                           onChange={(e) => setNombre(e.target.value)}
                           placeholder="Nombres y Apellidos"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Demografia y Contacto</h3>
+                  <div className="rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Demografia y Contacto</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Fecha Nacimiento
                         </label>
                         <CampoFecha
@@ -244,7 +244,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Edad
                         </label>
                         <input
@@ -255,22 +255,22 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={edad}
                           onChange={(e) => setEdad(e.target.value)}
                           placeholder="Automático"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Celular
                         </label>
                         <input
                           value={telefono}
                           onChange={handleTelefonoChange}
                           placeholder="+56912345678"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Correo Electrónico
                         </label>
                         <input
@@ -278,17 +278,17 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="Opcional"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
-                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700">Información de derivación</h3>
+                  <div className="rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] p-4 shadow-sm">
+                    <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Información de derivación</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Diagnóstico
                         </label>
                         <input
@@ -296,40 +296,40 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={diagnostico}
                           onChange={(e) => setDiagnostico(e.target.value)}
                           placeholder="Descripción detallada del diagnóstico"
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Sector territorial
                         </label>
                         <input
                           value={sectorOficial}
                           onChange={(e) => setSectorOficial(e.target.value)}
                           placeholder="AZUL, ROJO, VERDE..."
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Sector
                         </label>
                         <input
                           value={sectorCesfam}
                           onChange={(e) => setSectorCesfam(e.target.value)}
                           placeholder="AZUL, CECOSF EL SANTO..."
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Categoría
                         </label>
                         <select
                           required
                           value={categoria}
                           onChange={(e) => setCategoria(e.target.value as Categoria)}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         >
                           {CATEGORIAS.map((c) => (
                             <option key={c} value={c}>{CATEGORIA_LABELS[c]}</option>
@@ -337,14 +337,14 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Prioridad
                         </label>
                         <select
                           required
                           value={prioridad}
                           onChange={(e) => setPrioridad(e.target.value as Prioridad)}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         >
                           {PRIORIDADES.map((p) => (
                             <option key={p} value={p}>{PRIORIDAD_LABELS[p]}</option>
@@ -352,7 +352,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         </select>
                       </div>
                       <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Fecha Derv. Original
                         </label>
                         <CampoFecha
@@ -365,7 +365,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         />
                       </div>
                       <div className="space-y-1.5 sm:col-span-3 flex flex-col">
-                        <label className="text-[12px] font-bold text-slate-700">
+                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
                           Observaciones
                         </label>
                         <textarea
@@ -373,19 +373,19 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                           value={observaciones}
                           onChange={(e) => setObservaciones(e.target.value)}
                           placeholder="Notas extra de la derivación o del estado..."
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
                     </div>
                   </div>
 
                   {isKine && (
-                    <div className="mt-4 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 p-4 text-[13px]">
+                    <div className="mt-4 flex items-center justify-between rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] p-4 text-[13px]">
                       <div>
-                        <label htmlFor="autoAsignar" className="block cursor-pointer font-bold text-slate-900">
+                        <label htmlFor="autoAsignar" className="block cursor-pointer font-bold text-slate-900 dark:text-[color:var(--text-primary)]">
                           Ingresar directo a mis pacientes
                         </label>
-                        <p className="mt-0.5 max-w-[65ch] text-[12px] font-semibold text-slate-600">
+                        <p className="mt-0.5 max-w-[65ch] text-[12px] font-semibold text-slate-600 dark:text-[color:var(--text-secondary)]">
                           El paciente pasará a tu cartera en estado Pendiente listo para ser gestionado.
                         </p>
                       </div>
@@ -394,19 +394,19 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         id="autoAsignar"
                         checked={autoAsignar} 
                         onChange={(e) => setAutoAsignar(e.target.checked)}
-                        className="h-5 w-5 rounded border-blue-200 bg-white text-blue-500 shadow-sm focus:ring-blue-500"
+                        className="h-5 w-5 rounded border-blue-200 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] text-blue-500 shadow-sm focus:ring-blue-500"
                       />
                     </div>
                   )}
                 </form>
               </div>
 
-              <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-blue-100 bg-white px-6 py-4">
+              <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] px-6 py-4">
                 <button
                   type="button"
                   onClick={close}
                   disabled={loading}
-                  className="rounded-xl px-5 py-2 text-[13px] font-bold text-slate-600 transition hover:bg-blue-50 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
+                  className="rounded-xl px-5 py-2 text-[13px] font-bold text-slate-600 dark:text-[color:var(--text-secondary)] transition hover:bg-blue-50 dark:hover:bg-[var(--brand-light)] hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50"
                 >
                   Cancelar
                 </button>

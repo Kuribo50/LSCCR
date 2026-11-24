@@ -8,6 +8,7 @@ import {
   FiAlertTriangle,
   FiBarChart2,
   FiDownload,
+  FiLink,
   FiRefreshCw,
   FiTrendingUp,
   FiUsers,
@@ -30,6 +31,8 @@ import {
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
+import MenuAcciones from "@/components/MenuAcciones";
+import SelectFiltro from "@/components/SelectFiltro";
 import type {
   ReportePorResponsable,
   ReporteResponsableItem,
@@ -270,54 +273,63 @@ export default function EstadisticasPage() {
 
   return (
     <main className="ccr-dashboard-content space-y-6">
-      <header className={`${PANEL_SURFACE} p-5`}>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="inline-flex items-center gap-2 rounded-full bg-[#E7F3EC] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-[#1B5E3B] dark:bg-blue-400/10 dark:text-blue-200">
-              <FiBarChart2 size={12} />
-              Reportes operativos
-            </p>
-            <h1 className="mt-3 text-3xl font-black text-slate-900 dark:text-white">Estadísticas CCR</h1>
-            <p className="mt-1 text-sm font-medium text-slate-600 dark:text-ink-black-200">
-              Reportes operativos por mes y responsable.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-[#D4E4D4] bg-[#F6FBF8] p-3 dark:border-[#2a2a2a] dark:bg-[#151515] sm:flex-row sm:items-end">
-            <label className="text-xs font-bold text-slate-700 dark:text-ink-black-50">
-              Mes
-              <select
-                value={mes}
-                onChange={(event) => setMes(Number(event.target.value))}
-                className="mt-1 block w-full rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#0f0f10] dark:text-white dark:focus:ring-blue-500/20"
-              >
-                {MESES.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-xs font-bold text-slate-700 dark:text-ink-black-50">
-              Año
-              <input
-                type="number"
-                value={anio}
-                onChange={(event) => setAnio(Number(event.target.value))}
-                className="mt-1 block w-28 rounded-md border border-blue-100 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-[#2a2a2a] dark:bg-[#0f0f10] dark:text-white dark:focus:ring-blue-500/20"
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={() => void cargarReportes()}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
-            >
-              <FiRefreshCw size={14} />
-              Actualizar
-            </button>
-          </div>
+      <h1 className="sr-only">Estadísticas CCR</h1>
+      <header className={`${PANEL_SURFACE} flex flex-wrap items-center gap-2 p-4`}>
+        <div className="w-44">
+          <SelectFiltro
+            label="Mes"
+            value={String(mes)}
+            onChange={(v) => setMes(Number(v))}
+            opciones={MESES.map((item) => ({ value: String(item.value), label: item.label }))}
+          />
+        </div>
+        <div className="w-32">
+          <SelectFiltro
+            label="Año"
+            value={String(anio)}
+            onChange={(v) => setAnio(Number(v))}
+            opciones={Array.from(new Set([anio, ...Array.from({ length: 6 }, (_, i) => hoy.getFullYear() - i)]))
+              .sort((x, y) => y - x)
+              .map((y) => ({ value: String(y), label: String(y) }))}
+          />
+        </div>
+        <div className="ml-auto">
+          <MenuAcciones
+            acciones={[
+              {
+                label: "Actualizar",
+                detalle: "Vuelve a cargar los reportes",
+                tono: "azul",
+                icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                onClick: () => void cargarReportes(),
+              },
+              {
+                label: "Exportar resumen CSV",
+                detalle: "Indicadores del mes",
+                tono: "verde",
+                icon: <FiDownload size={13} aria-hidden="true" />,
+                onClick: exportarCsv,
+                disabled: !resumen,
+              },
+              {
+                label: exportandoResponsables ? "Exportando…" : "Excel por responsable",
+                detalle: "Detalle de cada profesional",
+                tono: "verde",
+                icon: <FiDownload size={13} aria-hidden="true" />,
+                onClick: () => void exportarExcelResponsables(),
+                disabled: exportandoResponsables,
+              },
+              {
+                label: "Copiar enlace",
+                detalle: "De esta vista",
+                tono: "gris",
+                icon: <FiLink size={13} aria-hidden="true" />,
+                onClick: () => {
+                  void navigator.clipboard?.writeText(window.location.href).then(() => toastInfo("Enlace copiado."));
+                },
+              },
+            ]}
+          />
         </div>
       </header>
 
@@ -343,26 +355,6 @@ export default function EstadisticasPage() {
             <KpiCard title="Prom. días hasta ingreso" value={resumen.actividad_mes.promedio_dias_hasta_ingreso} icon={<FiTrendingUp />} />
             <KpiCard title="Abandonos del mes" value={resumen.actividad_mes.abandonos} icon={<FiAlertTriangle />} tone="rose" />
           </section>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={exportarCsv}
-              className="ccr-export-button inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition"
-            >
-              <FiDownload className="text-[#1B5E3B]" size={14} />
-              Exportar resumen CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => void exportarExcelResponsables()}
-              disabled={exportandoResponsables}
-              className="ccr-export-button inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition disabled:opacity-60"
-            >
-              <FiDownload className="text-[#1B5E3B]" size={14} />
-              {exportandoResponsables ? "Exportando..." : "Exportar Excel por responsable"}
-            </button>
-          </div>
 
           <section className="grid grid-cols-1 gap-5 xl:grid-cols-5">
             <ChartPanel
@@ -448,7 +440,10 @@ export default function EstadisticasPage() {
                         labelStyle={{ color: chartTheme.tooltipText }}
                         itemStyle={{ color: chartTheme.tooltipText }}
                       />
-                      <Legend wrapperStyle={{ color: chartTheme.axis }} />
+                      <Legend
+                        wrapperStyle={{ color: chartTheme.axis }}
+                        formatter={(valor) => <span style={{ color: chartTheme.axis }}>{valor}</span>}
+                      />
                       <Line type="monotone" dataKey="derivados" name="Derivados" stroke="#335FDB" strokeWidth={3} />
                       <Line type="monotone" dataKey="ingresos" name="Ingresos" stroke="#1B5E3B" strokeWidth={3} />
                       <Line type="monotone" dataKey="egresos" name="Egresos" stroke="#B91C1C" strokeWidth={3} />
@@ -546,7 +541,10 @@ export default function EstadisticasPage() {
                         labelStyle={{ color: chartTheme.tooltipText }}
                         itemStyle={{ color: chartTheme.tooltipText }}
                       />
-                      <Legend wrapperStyle={{ color: chartTheme.axis }} />
+                      <Legend
+                        wrapperStyle={{ color: chartTheme.axis }}
+                        formatter={(valor) => <span style={{ color: chartTheme.axis }}>{valor}</span>}
+                      />
                       <Bar dataKey="asignados" name="Asignados" fill="#335FDB" radius={[0, 5, 5, 0]} />
                       <Bar dataKey="ingresos" name="Ingresos" fill="#0F766E" radius={[0, 5, 5, 0]} />
                       <Bar dataKey="egresos" name="Egresos" fill="#ED8121" radius={[0, 5, 5, 0]} />

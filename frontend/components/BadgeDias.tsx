@@ -26,7 +26,7 @@ function getDayTone(days: number) {
   if (days <= 150) {
     return {
       bg: "#fff6e6",
-      color: "#ca8702",
+      color: "#8f5200",
       border: "#fdcb68",
       darkBg: "rgba(194, 65, 12, 0.26)",
       darkColor: "#FED7AA",

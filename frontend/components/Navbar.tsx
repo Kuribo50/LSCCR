@@ -1,11 +1,29 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { FiMenu, FiLogOut, FiMoon, FiSun, FiUser } from 'react-icons/fi'
 import { useAuth } from '@/lib/auth-context'
 import type { Usuario } from '@/lib/types'
 import { ROL_LABELS } from '@/lib/types'
+
+// Pantallas que muestran su título en la barra superior (así no lo repiten en su cabecera).
+const TITULOS_RUTA: Record<string, string> = {
+  '/llamados': 'Llamados',
+  '/lista-espera': 'Lista de espera',
+  '/calendario': 'Agenda de atenciones',
+  '/inasistencias': 'Inasistencias',
+  '/egresos': 'Historial de egresos',
+  '/riesgo-abandono': 'Riesgo de abandono',
+  '/linea-tiempo': 'Línea de tiempo',
+  '/usuarios': 'Usuarios',
+  '/importar': 'Importar derivaciones',
+  '/perfil': 'Mi perfil',
+  '/historial-mensual': 'Historial de cortes',
+  '/grupos': 'Grupos de pacientes',
+  '/analisis/estadisticas': 'Estadísticas CCR',
+  '/importar/revision': 'Revisión de carga',
+}
 
 export default function Navbar({
   user,
@@ -16,6 +34,19 @@ export default function Navbar({
 }) {
   const { logout } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
+  const horaActual = new Date().getHours()
+  const saludo =
+    horaActual < 6 ? 'Buenas noches' : horaActual < 12 ? 'Buenos días' : horaActual < 20 ? 'Buenas tardes' : 'Buenas noches'
+  const rutaLimpia = pathname.replace(/\/$/, '')
+  const tituloPagina =
+    rutaLimpia === '/mis-pacientes'
+      ? user.rol === 'KINE'
+        ? 'Mis pacientes'
+        : 'Pacientes ingresados'
+      : rutaLimpia === '/inicio'
+        ? `${saludo}, ${user.nombre.split(' ')[0] || 'equipo CCR'}`
+        : TITULOS_RUTA[rutaLimpia]
   const [isDark, setIsDark] = useState(() => {
     if (typeof document === 'undefined') return false
     const root = document.documentElement
@@ -65,8 +96,8 @@ export default function Navbar({
           <FiMenu size={17} />
         </button>
         <div className="hidden min-w-0 sm:block">
-          <p className="truncate text-sm font-bold text-slate-950 dark:text-white">Centro Comunitario de Rehabilitación</p>
-          <p className="text-xs font-medium text-slate-500 dark:text-ink-black-300">{fechaActual}</p>
+          <p className={`truncate ${tituloPagina ? 'text-base' : 'text-sm'} font-bold text-slate-950 dark:text-white`}>{tituloPagina ?? 'Centro Comunitario de Rehabilitación'}</p>
+          <p className="text-xs font-medium text-slate-500 dark:text-ink-black-300">{tituloPagina ? `Centro Comunitario de Rehabilitación · ${fechaActual}` : fechaActual}</p>
         </div>
       </div>
 

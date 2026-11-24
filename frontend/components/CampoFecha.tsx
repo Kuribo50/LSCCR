@@ -181,13 +181,13 @@ export default function CampoFecha({
             {!compacto && <span className="block text-[10px] font-bold text-slate-500 dark:text-ink-black-300">{label}</span>}
             <span
               className={`block truncate text-[13px] font-semibold ${
-                value ? "text-slate-800 dark:text-ink-black-100" : "text-slate-400 dark:text-ink-black-400"
+                value ? "text-slate-800 dark:text-ink-black-100" : "text-slate-500 dark:text-ink-black-400"
               }`}
             >
               {value ? fechaLegible(value) : "Sin fecha"}
             </span>
           </span>
-          <FiCalendar size={15} className="shrink-0 text-slate-400" aria-hidden="true" />
+          <FiCalendar size={15} className="shrink-0 text-slate-500 dark:text-slate-400" aria-hidden="true" />
         </button>
         {opcional && value && (
           <button
@@ -195,7 +195,7 @@ export default function CampoFecha({
             onClick={() => onChange("")}
             aria-label={`Borrar ${label.toLowerCase()}`}
             title="Borrar fecha"
-            className="mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 outline-none transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-red-500/10"
+            className="mr-1.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-red-500/10"
           >
             <FiX size={14} aria-hidden="true" />
           </button>
@@ -267,7 +267,7 @@ export default function CampoFecha({
                           : key === hoy
                             ? "font-bold text-slate-950 ring-1 ring-inset ring-blue-500 dark:text-white dark:ring-blue-400"
                             : dia.getDay() === 0
-                              ? "font-medium text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-black-700"
+                              ? "font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-black-700"
                               : celdaNormal
                       }`}
                     >

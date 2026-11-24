@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useCargaAlMontar } from '@/lib/useCargaAlMontar'
-import { FiAlertTriangle, FiDownload, FiFilter, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiAlertTriangle, FiDownload, FiFilter, FiLink, FiRefreshCw, FiSearch, FiX } from 'react-icons/fi'
 import { esEncargado } from '@/lib/roles'
 import { descargarBlob, normalizeRut, normalizeSearchText } from '@/lib/utils'
 import { formatearRut } from '@/lib/rut'
@@ -15,6 +15,9 @@ import FichaPaciente from '@/components/FichaPaciente'
 import BadgePrioridad from '@/components/BadgePrioridad'
 import BadgeEstado from '@/components/BadgeEstado'
 import EmptyState from '@/components/EmptyState'
+import MenuAcciones from '@/components/MenuAcciones'
+import { useToast } from '@/lib/toast-context'
+import FiltroPildoras from '@/components/FiltroPildoras'
 import { TableSkeleton } from '@/components/Skeleton'
 
 type EgresoState = Extract<Estado, 'ALTA_MEDICA' | 'EGRESO_VOLUNTARIO' | 'EGRESO_ADMINISTRATIVO' | 'ABANDONO' | 'DERIVADO'>
@@ -100,6 +103,7 @@ function esFallecido(paciente: Paciente) {
 
 export default function EgresosPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -251,51 +255,10 @@ export default function EgresosPage() {
   return (
     <div className="ccr-page-fill space-y-3 text-[13px]">
       <header className="ccr-waitlist-toolbar ccr-panel rounded-2xl p-4 sm:p-5">
+        <h1 className="sr-only">Historial de egresos</h1>
         <div className="space-y-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:!text-white">Historial de egresos</h1>
-              <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-ink-black-200">
-                Derivaciones concluidas por tipo de egreso.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <div className="grid grid-cols-3 gap-2 sm:flex">
-                <span className="ccr-waitlist-stat">
-                  <span>Total</span>
-                  <strong>{pacientes.length}</strong>
-                </span>
-                <span className="ccr-waitlist-stat">
-                  <span>Vista</span>
-                  <strong>{pacientesFiltrados.length}</strong>
-                </span>
-                <span className="ccr-waitlist-stat">
-                  <span>Filtros</span>
-                  <strong>{activeFilterCount}</strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => void exportarExcel()}
-                disabled={exportando}
-                className="ccr-export-button inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition disabled:opacity-60 sm:w-auto"
-              >
-                <FiDownload size={13} />
-                {exportando ? 'Exportando...' : 'Exportar'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void cargar()}
-                className="ccr-button-refresh inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto"
-              >
-                <FiRefreshCw size={13} />
-                Recargar
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <div className="relative">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+            <div className="relative order-1 min-w-0 flex-1 sm:max-w-sm">
               <FiSearch
                 className="ccr-waitlist-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
                 size={15}
@@ -307,63 +270,81 @@ export default function EgresosPage() {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') event.preventDefault()
                 }}
-                placeholder="Buscar por nombre, RUT, sector o diagnóstico"
-                className="ccr-control-input w-full px-9 py-2.5 text-xs"
+                placeholder="Buscar nombre, RUT, sector o diagnóstico"
+                className="ccr-control-input w-full pl-9 pr-3"
                 aria-label="Buscar egresos"
               />
             </div>
-
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="ccr-control-button inline-flex h-[42px] w-full items-center justify-center px-3 text-xs sm:w-auto"
-            >
-              Limpiar filtros
-            </button>
-
+            <div className="order-1 w-52 shrink-0">
+              <FiltroPildoras
+                ariaLabel="Filtrar egresos por estado"
+                valor={filtroEstado}
+                onChange={(v) => setFiltroEstado(v as typeof filtroEstado)}
+                opciones={[
+                  { value: '', label: 'Todos', total: pacientesBaseFiltrados.length },
+                  ...resumenEgresos.map(({ estado, total }) => ({ value: estado, label: ESTADO_LABELS[estado], total })),
+                ]}
+              />
+            </div>
             <button
               type="button"
               onClick={() => setShowTableFilters((open) => !open)}
-              className={
-                showTableFilters
-                  ? 'inline-flex h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 outline-none transition hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto'
-                  : 'ccr-control-button inline-flex h-[42px] w-full items-center justify-center gap-2 px-3 text-xs sm:w-auto'
-              }
+              className="ccr-control-button order-2 ml-auto"
               aria-expanded={showTableFilters}
               aria-controls="egresos-table-filters"
             >
-              <FiFilter size={13} />
+              <FiFilter size={13} aria-hidden="true" />
               Filtros
+              {activeFilterCount > 0 && (
+                <span className="rounded-full bg-blue-500 px-1.5 text-[10px] font-bold leading-4 text-white">{activeFilterCount}</span>
+              )}
             </button>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                aria-label="Quitar todos los filtros"
+                title="Quitar filtros"
+                className="order-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 outline-none transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-900/60 dark:bg-transparent dark:text-red-300"
+              >
+                <FiX size={15} aria-hidden="true" />
+              </button>
+            )}
+            <div className="order-2">
+              <MenuAcciones
+                acciones={[
+                  {
+                    label: 'Actualizar',
+                    detalle: 'Vuelve a cargar los egresos',
+                    tono: 'azul',
+                    icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                    onClick: () => void cargar(),
+                  },
+                  {
+                    label: exportando ? 'Exportando…' : 'Exportar Excel',
+                    detalle: 'Descarga lo que ves en la tabla',
+                    tono: 'verde',
+                    icon: <FiDownload size={13} aria-hidden="true" />,
+                    onClick: () => void exportarExcel(),
+                    disabled: exportando,
+                  },
+                  {
+                    label: 'Copiar enlace',
+                    detalle: 'De esta vista',
+                    tono: 'gris',
+                    icon: <FiLink size={13} aria-hidden="true" />,
+                    onClick: () => {
+                      void navigator.clipboard?.writeText(window.location.href).then(() => toast.info('Enlace copiado.'))
+                    },
+                  },
+                ]}
+              />
+            </div>
           </div>
 
           {showTableFilters && (
-            <div id="egresos-table-filters" className="rounded-lg border border-blue-100 bg-white p-3 shadow-sm">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-blue-700">
-                  Filtros de tabla
-                </p>
-                <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                  {pacientesFiltrados.length} resultado{pacientesFiltrados.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <label className="text-[11px] font-semibold text-slate-500">
-                  Tipo de egreso
-                  <select
-                    value={filtroEstado}
-                    onChange={(event) => setFiltroEstado(event.target.value as EgresoState | '')}
-                    className="ccr-control-input mt-1 w-full px-3 py-2 text-xs"
-                  >
-                    <option value="">Todos los tipos</option>
-                    {EGRESO_STATES.map((estado) => (
-                      <option key={estado} value={estado}>
-                        {ESTADO_LABELS[estado]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
+            <div id="egresos-table-filters" className="border-t border-slate-100 pt-3 dark:border-ink-black-700">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 <label className="text-[11px] font-semibold text-slate-500">
                   Responsable
                   <select
@@ -411,26 +392,6 @@ export default function EgresosPage() {
           )}
         </div>
       </header>
-
-      <section className="ccr-panel rounded-2xl p-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <EgresoFilterChip
-            active={!filtroEstado}
-            label="Todos"
-            total={pacientesBaseFiltrados.length}
-            onClick={() => setFiltroEstado('')}
-          />
-          {resumenEgresos.map(({ estado, total }) => (
-            <EgresoFilterChip
-              key={estado}
-              active={filtroEstado === estado}
-              label={ESTADO_LABELS[estado]}
-              total={total}
-              onClick={() => setFiltroEstado(estado)}
-            />
-          ))}
-        </div>
-      </section>
 
       <section className="grid grid-cols-2 gap-2 lg:grid-cols-5">
         {[
@@ -604,7 +565,7 @@ export default function EgresosPage() {
               {pacientesFiltrados.length} egreso
               {pacientesFiltrados.length !== 1 ? 's' : ''} en la tabla
             </p>
-            <p className="text-gray-400">
+            <p className="text-slate-500 dark:text-[color:var(--text-muted)]">
               Mostrando {pacientesFiltrados.length} de {pacientes.length}
             </p>
           </div>
@@ -623,34 +584,5 @@ export default function EgresosPage() {
         />
       )}
     </div>
-  )
-}
-
-function EgresoFilterChip({
-  active,
-  label,
-  total,
-  onClick,
-}: {
-  active: boolean
-  label: string
-  total: number
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        active
-          ? 'inline-flex items-center gap-2 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white'
-          : 'inline-flex items-center gap-2 rounded-full bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-bold text-gray-600 transition hover:bg-blue-50 dark:text-ink-black-200'
-      }
-    >
-      <span>{label}</span>
-      <span className={active ? 'text-[11px] tabular-nums text-white/80' : 'text-[11px] tabular-nums text-[var(--text-muted)]'}>
-        {total}
-      </span>
-    </button>
   )
 }

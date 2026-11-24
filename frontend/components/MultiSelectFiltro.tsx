@@ -25,6 +25,8 @@ export default function MultiSelectFiltro({
   onChange,
   textoTodos = false,
   anchoCompleto = false,
+  azul = false,
+  sinAnimacion = false,
 }: {
   label: string;
   values: string[];
@@ -34,6 +36,10 @@ export default function MultiSelectFiltro({
   textoTodos?: boolean;
   /** Ocupa todo el ancho (para grillas de filtros). */
   anchoCompleto?: boolean;
+  /** Botón con tinte celeste. */
+  azul?: boolean;
+  /** Sin animaciones al abrir/cerrar. */
+  sinAnimacion?: boolean;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState("");
@@ -87,8 +93,12 @@ export default function MultiSelectFiltro({
         }}
         className={`${anchoCompleto ? "flex w-full" : "inline-flex max-w-full"} h-9 items-center gap-2 rounded-lg border px-3 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
           activo
-            ? "border-blue-300 bg-blue-50/70 text-blue-800 dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-blue-100"
-            : abierto
+            ? azul
+              ? "border-blue-300 bg-blue-100 text-slate-900 dark:border-blue-500/50 dark:bg-blue-500/20 dark:text-ink-black-50"
+              : "border-blue-300 bg-blue-50/70 text-slate-900 dark:border-blue-500/50 dark:bg-blue-500/10 dark:text-ink-black-50"
+            : azul
+              ? "border-blue-100 bg-blue-50 text-slate-900 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-ink-black-50"
+              : abierto
               ? "border-blue-400 bg-white text-slate-800 dark:bg-ink-black-800 dark:text-ink-black-100"
               : "border-slate-200 bg-white text-slate-800 hover:border-slate-300 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-100"
         }`}
@@ -102,21 +112,21 @@ export default function MultiSelectFiltro({
           </span>
         )}
         <span className={`truncate font-bold ${anchoCompleto ? "flex-1 text-left" : ""}`}>{resumen}</span>
-        <FiChevronDown size={14} className={`shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} aria-hidden="true" />
+        <FiChevronDown size={14} className={`shrink-0 text-slate-500 dark:text-slate-400 ${sinAnimacion ? "" : "transition-transform"} ${abierto ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
 
       <AnimatePresence>
         {abierto && (
           <motion.div
-            initial={{ opacity: 0, y: -4 }}
+            initial={sinAnimacion ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.12 }}
+            exit={sinAnimacion ? undefined : { opacity: 0, y: -4 }}
+            transition={{ duration: sinAnimacion ? 0 : 0.12 }}
             className={`absolute left-0 top-[calc(100%+4px)] z-50 overflow-hidden ${anchoCompleto ? "min-w-full w-[280px]" : "w-[260px]"} rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_-16px_rgba(22,24,27,0.35)] dark:border-ink-black-600 dark:bg-ink-black-800`}
           >
             {conBuscador && (
               <div className="relative border-b border-slate-100 p-2 dark:border-ink-black-700">
-                <FiSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                <FiSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={13} aria-hidden="true" />
                 <input
                   autoFocus
                   value={busqueda}
@@ -141,7 +151,7 @@ export default function MultiSelectFiltro({
             </div>
             <ul role="listbox" aria-multiselectable="true" aria-label={label} className="max-h-72 overflow-y-auto p-1">
               {visibles.length === 0 && (
-                <li className="px-3 py-3 text-xs font-medium text-slate-400">Sin coincidencias</li>
+                <li className="px-3 py-3 text-xs font-medium text-slate-500 dark:text-slate-400">Sin coincidencias</li>
               )}
               {visibles.map((o) => {
                 const marcada = values.includes(o.value);
@@ -171,7 +181,7 @@ export default function MultiSelectFiltro({
                       {o.dot && <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${o.dot}`} />}
                       <span className="min-w-0 flex-1 truncate">{o.label}</span>
                       {o.total !== undefined && (
-                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{o.total}</span>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">{o.total}</span>
                       )}
                     </button>
                   </li>

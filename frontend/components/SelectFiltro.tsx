@@ -88,7 +88,7 @@ export default function SelectFiltro({
             </span>
           </span>
         </span>
-        <FiChevronDown size={15} className={`shrink-0 text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} aria-hidden="true" />
+        <FiChevronDown size={15} className={`shrink-0 text-slate-500 dark:text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} aria-hidden="true" />
       </button>
 
       <AnimatePresence>
@@ -102,7 +102,7 @@ export default function SelectFiltro({
           >
             {opciones.length > 8 && (
               <div className="relative border-b border-slate-100 p-2 dark:border-ink-black-700">
-                <FiSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={13} aria-hidden="true" />
+                <FiSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={13} aria-hidden="true" />
                 <input
                   autoFocus
                   value={busqueda}
@@ -141,7 +141,7 @@ export default function SelectFiltro({
                 );
               })}
               {visibles.length === 0 && (
-                <li className="px-3 py-3 text-xs font-medium text-slate-400">Sin coincidencias</li>
+                <li className="px-3 py-3 text-xs font-medium text-slate-500 dark:text-slate-400">Sin coincidencias</li>
               )}
             </ul>
           </motion.div>

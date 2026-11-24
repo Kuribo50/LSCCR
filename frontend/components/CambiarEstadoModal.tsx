@@ -132,7 +132,7 @@ export default function CambiarEstadoModal({
               <h3 className="mt-1 text-lg font-bold text-slate-950 dark:text-white">
                 {paciente.id_ccr} · {paciente.nombre}
               </h3>
-              <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
+              <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-500">
                 RUT {paciente.rut ? formatearRut(paciente.rut) : "No registrado"}
               </p>
             </div>
@@ -142,16 +142,16 @@ export default function CambiarEstadoModal({
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
           <div className="rounded-lg border border-blue-100 bg-white px-4 py-3 dark:border-[#2a2a2a] dark:bg-[#151515]">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-500">
               Vista previa
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <BadgeEstado estado={paciente.estado} />
-              <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">→</span>
+              <span className="text-sm font-semibold text-slate-500 dark:text-slate-500">→</span>
               {estadoNuevo ? (
                 <BadgeEstado estado={estadoNuevo} />
               ) : (
-                <span className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-[#3a3a3a] dark:text-slate-400">
+                <span className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-[#3a3a3a] dark:text-slate-500">
                   Selecciona nuevo estado
                 </span>
               )}
@@ -195,7 +195,7 @@ export default function CambiarEstadoModal({
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">
+                      <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-500">
                         {ESTADO_DESCRIPCIONES[estado] ?? "Cambio de estado operativo."}
                       </p>
                     </button>
@@ -210,7 +210,7 @@ export default function CambiarEstadoModal({
               {requiereNota ? (
                 <span className="text-amber-700 dark:text-amber-400">*</span>
               ) : (
-                <span className="text-slate-400 dark:text-slate-500">(opcional)</span>
+                <span className="text-slate-500 dark:text-slate-500">(opcional)</span>
               )}
             </label>
             <textarea

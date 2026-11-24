@@ -111,7 +111,7 @@ export default function MultiSelectProfesionales({
                   <Casilla marcada={marcada} />
                   <span className="min-w-0 flex-1 truncate text-slate-800 dark:text-ink-black-100">{nombre}</span>
                   {conteos && (
-                    <span className={`text-xs font-bold tabular-nums ${total > 0 ? "text-blue-600 dark:text-blue-300" : "text-slate-400"}`}>
+                    <span className={`text-xs font-bold tabular-nums ${total > 0 ? "text-blue-600 dark:text-blue-300" : "text-slate-500"}`}>
                       {total}
                     </span>
                   )}

@@ -45,18 +45,11 @@ import {
   FiChevronDown,
   FiUsers,
 } from "react-icons/fi";
-import { capitalizarInicial, normalizeRut, normalizeSearchText } from "@/lib/utils";
+import { capitalizarInicial, normalizeRut, normalizeSearchText, nombreLegible, toDateKey } from "@/lib/utils";
 
 // =============================================================================
 // Helpers de fecha y reglas locales de calendario
 // =============================================================================
-
-function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function fromDateKey(dateKey: string) {
   return new Date(`${dateKey}T00:00:00`);
@@ -426,8 +419,8 @@ export default function CalendarioPage() {
       <motion.header variants={itemVariants} className="ccr-panel px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold text-slate-950 dark:text-white">Agenda de atenciones</h1>
-            <div ref={selectorDiaRef} className="relative z-50 mt-1">
+            <h1 className="sr-only">Agenda de atenciones</h1>
+            <div ref={selectorDiaRef} className="relative z-50">
               <button
                 type="button"
                 aria-haspopup="dialog"
@@ -565,7 +558,7 @@ export default function CalendarioPage() {
           <motion.section variants={itemVariants} className="ccr-panel min-w-0 overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
               <div className="flex items-center gap-2">
-                <FiUsers size={15} className="text-slate-400" aria-hidden="true" />
+                <FiUsers size={15} className="text-slate-500 dark:text-slate-400" aria-hidden="true" />
                 <h2 className="text-base font-bold text-slate-950 dark:text-white">Actividades grupales</h2>
               </div>
               <button type="button" onClick={() => setGrupoAbierto({})} className="text-xs font-bold text-blue-700 hover:underline dark:text-blue-300">
@@ -822,10 +815,6 @@ export default function CalendarioPage() {
   );
 }
 
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, letra: string) => sep + letra.toUpperCase());
-}
-
 function CitaRow({
   paciente,
   puedeGestionar,
@@ -1069,7 +1058,7 @@ function InasistenciaAgendaModal({
               className="ccr-control-input mt-2 w-full px-3 py-2 text-sm"
               placeholder="No asiste a atención programada."
             />
-            <span className="mt-1 block text-[11px] font-semibold text-slate-400">Recomendado para dejar trazabilidad operativa.</span>
+            <span className="mt-1 block text-[11px] font-semibold text-slate-500 dark:text-slate-400">Recomendado para dejar trazabilidad operativa.</span>
           </label>
 
           <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-700">
@@ -1111,7 +1100,7 @@ function InasistenciaAgendaModal({
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 px-6 py-10 text-center dark:border-ink-black-600">
-      <FiCalendar className="mx-auto text-slate-400" size={20} aria-hidden="true" />
+      <FiCalendar className="mx-auto text-slate-500 dark:text-slate-400" size={20} aria-hidden="true" />
       <p className="mt-2 text-sm font-bold text-slate-950 dark:text-white">{title}</p>
       <p className="mx-auto mt-1 max-w-sm text-xs font-medium text-slate-500 dark:text-ink-black-300">{description}</p>
     </div>
@@ -1168,7 +1157,7 @@ function AgendarDialog({
               Busque al paciente por RUT o nombre. La fecha y hora se definen en el paso siguiente.
             </p>
             <div className="relative mt-4">
-              <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} aria-hidden="true" />
+              <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={15} aria-hidden="true" />
               <input
                 autoFocus
                 value={busqueda}

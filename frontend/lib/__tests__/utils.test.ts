@@ -12,6 +12,9 @@ import {
   multiSelectFilter,
   sinAcentos,
   capitalizarInicial,
+  nombreLegible,
+  toDateKey,
+  fechaDDMMAAAA,
 } from "../utils";
 
 // ---------------------------------------------------------------------------
@@ -350,5 +353,30 @@ describe("formatearFecha con texto alternativo", () => {
     expect(formatearFecha(null, "Sin dato")).toBe("Sin dato");
     expect(formatearFecha("no-es-fecha", "Sin dato")).toBe("Sin dato");
     expect(formatearFecha(null)).toBe("-");
+  });
+});
+
+describe("nombreLegible", () => {
+  it("pasa a formato de nombre propio, también con guion", () => {
+    expect(nombreLegible("JUAN PÉREZ-SOTO")).toBe("Juan Pérez-Soto");
+    expect(nombreLegible("maría ñuñez")).toBe("María Ñuñez");
+  });
+});
+
+describe("toDateKey", () => {
+  it("usa la fecha local y rellena con ceros", () => {
+    expect(toDateKey(new Date(2026, 0, 5))).toBe("2026-01-05");
+    expect(toDateKey(new Date(2026, 10, 23))).toBe("2026-11-23");
+  });
+});
+
+describe("fechaDDMMAAAA", () => {
+  it("da vuelta la fecha ISO", () => {
+    expect(fechaDDMMAAAA("2026-11-23")).toBe("23/11/2026");
+  });
+  it("devuelve vacío sin fecha y el texto tal cual si no es ISO", () => {
+    expect(fechaDDMMAAAA(undefined)).toBe("");
+    expect(fechaDDMMAAAA(null)).toBe("");
+    expect(fechaDDMMAAAA("sin fecha")).toBe("sin fecha");
   });
 });

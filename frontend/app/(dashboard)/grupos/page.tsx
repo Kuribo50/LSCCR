@@ -4,7 +4,8 @@ import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import dynamic from "next/dynamic";
-import { FiCalendar, FiPlus, FiRefreshCw, FiSearch, FiUsers } from "react-icons/fi";
+import { FiCalendar, FiLink, FiPlus, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import MenuAcciones from "@/components/MenuAcciones";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import {
   BadgeTipoGrupo,
@@ -54,6 +55,7 @@ function GruposContenido() {
   const puedeCrear = user?.rol === "KINE" || user?.rol === "ADMIN";
 
   const [busqueda, setBusqueda] = useState("");
+  const [refrescando, setRefrescando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("ACTIVOS");
   const [responsables, setResponsables] = useState<string[]>([]);
   const [panel, setPanel] = useState<Panel>(null);
@@ -151,6 +153,16 @@ function GruposContenido() {
     await mutate();
   }
 
+  // Actualizar de verdad: vuelve a pedir los grupos y muestra el estado de carga mientras llegan.
+  async function actualizarGrupos() {
+    setRefrescando(true);
+    try {
+      await Promise.all([mutate(), new Promise((r) => setTimeout(r, 400))]);
+    } finally {
+      setRefrescando(false);
+    }
+  }
+
   // La ficha necesita el paciente completo, no solo los datos del miembro.
   async function abrirFicha(id: number) {
     try {
@@ -164,34 +176,38 @@ function GruposContenido() {
 
   return (
     <div className="ccr-page-fill space-y-3 text-[13px]">
-      <header className="ccr-panel rounded-2xl px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-bold text-slate-950 dark:text-white">Grupos de pacientes</h1>
-            <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-              <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{activos.length}</span> grupo{activos.length !== 1 ? "s" : ""} activo{activos.length !== 1 ? "s" : ""}
-              {" · "}
-              <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{pacientesEnGrupos}</span> paciente{pacientesEnGrupos !== 1 ? "s" : ""} en grupos
-              {enVarios > 0 && (
-                <>
-                  {" · "}
-                  <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{enVarios}</span> en más de uno
-                </>
-              )}
-              {vencidos > 0 && (
-                <>
-                  {" · "}
-                  <span className="font-bold tabular-nums text-amber-700 dark:text-amber-300">{vencidos}</span>{" "}
-                  <span className="text-amber-700 dark:text-amber-300">vencido{vencidos !== 1 ? "s" : ""} por revisar</span>
-                </>
-              )}
-            </p>
+      <div className="ccr-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl">
+      <h1 className="sr-only">Grupos de pacientes</h1>
+      <header className="shrink-0 px-5 py-4">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+          <div className="relative min-w-[180px] flex-1 sm:max-w-sm">
+            <FiSearch className="ccr-waitlist-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" size={15} aria-hidden="true" />
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="ccr-control-input w-full pl-9 pr-3"
+              placeholder="Buscar grupo o paciente"
+              aria-label="Buscar grupo o paciente"
+            />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar">
-              <FiRefreshCw size={13} aria-hidden="true" />
-              Actualizar
-            </button>
+          {!esKine && opcionesResponsable.length > 1 && (
+            <MultiSelectFiltro sinAnimacion label="Responsable" textoTodos values={responsables} opciones={opcionesResponsable} onChange={setResponsables} />
+          )}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {(busqueda || responsables.length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBusqueda("");
+                  setResponsables([]);
+                }}
+                aria-label="Quitar todos los filtros"
+                title="Quitar filtros"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 outline-none transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-900/60 dark:bg-transparent dark:text-red-300"
+              >
+                <FiX size={15} aria-hidden="true" />
+              </button>
+            )}
             <button type="button" onClick={() => setActividadesAbiertas(true)} className="ccr-control-button">
               <FiCalendar size={13} aria-hidden="true" />
               Actividades
@@ -202,50 +218,57 @@ function GruposContenido() {
                 Nuevo grupo
               </button>
             )}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <div className="relative min-w-0 flex-1 sm:max-w-sm">
-            <FiSearch className="ccr-waitlist-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" size={15} aria-hidden="true" />
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="ccr-control-input w-full pl-9 pr-3"
-              placeholder="Buscar grupo o paciente"
-              aria-label="Buscar grupo o paciente"
+            <MenuAcciones
+              acciones={[
+                {
+                  label: "Actualizar",
+                  detalle: "Vuelve a cargar los grupos",
+                  tono: "azul",
+                  icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                  onClick: () => void actualizarGrupos(),
+                },
+                {
+                  label: "Copiar enlace",
+                  detalle: "Del grupo que tienes abierto",
+                  tono: "gris",
+                  icon: <FiLink size={13} aria-hidden="true" />,
+                  onClick: () => {
+                    void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                  },
+                },
+              ]}
             />
           </div>
-          <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900" role="tablist" aria-label="Filtrar grupos">
-            {FILTROS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                role="tab"
-                aria-selected={filtro === f.id}
-                onClick={() => {
-                  setFiltro(f.id);
-                  setPanel(null);
-                }}
-                className={`h-7 rounded-md px-3 text-xs font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-                  filtro === f.id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          {!esKine && opcionesResponsable.length > 1 && (
-            <MultiSelectFiltro label="Responsable" textoTodos values={responsables} opciones={opcionesResponsable} onChange={setResponsables} />
-          )}
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(250px,310px)_minmax(0,1fr)]">
+      <div className="flex shrink-0 items-center gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-2.5 dark:border-ink-black-600 dark:bg-ink-black-900/40">
+        <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900" role="tablist" aria-label="Filtrar grupos">
+          {FILTROS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              role="tab"
+              aria-selected={filtro === f.id}
+              onClick={() => {
+                setFiltro(f.id);
+                setPanel(null);
+              }}
+              className={`h-7 rounded-md px-3 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                filtro === f.id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 border-t border-slate-200 dark:border-ink-black-600 lg:grid-cols-[minmax(250px,310px)_minmax(0,1fr)]">
         {/* Lista de grupos */}
-        <section className="ccr-panel flex min-h-0 flex-col overflow-hidden rounded-2xl" aria-label="Lista de grupos">
+        <section className="flex min-h-0 flex-col overflow-hidden lg:border-r lg:border-slate-200 dark:lg:border-ink-black-600" aria-label="Lista de grupos">
           <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-            {isLoading ? (
+            {isLoading || refrescando ? (
               <div className="space-y-2 p-1">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-ink-black-700" />
@@ -309,10 +332,28 @@ function GruposContenido() {
               </ul>
             )}
           </div>
+          <p className="shrink-0 border-t border-slate-100 px-4 py-2 text-[11px] font-medium text-slate-500 dark:border-ink-black-700 dark:text-slate-400">
+            <span className="font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{activos.length}</span> grupo{activos.length !== 1 ? "s" : ""} activo{activos.length !== 1 ? "s" : ""}
+            {" · "}
+            <span className="font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{pacientesEnGrupos}</span> paciente{pacientesEnGrupos !== 1 ? "s" : ""} en grupos
+            {enVarios > 0 && (
+              <>
+                {" · "}
+                <span className="font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{enVarios}</span> en más de uno
+              </>
+            )}
+            {vencidos > 0 && (
+              <>
+                {" · "}
+                <span className="font-bold tabular-nums text-amber-700 dark:text-amber-300">{vencidos}</span>{" "}
+                <span className="text-amber-700 dark:text-amber-300">vencido{vencidos !== 1 ? "s" : ""} por revisar</span>
+              </>
+            )}
+          </p>
         </section>
 
         {/* Detalle o formulario */}
-        <section className="ccr-panel flex min-h-0 flex-col overflow-hidden rounded-2xl" aria-label="Detalle del grupo">
+        <section className="flex min-h-0 flex-col overflow-hidden" aria-label="Detalle del grupo">
           <AnimatePresence mode="wait" initial={false}>
           {panelActivo ? (
             <motion.div
@@ -352,6 +393,7 @@ function GruposContenido() {
           )}
           </AnimatePresence>
         </section>
+      </div>
       </div>
 
       {fichaPaciente && (

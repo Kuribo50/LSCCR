@@ -61,14 +61,14 @@ export default function EmptyState({
   if (compact) {
     return (
       <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100">
-          <Icon className="text-gray-400" size={24} />
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 dark:bg-[var(--bg-hover)]">
+          <Icon className="text-gray-400 dark:text-[color:var(--text-muted)]" size={24} />
         </div>
-        <p className="text-[13px] font-semibold text-gray-500">{displayMessage}</p>
+        <p className="text-[13px] font-semibold text-gray-500 dark:text-[color:var(--text-muted)]">{displayMessage}</p>
         {action && (
           <button
             onClick={action.onClick}
-            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-[12px] font-semibold text-gray-700 transition hover:bg-gray-50 hover:shadow-sm"
+            className="mt-3 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-4 py-2 text-[12px] font-semibold text-gray-700 dark:text-[color:var(--text-secondary)] transition hover:bg-gray-50 dark:hover:bg-[var(--bg-elevated)] hover:shadow-sm"
           >
             <FiRefreshCw size={13} />
             {action.label}
@@ -82,8 +82,8 @@ export default function EmptyState({
     <div className="flex min-h-[320px] flex-col items-center justify-center px-6 py-12 text-center">
       <div
         className={`mb-5 flex items-center justify-center rounded-3xl bg-gray-100 ${
-          variant === "error" ? "bg-red-50" : ""
-        } ${variant === "offline" ? "bg-amber-50" : ""}`}
+          variant === "error" ? "bg-red-50 dark:bg-red-500/15" : ""
+        } ${variant === "offline" ? "bg-amber-50 dark:bg-amber-500/15" : ""}`}
         style={{ width: 88, height: 88 }}
       >
         <Icon
@@ -93,13 +93,13 @@ export default function EmptyState({
               ? "text-red-400"
               : variant === "offline"
                 ? "text-amber-400"
-                : "text-gray-400"
+                : "text-gray-400 dark:text-[color:var(--text-muted)]"
           }
         />
       </div>
 
-      <h3 className="text-base font-bold text-gray-700">{displayTitle}</h3>
-      <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-gray-500">
+      <h3 className="text-base font-bold text-gray-700 dark:text-[color:var(--text-secondary)]">{displayTitle}</h3>
+      <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-gray-500 dark:text-[color:var(--text-muted)]">
         {displayMessage}
       </p>
 

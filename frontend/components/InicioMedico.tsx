@@ -5,18 +5,14 @@
 // ventana de 10 minutos para revertirse o marcada como consolidada.
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import MenuAcciones from "@/components/MenuAcciones";
 import { FiCheckCircle, FiClock, FiFileText, FiPhoneOff, FiRefreshCw, FiUploadCloud } from "react-icons/fi";
 import RevertirCarga, { formatoRestante, useSegundosRestantes } from "@/components/RevertirCarga";
-import { useAuth } from "@/lib/auth-context";
 import { useAlCambiarCargas } from "@/lib/cargasEventos";
 import { getErrorMessage } from "@/lib/errors";
 import { useAPI } from "@/lib/swr";
 import type { CargaReciente, ResumenCargas } from "@/lib/types";
-
-function saludo() {
-  const h = new Date().getHours();
-  return h < 6 ? "Buenas noches" : h < 12 ? "Buenos días" : h < 20 ? "Buenas tardes" : "Buenas noches";
-}
 
 function fechaHora(iso: string) {
   return new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
@@ -67,33 +63,35 @@ function EstadoCarga({ carga, onRevertida }: { carga: CargaReciente; onRevertida
 }
 
 export default function InicioMedico() {
-  const { user } = useAuth();
+  const router = useRouter();
   const { data, error, isLoading, mutate } = useAPI<ResumenCargas>("/importar/resumen-cargas/");
   useAlCambiarCargas(() => void mutate());
-  const nombre = (user?.nombre ?? "").split(" ")[0] || "equipo CCR";
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-[color:var(--text-muted)]">Carga y verificación de derivaciones</p>
-          <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-[color:var(--text-primary)]">
-            {saludo()}, {nombre}
-          </h1>
-          <p className="mt-1 text-sm font-medium text-[color:var(--text-secondary)]">
-            Sube aquí las derivaciones extraídas de TrakCare. Cada carga se puede revertir durante 10 minutos.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={() => void mutate()} className="ccr-control-button inline-flex items-center gap-1.5">
-            <FiRefreshCw size={13} aria-hidden="true" />
-            Actualizar
-          </button>
-          <Link href="/importar" className="ccr-control-button ccr-control-button-primary inline-flex items-center gap-1.5">
-            <FiUploadCloud size={14} aria-hidden="true" />
-            Importar derivaciones
-          </Link>
-        </div>
+      <header className="flex items-center justify-between gap-3">
+        <h1 className="sr-only">Inicio</h1>
+        <p className="min-w-0 text-sm font-medium text-[color:var(--text-secondary)]">
+          Sube aquí las derivaciones extraídas de TrakCare. Cada carga se puede revertir durante 10 minutos.
+        </p>
+        <MenuAcciones
+          acciones={[
+            {
+              label: "Actualizar",
+              detalle: "Vuelve a cargar las cargas recientes",
+              tono: "azul",
+              icon: <FiRefreshCw size={13} aria-hidden="true" />,
+              onClick: () => void mutate(),
+            },
+            {
+              label: "Importar derivaciones",
+              detalle: "Subir una nueva planilla",
+              tono: "verde",
+              icon: <FiUploadCloud size={13} aria-hidden="true" />,
+              onClick: () => router.push("/importar"),
+            },
+          ]}
+        />
       </header>
 
       {error && (

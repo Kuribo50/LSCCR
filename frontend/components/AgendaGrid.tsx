@@ -8,6 +8,7 @@ import { FiAlertCircle } from "react-icons/fi";
 import type { Categoria, Paciente } from "@/lib/types";
 import { CATEGORIA_LABELS } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
+import { nombreLegible } from "@/lib/utils";
 
 // =============================================================================
 // Colores por categoria: fondo pastel, borde suave y punto de leyenda.
@@ -40,10 +41,6 @@ const SLOT_ALTO = 62; // px por media hora
 const BLOQUE_SLOTS = 1; // cada cita ocupa media hora: el sistema solo guarda la hora de inicio
 
 const SIN_PROFESIONAL = "Sin profesional asignado";
-
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, letra: string) => sep + letra.toUpperCase());
-}
 
 function hora(fecha: Date) {
   return fecha.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false });

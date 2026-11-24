@@ -24,7 +24,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import { TONO_CATEGORIA } from "./AgendaGrid";
-import { capitalizarInicial } from "@/lib/utils";
+import { capitalizarInicial, nombreLegible } from "@/lib/utils";
 
 interface Props {
   paciente: Paciente;
@@ -71,10 +71,6 @@ function fechaLarga(key: string) {
   return capitalizarInicial(
     new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "numeric", month: "long" }).format(fromKey(key)),
   );
-}
-
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, letra: string) => sep + letra.toUpperCase());
 }
 
 const TIPOS_ATENCION = ["Sesión de tratamiento", "Ingreso", "Control", "Reevaluación"] as const;
@@ -196,7 +192,7 @@ export function CalendarioDesplegable({
                     : key === hoy
                     ? "font-bold text-slate-950 ring-1 ring-inset ring-blue-500 dark:text-white dark:ring-blue-400"
                     : dia.getDay() === 0
-                      ? "font-medium text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-black-700"
+                      ? "font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-black-700"
                       : "font-semibold text-slate-700 hover:bg-slate-100 dark:text-ink-black-200 dark:hover:bg-ink-black-700"
               }`}
             >
@@ -275,7 +271,7 @@ function RelojDesplegable({
                 activa
                   ? "bg-blue-500 text-white dark:bg-blue-500 dark:text-white"
                   : colacion
-                    ? "text-slate-400 hover:bg-white dark:hover:bg-ink-black-600"
+                    ? "text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-ink-black-600"
                     : "text-slate-700 hover:bg-white dark:text-ink-black-100 dark:hover:bg-ink-black-600"
               }`}
               style={{ left: x, top: y }}

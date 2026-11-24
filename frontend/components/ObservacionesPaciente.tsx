@@ -235,9 +235,9 @@ export default function ObservacionesPaciente({
         )}
 
         {cargando ? (
-          <p className="py-2 text-[12px] font-medium text-slate-400">Cargando observaciones...</p>
+          <p className="py-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">Cargando observaciones...</p>
         ) : visibles.length === 0 ? (
-          <p className="py-2 text-[12px] font-medium text-slate-400">
+          <p className="py-2 text-[12px] font-medium text-slate-500 dark:text-slate-400">
             {items.length === 0 ? "Sin observaciones registradas." : "No hay observaciones de este tipo."}
           </p>
         ) : (
@@ -264,7 +264,7 @@ export default function ObservacionesPaciente({
                           {o.tipo_label}
                         </span>
                       )}
-                      <span className="text-[11px] font-medium text-slate-400">
+                      <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                         {fechaHora(o.creado_en)}
                         {o.autor_nombre ? ` · ${o.autor_nombre}` : ""}
                       </span>

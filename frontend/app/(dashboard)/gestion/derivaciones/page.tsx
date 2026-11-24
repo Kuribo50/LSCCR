@@ -1,23 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import ImportarPage from '../../importar/page'
-import { useAuth } from '@/lib/auth-context'
-
+// Ruta antigua: la carga de derivaciones vive en /importar. Se conserva para que los
+// enlaces o favoritos viejos sigan funcionando (la regla de acceso del rol la aplica /importar).
 export default function DerivacionesPage() {
-  const { user } = useAuth()
-
-  if (!user) return null
-
-  if (!['ADMIN', 'MEDICO'].includes(user.rol)) {
-    return (
-      <div className="max-w-xl rounded-xl border border-cornflower-ocean-200 bg-white p-6">
-        <h1 className="text-base font-bold text-gray-800">Derivaciones</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Esta pagina existe, pero tu perfil no tiene permisos para cargar derivaciones.
-        </p>
-      </div>
-    )
-  }
-
-  return <ImportarPage />
+  redirect("/importar");
 }

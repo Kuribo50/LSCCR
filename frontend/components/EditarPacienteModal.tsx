@@ -49,7 +49,7 @@ const DATE_FIELDS = [
 ] as const;
 
 const INPUT =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-500 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
 
 function calcularEdadExacta(fechaNacimiento: string): number | null {
   if (!fechaNacimiento) return null;
@@ -104,7 +104,7 @@ function Campo({
         {label}
       </label>
       {children}
-      {ayuda && <p className="mt-1 text-[11px] font-medium text-slate-400 dark:text-ink-black-400">{ayuda}</p>}
+      {ayuda && <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-ink-black-400">{ayuda}</p>}
     </div>
   );
 }
@@ -316,7 +316,7 @@ export default function EditarPacienteModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
             aria-label="Cerrar"
           >
             <FiX size={18} />
@@ -356,10 +356,10 @@ export default function EditarPacienteModal({
                       value={form.edad}
                       onChange={(e) => set("edad", e.target.value)}
                       placeholder="Sin dato"
-                      className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-slate-800 outline-none placeholder:text-slate-400 dark:text-ink-black-100"
+                      className="w-full bg-transparent text-[13px] font-semibold tabular-nums text-slate-800 outline-none placeholder:text-slate-500 dark:text-ink-black-100"
                     />
                   </label>
-                  <p className="mt-1 text-[11px] font-medium text-slate-400 dark:text-ink-black-400">
+                  <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-ink-black-400">
                     {edadCalculada !== null ? `Calculada: ${edadCalculada} años` : "Sin fecha de nacimiento"}
                   </p>
                 </div>

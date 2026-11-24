@@ -26,6 +26,32 @@ export function sinAcentos(value: string) {
 }
 
 /**
+ * Nombre en formato legible: "JUAN PÉREZ-SOTO" -> "Juan Pérez-Soto".
+ */
+export function nombreLegible(nombre: string) {
+  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, letra: string) => sep + letra.toUpperCase());
+}
+
+/**
+ * Fecha local como clave "AAAA-MM-DD" (sin pasar por UTC).
+ */
+export function toDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * "AAAA-MM-DD" -> "DD/MM/AAAA". Vacío si no hay fecha; devuelve el texto tal cual si no tiene ese formato.
+ */
+export function fechaDDMMAAAA(iso?: string | null) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
+/**
  * Pasa a mayúscula solo la primera letra (el resto queda igual).
  */
 export function capitalizarInicial(texto: string) {

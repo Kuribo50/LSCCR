@@ -24,10 +24,11 @@ import {
 import type { Column, FilterFn, VisibilityState } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEntradaFilas } from "@/lib/useEntradaFilas";
-import { FiChevronDown, FiChevronUp, FiDownload, FiFilter, FiMail, FiPhone, FiRefreshCw, FiSearch, FiUser, FiX } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiDownload, FiFilter, FiLink, FiMail, FiPhone, FiPhoneCall, FiUpload, FiRefreshCw, FiSearch, FiUser, FiX } from "react-icons/fi";
 import { motion } from "framer-motion";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
+import MenuAcciones from "@/components/MenuAcciones";
 import { formatearRut } from "@/lib/rut";
 import { sectorColorClasses } from "@/lib/sectores";
 import SectorBadge from "@/components/SectorBadge";
@@ -232,6 +233,7 @@ export default function ListaEsperaPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; nombre: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [refrescando, setRefrescando] = useState(false);
   const [quickFilters, setQuickFilters] = useState<QuickFilterState>({
     estado: [],
     prioridad: [],
@@ -312,6 +314,16 @@ export default function ListaEsperaPage() {
     mutate,
   } = useAPI<Paciente[] | PaginatedResponse<Paciente>>(swrPath);
   const pacientes = unwrapResults(swrData);
+
+  // Actualizar de verdad: vuelve a pedir los datos y muestra el loader mientras llegan.
+  async function actualizarLista() {
+    setRefrescando(true);
+    try {
+      await Promise.all([mutate(), new Promise((r) => setTimeout(r, 400))]);
+    } finally {
+      setRefrescando(false);
+    }
+  }
   const error = mutationError || (swrError ? getErrorMessage(swrError, "No se pudo cargar la lista de espera.") : "");
 
   useEffect(() => {
@@ -608,7 +620,7 @@ export default function ListaEsperaPage() {
               meta: { label: "Profesional", filterable: true } satisfies ColumnMeta,
               cell: (info) => (
                 <div
-                  className={`truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-400"}`}
+                  className={`truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-500"}`}
                   title={info.getValue() || "Sin responsable"}
                 >
                   {info.getValue() || "Sin asignar"}
@@ -665,7 +677,7 @@ export default function ListaEsperaPage() {
           info.getValue() ? (
             <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{info.getValue()}</span>
           ) : (
-            <span className="text-[11px] font-medium text-slate-400" title="La planilla de derivación no trae la edad">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400" title="La planilla de derivación no trae la edad">
               Sin dato
             </span>
           ),
@@ -1015,36 +1027,7 @@ export default function ListaEsperaPage() {
     <div className="ccr-waitlist-page flex h-[max(520px,calc(100dvh-64px-1.5rem))] flex-col overflow-hidden sm:h-[max(520px,calc(100dvh-64px-2rem))] border border-slate-200 bg-white text-[13px] dark:border-ink-black-600 dark:bg-ink-black-800">
       <header className="ccr-waitlist-toolbar shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-ink-black-600 dark:bg-ink-black-800">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold text-slate-950 dark:text-white">Lista de espera</h1>
-              <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-                <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{pacientes.length}</span> pacientes pendientes
-                {filteredRows !== pacientes.length && (
-                  <>
-                    {" · "}mostrando <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{filteredRows}</span>
-                  </>
-                )}
-                .
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar la lista">
-                <FiRefreshCw size={13} aria-hidden="true" />
-                Actualizar
-              </button>
-              <button
-                type="button"
-                onClick={() => void exportarExcel()}
-                disabled={exportando}
-                className="ccr-export-button disabled:opacity-60"
-              >
-                <FiDownload size={13} aria-hidden="true" />
-                {exportando ? "Exportando…" : "Exportar Excel"}
-              </button>
-            </div>
-          </div>
-
+          <h1 className="sr-only">Lista de espera</h1>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
             <div className="relative order-1 min-w-0 flex-1 sm:max-w-sm">
               <FiSearch
@@ -1107,6 +1090,50 @@ export default function ListaEsperaPage() {
                 <FiX size={15} aria-hidden="true" />
               </button>
             )}
+            <div className="order-2">
+              <MenuAcciones
+                acciones={[
+                  {
+                    label: "Actualizar",
+                    detalle: "Vuelve a cargar la lista",
+                    tono: "azul",
+                    icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                    onClick: () => void actualizarLista(),
+                  },
+                  {
+                    label: exportando ? "Exportando…" : "Exportar Excel",
+                    detalle: "Descarga lo que ves en la tabla",
+                    tono: "verde",
+                    icon: <FiDownload size={13} aria-hidden="true" />,
+                    onClick: () => void exportarExcel(),
+                    disabled: exportando,
+                  },
+                  {
+                    label: "Copiar enlace",
+                    detalle: "De esta vista con sus filtros",
+                    tono: "gris",
+                    icon: <FiLink size={13} aria-hidden="true" />,
+                    onClick: () => {
+                      void navigator.clipboard?.writeText(window.location.href).then(() => toastInfo("Enlace copiado."));
+                    },
+                  },
+                  {
+                    label: "Ir a Llamados",
+                    detalle: "Pacientes por contactar",
+                    tono: "gris",
+                    icon: <FiPhoneCall size={13} aria-hidden="true" />,
+                    onClick: () => router.push("/llamados"),
+                  },
+                  {
+                    label: "Importar carga",
+                    detalle: "Subir una nueva planilla",
+                    tono: "gris",
+                    icon: <FiUpload size={13} aria-hidden="true" />,
+                    onClick: () => router.push("/importar"),
+                  },
+                ]}
+              />
+            </div>
           </div>
 
 
@@ -1188,7 +1215,7 @@ export default function ListaEsperaPage() {
 
       {!error && (
         <section className="ccr-data-table ccr-operational-table relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-ink-black-800">
-          {(loading || isPending || !hasHydrated) && (
+          {(loading || refrescando || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center rounded-lg bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
               <LoaderKine enLinea retrasoMs={0} />
             </div>
@@ -1426,7 +1453,7 @@ export default function ListaEsperaPage() {
           <p>
             {filteredRows} paciente{filteredRows !== 1 ? "s" : ""} en espera
           </p>
-          <p className="text-gray-400">
+          <p className="text-slate-500 dark:text-[color:var(--text-muted)]">
             Mostrando {filteredRows} de {rowsData.length}
           </p>
         </div>
@@ -1590,7 +1617,7 @@ function AsignarContactoModal({
                 Teléfono principal
               </label>
               <div className="relative">
-                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} />
                 <input
                   type="tel"
                   value={draft.telefono}
@@ -1606,7 +1633,7 @@ function AsignarContactoModal({
                 Teléfono recados
               </label>
               <div className="relative">
-                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <FiPhone className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} />
                 <input
                   type="tel"
                   value={draft.telefono_recados}
@@ -1625,7 +1652,7 @@ function AsignarContactoModal({
               Email
             </label>
             <div className="relative">
-              <FiMail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <FiMail className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} />
               <input
                 type="email"
                 value={draft.email}

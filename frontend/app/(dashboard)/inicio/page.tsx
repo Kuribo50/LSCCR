@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
-import { Button } from "react-aria-components";
 import {
   FiActivity,
   FiAlertTriangle,
@@ -13,7 +12,6 @@ import {
   FiCalendar,
   FiClock,
   FiPhone,
-  FiRefreshCw,
   FiUploadCloud,
   FiUsers,
 } from "react-icons/fi";
@@ -42,19 +40,13 @@ const GraficosInicio = dynamic(() => import("@/components/GraficosInicio"), {
 });
 import { CalendarioDesplegable } from "@/components/ProximaAtencionModal";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
+import { toDateKey } from "@/lib/utils";
 
 type GrupoAlerta = keyof AlertasOperativas;
 
 // =============================================================================
 // Helpers y contratos visuales del dashboard
 // =============================================================================
-
-function toDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function toMonthKey(date: Date) {
   const year = date.getFullYear();
@@ -153,7 +145,6 @@ function InicioOperativo() {
   const [error, setError] = useState("");
   const [alertasError, setAlertasError] = useState("");
   const [pacienteSeleccionado, setPacienteSeleccionado] = useState<Paciente | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [mesMiniCalendario, setMesMiniCalendario] = useState(() => {
     const hoy = new Date();
     return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -170,7 +161,6 @@ function InicioOperativo() {
       // deje inutilizable todo el dashboard.
       const data = await api.get<DashboardResumenOperativo>("/pacientes/dashboard-resumen/");
       setResumen(data);
-      setLastUpdated(new Date());
     } catch {
       if (!silent) {
         setResumen(RESUMEN_VACIO);
@@ -183,7 +173,7 @@ function InicioOperativo() {
     }
 
     try {
-      const data = await api.get<AlertasOperativas>("/pacientes/alertas-operativas/");
+      const data = await api.get<AlertasOperativas>("/pacientes/alertas-operativas/?limite=30");
       setAlertas(data);
     } catch {
       setAlertas(null);
@@ -242,12 +232,6 @@ function InicioOperativo() {
     }
   }, [mesMiniCalendario, user]);
 
-  const cargarAgendaResumen = useCallback(async () => {
-    setAgendaLoading(true);
-    setAgendaError("");
-    await traerAgendaResumen();
-  }, [traerAgendaResumen]);
-
   useCargaAlMontar(traerAgendaResumen);
 
   const accionesPrioritarias = useMemo(() => {
@@ -270,7 +254,7 @@ function InicioOperativo() {
         if (prioridadA !== prioridadB) return prioridadA - prioridadB;
         return b.paciente.dias_en_lista - a.paciente.dias_en_lista;
       })
-      .slice(0, 15);
+      .slice(0, 30);
   }, [alertas]);
 
   const getRutaTablaPaciente = useCallback((grupo: GrupoAlerta, paciente: Paciente) => {
@@ -299,19 +283,6 @@ function InicioOperativo() {
       transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1], staggerChildren: 0.04 },
     },
   };
-  const seccionVariants: Variants = {
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0, transition: { duration: 0.22, ease: [0.16, 1, 0.3, 1] } },
-  };
-
-  const horaActual = new Date().getHours();
-  const saludo =
-    horaActual < 6 ? "Buenas noches" : horaActual < 12 ? "Buenos días" : horaActual < 20 ? "Buenas tardes" : "Buenas noches";
-  const primerNombre = (user?.nombre ?? "").split(" ")[0] || "equipo CCR";
-  const fechaHoy = (() => {
-    const texto = new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
-    return texto.charAt(0).toUpperCase() + texto.slice(1);
-  })();
 
   if (loading) return <DashboardSkeleton />;
 
@@ -322,45 +293,11 @@ function InicioOperativo() {
       animate="animate"
       className="ccr-dashboard-content space-y-5"
     >
-      <header className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-500 dark:text-ink-black-300">{fechaHoy}</p>
-            <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">
-              {saludo}, {primerNombre}
-            </h1>
-            <p className="mt-1 text-sm font-medium text-slate-600 dark:text-ink-black-200">
-              Hoy hay{" "}
-              <span className="font-bold text-slate-950 dark:text-white">
-                {resumen.agenda_hoy} cita{resumen.agenda_hoy !== 1 ? "s" : ""}
-              </span>{" "}
-              programada{resumen.agenda_hoy !== 1 ? "s" : ""} y{" "}
-              <span className="font-bold text-slate-950 dark:text-white">
-                {resumen.cola_llamados} paciente{resumen.cola_llamados !== 1 ? "s" : ""}
-              </span>{" "}
-              por contactar.
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="hidden text-xs font-medium text-slate-500 sm:inline">
-              Actualizado{" "}
-              {lastUpdated?.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false }) ?? "-"}
-            </span>
-            <Button
-              onPress={() => {
-                void cargarDashboard();
-                void cargarAgendaResumen();
-              }}
-              className="ccr-control-button outline-none"
-            >
-              <FiRefreshCw size={13} aria-hidden="true" />
-              Actualizar
-            </Button>
-          </div>
-        </div>
-
+      <div className="ccr-panel overflow-hidden rounded-2xl">
+      <header>
+        <h1 className="sr-only">Inicio</h1>
         <motion.div
-          className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+          className="grid grid-cols-2 gap-px bg-slate-200 md:grid-cols-5 dark:bg-ink-black-600"
           initial="hidden"
           animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
@@ -370,10 +307,8 @@ function InicioOperativo() {
             icono={FiClock}
             tono="blue"
             label="En lista de espera"
-            value={resumen.pendientes}
-            detalle={`${resumen.sin_asignar} sin profesional`}
-            proporcion={resumen.pendientes ? resumen.sin_asignar / resumen.pendientes : 0}
-            leyendaProporcion="sin asignar"
+            value={resumen.lista_espera_global ?? resumen.pendientes + resumen.rescate}
+            detalle="Pendientes y en rescate"
           />
           <Kpi
             href="/calendario"
@@ -381,7 +316,7 @@ function InicioOperativo() {
             tono="green"
             label="Citas de hoy"
             value={resumen.agenda_hoy}
-            detalle={resumen.agenda_hoy ? "Ver agenda" : "Sin citas"}
+            detalle={resumen.agenda_hoy ? "Ver la agenda del día" : "Sin citas programadas"}
           />
           <Kpi
             href="/mis-pacientes"
@@ -389,7 +324,7 @@ function InicioOperativo() {
             tono="violet"
             label="En atención"
             value={resumen.ingresados}
-            detalle={user?.rol === "KINE" ? `${resumen.mios_activos} a tu cargo` : "En tratamiento"}
+            detalle={user?.rol === "KINE" ? `${resumen.mios_activos} a tu cargo` : "Pacientes en tratamiento"}
           />
           <Kpi
             href="/llamados"
@@ -397,7 +332,8 @@ function InicioOperativo() {
             tono="amber"
             label="Por contactar"
             value={resumen.cola_llamados}
-            detalle="En cola de llamados"
+            detalle="En la cola de llamados"
+            alerta={resumen.cola_llamados > 0}
           />
           <Kpi
             href="/llamados"
@@ -405,7 +341,8 @@ function InicioOperativo() {
             tono="red"
             label="En rescate"
             value={resumen.rescate}
-            detalle="Nuevo contacto"
+            detalle="Requieren un nuevo contacto"
+            alerta={resumen.rescate > 0}
           />
         </motion.div>
       </header>
@@ -416,45 +353,45 @@ function InicioOperativo() {
         </div>
       )}
 
-      <motion.section variants={seccionVariants} className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-12">
-        <div className="xl:col-span-8">
-          <div className="ccr-panel flex h-full flex-col p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-base font-extrabold text-[color:var(--ink)]">
-                  Acciones prioritarias
-                </h2>
-                <p className="text-xs text-slate-500 dark:!text-slate-400">
-                  Pacientes según gravedad y tiempo de espera.
-                </p>
-              </div>
-              <FiAlertTriangle className="text-ink-black-400" size={18} aria-hidden="true" />
+      <section className="grid grid-cols-1 items-stretch border-t border-slate-200 dark:border-ink-black-600 xl:grid-cols-12">
+        <div className="border-b border-slate-200 dark:border-ink-black-600 xl:col-span-7 xl:border-b-0 xl:border-r">
+          <div className="flex h-full flex-col">
+            <div className="flex min-h-[46px] items-center justify-between gap-2 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
+                Acciones prioritarias
+                {accionesPrioritarias.length > 0 && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold tabular-nums text-slate-950 dark:bg-ink-black-700 dark:text-white">
+                    {accionesPrioritarias.length}
+                  </span>
+                )}
+              </h2>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">Por gravedad y espera</span>
             </div>
 
             {accionesPrioritarias.length === 0 ? (
-              <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-4 text-sm font-semibold text-green-800 dark:!border-green-900/60 dark:!bg-green-950/30 dark:!text-green-200">
+              <div className="m-4 rounded-lg border border-green-100 bg-green-50 px-4 py-4 text-sm font-semibold text-green-800 dark:!border-green-900/60 dark:!bg-green-950/30 dark:!text-green-200">
                 Sin acciones pendientes por ahora.
               </div>
             ) : (
-              <div className="max-h-[380px] min-h-0 flex-1 divide-y divide-[color:var(--border-table-row)] overflow-y-auto pr-1 xl:max-h-none xl:basis-0">
+              <div className="grid max-h-[380px] min-h-0 flex-1 grid-cols-1 content-start overflow-y-auto xl:max-h-none xl:basis-0">
                 {accionesPrioritarias.map(({ paciente, grupo }) => (
                   <div
                     key={paciente.id}
-                    className="flex w-full flex-col gap-2 rounded-xl px-2 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-ink-black-700/50 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex w-full items-center justify-between gap-3 border-b border-[color:var(--border-table-row)] px-5 py-2.5 transition-colors hover:bg-slate-50 dark:hover:bg-ink-black-700/50"
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <span
                         aria-hidden="true"
-                        className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${TONO_CATEGORIA[paciente.categoria]?.dot ?? "bg-slate-400"}`}
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONO_CATEGORIA[paciente.categoria]?.dot ?? "bg-slate-400"}`}
                       />
                       <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-900 dark:!text-slate-100">
+                      <p className="truncate text-[13px] font-bold text-slate-900 dark:!text-slate-100">
                         {paciente.nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase())}
+                        <span className="ml-2 font-mono text-[12px] font-semibold text-slate-950 dark:!text-white">
+                          {formatearRut(paciente.rut)}
+                        </span>
                       </p>
-                      <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:!text-slate-400">
-                        {formatearRut(paciente.rut)}
-                      </p>
-                      <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-slate-600 dark:!text-slate-300">
+                      <p className="mt-0.5 line-clamp-1 text-[11px] font-semibold text-slate-600 dark:!text-slate-300">
                         {/* Sin diagnostico: es dato sensible y queda en la ficha operativa. */}
                         {[
                           paciente.categoria_label ?? CATEGORIA_LABELS[paciente.categoria] ?? "Sin categoría",
@@ -466,10 +403,10 @@ function InicioOperativo() {
                       </p>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <div className="flex shrink-0 items-center">
                       <Link
                         href={getRutaTablaPaciente(grupo, paciente)}
-                        className="ccr-control-button !h-8 !text-[11px]"
+                        className="ccr-control-button !h-7 !px-3 !text-[11px]"
                       >
                         Ver en lista
                       </Link>
@@ -480,7 +417,7 @@ function InicioOperativo() {
             )}
           </div>
         </div>
-        <div className="xl:col-span-4">
+        <div className="xl:col-span-5">
           <MiniCalendario
             mes={mesMiniCalendario}
             agenda={agendaResumen}
@@ -490,14 +427,14 @@ function InicioOperativo() {
             onSelectDate={(dateKey) => router.push(`/calendario?fecha=${dateKey}`)}
           />
         </div>
-      </motion.section>
+      </section>
 
-      <motion.div variants={seccionVariants}>
+      <div className="border-t border-slate-200 dark:border-ink-black-600">
         <GraficosInicio />
-      </motion.div>
+      </div>
 
-      <motion.section variants={seccionVariants} className="grid grid-cols-1 items-start gap-5 xl:grid-cols-12">
-        <div className="space-y-3 xl:col-span-8">
+      <section className="grid grid-cols-1 items-stretch border-t border-slate-200 dark:border-ink-black-600 xl:grid-cols-12">
+        <div className="space-y-3 border-b border-slate-200 dark:border-ink-black-600 xl:col-span-7 xl:border-b-0 xl:border-r">
           <TrabajoHoy
             alertas={alertas}
             loading={alertasLoading}
@@ -510,8 +447,8 @@ function InicioOperativo() {
             </p>
           )}
         </div>
-        <div className="xl:col-span-4">
-          <div className="ccr-panel p-5">
+        <div className="xl:col-span-5">
+          <div className="p-5">
             <h2 className="text-base font-extrabold text-[color:var(--ink)]">Accesos</h2>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
               {ACTION_LINKS.map((card) => (
@@ -533,7 +470,8 @@ function InicioOperativo() {
             </div>
           </div>
         </div>
-      </motion.section>
+      </section>
+      </div>
 
       {pacienteSeleccionado && user && (
         <FichaPaciente
@@ -570,12 +508,12 @@ function AnimatedNumber({ value }: { value: number }) {
   return <>{shown.toLocaleString("es-CL")}</>;
 }
 
-const TONOS_KPI: Record<"blue" | "green" | "violet" | "amber" | "red", { icono: string; barra: string; numero: string }> = {
-  blue: { icono: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-200", barra: "bg-blue-500", numero: "text-blue-600 dark:text-blue-300" },
-  green: { icono: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-200", barra: "bg-green-500", numero: "text-slate-950 dark:text-white" },
-  violet: { icono: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-200", barra: "bg-violet-500", numero: "text-slate-950 dark:text-white" },
-  amber: { icono: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200", barra: "bg-amber-500", numero: "text-slate-950 dark:text-white" },
-  red: { icono: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-200", barra: "bg-red-500", numero: "text-slate-950 dark:text-white" },
+const TONOS_KPI: Record<"blue" | "green" | "violet" | "amber" | "red", { icono: string; numero: string }> = {
+  blue: { icono: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-200", numero: "text-blue-600 dark:text-blue-300" },
+  green: { icono: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-200", numero: "text-slate-950 dark:text-white" },
+  violet: { icono: "bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-200", numero: "text-slate-950 dark:text-white" },
+  amber: { icono: "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200", numero: "text-amber-700 dark:text-amber-300" },
+  red: { icono: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-200", numero: "text-red-600 dark:text-red-300" },
 };
 
 function Kpi({
@@ -585,8 +523,7 @@ function Kpi({
   label,
   value,
   detalle,
-  proporcion,
-  leyendaProporcion,
+  alerta = false,
 }: {
   href: string;
   icono: IconType;
@@ -594,45 +531,34 @@ function Kpi({
   label: string;
   value: number;
   detalle: string;
-  proporcion?: number;
-  leyendaProporcion?: string;
+  /** Resalta el número con el color del tono (solo cuando hay algo pendiente). */
+  alerta?: boolean;
 }) {
   const t = TONOS_KPI[tono];
-  const pct = Math.round(Math.min(Math.max(proporcion ?? 0, 0), 1) * 100);
+  const colorNumero = tono === "blue" || alerta ? t.numero : "text-slate-950 dark:text-white";
   return (
-    <motion.div variants={kpiVariants}>
+    <motion.div variants={kpiVariants} className="bg-white last:col-span-2 md:last:col-span-1 dark:bg-ink-black-800">
       <Link
         href={href}
-        title={detalle}
-        className="group relative flex h-full items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white px-3 py-2.5 outline-none transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_10px_24px_-16px_rgba(47,99,214,0.35)] focus-visible:ring-2 focus-visible:ring-blue-500/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0 dark:border-ink-black-600 dark:bg-ink-black-800"
+        className="group flex h-full flex-col gap-1.5 px-4 py-3 outline-none transition-colors hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
       >
-        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${t.icono}`}>
-          <Icono size={16} aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">{label}</span>
-          <span className="flex items-baseline gap-2">
-            <span className={`text-xl font-bold leading-tight tabular-nums ${t.numero}`}>
-              <AnimatedNumber value={value} />
-            </span>
-            <span className="truncate text-[11px] font-medium text-slate-400">{detalle}</span>
+        <span className="flex items-center gap-2.5">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${t.icono}`}>
+            <Icono size={15} aria-hidden="true" />
+          </span>
+          <span className={`block text-3xl font-bold leading-none tabular-nums ${colorNumero}`}>
+            <AnimatedNumber value={value} />
           </span>
         </span>
-        <FiArrowRight
-          size={14}
-          className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600"
-          aria-hidden="true"
-        />
-        {proporcion !== undefined && (
-          <span className="absolute inset-x-0 bottom-0 h-1 bg-slate-100 dark:bg-ink-black-700" aria-label={`${pct}% ${leyendaProporcion ?? ""}`}>
-            <motion.span
-              className={`block h-full ${t.barra}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-            />
-          </span>
-        )}
+        <span className="text-[12px] font-semibold leading-tight text-slate-700 dark:text-ink-black-100">{label}</span>
+        <span className="mt-auto flex items-center justify-between gap-2 text-[11px] font-medium leading-snug text-slate-500 dark:text-slate-400">
+          {detalle}
+          <FiArrowRight
+            size={13}
+            className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600"
+            aria-hidden="true"
+          />
+        </span>
       </Link>
     </motion.div>
   );
@@ -661,19 +587,16 @@ function MiniCalendario({
   const hoyKey = toDateKey(new Date());
 
   return (
-    <section className="ccr-panel flex h-full flex-col overflow-hidden">
-      <div className="flex items-start justify-between gap-2 border-b border-slate-200 px-4 py-3.5 dark:border-ink-black-600">
-        <div>
-          <h2 className="text-sm font-bold text-slate-950 dark:text-white">Agenda del mes</h2>
-          <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-            {loading ? "Cargando citas…" : (
-              <>
-                <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{totalMes}</span>{" "}
-                cita{totalMes !== 1 ? "s" : ""} programada{totalMes !== 1 ? "s" : ""} en {formatMonthYear(mes)}
-              </>
-            )}
-          </p>
-        </div>
+    <section className="flex h-full flex-col overflow-hidden">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-white">
+          Agenda del mes
+          {!loading && (
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold tabular-nums text-blue-700 dark:bg-blue-500/15 dark:text-blue-200" title={`${totalMes} cita${totalMes !== 1 ? "s" : ""} en ${formatMonthYear(mes)}`}>
+              {totalMes}
+            </span>
+          )}
+        </h2>
         <Link
           href="/calendario"
           className="shrink-0 rounded-md px-2 py-1 text-xs font-bold text-blue-600 outline-none transition-colors hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-blue-300"

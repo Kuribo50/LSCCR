@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from django.db.models import Count
+from django.db.models import Count, F
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from rest_framework.permissions import IsAuthenticated
@@ -118,11 +118,23 @@ def resumen_corte(corte, hoy=None):
     }
 
 
+def ingresos_reales(queryset):
+    """Pacientes con fecha de ingreso, sin contar la carga inicial.
+
+    Quienes llegaron ya ingresados en una importación tienen como fecha de ingreso solo el
+    día de la carga, no una atención nueva: contarlos distorsiona el mes en que se cargaron.
+    """
+    return queryset.exclude(fecha_ingreso__isnull=True).exclude(
+        importacion_origen__isnull=False,
+        creado_en__date=F("fecha_ingreso"),
+    )
+
+
 def resumen_actividad_mes(mes, anio, queryset=None):
     """Actividad ocurrida en el mes, aunque el paciente venga de otro corte."""
     if queryset is None:
         queryset = Paciente.objects.all()
-    ingresos = filtrar_mes(queryset.exclude(fecha_ingreso__isnull=True), "fecha_ingreso", mes, anio)
+    ingresos = filtrar_mes(ingresos_reales(queryset), "fecha_ingreso", mes, anio)
     egresos = filtrar_mes(
         queryset.filter(estado__in=ESTADOS_FINALES).exclude(fecha_egreso__isnull=True),
         "fecha_egreso",
@@ -179,7 +191,7 @@ def reporte_por_responsable_data(mes, anio):
     for kine in Usuario.objects.filter(rol=Usuario.Rol.KINE).order_by("nombre"):
         corte_kine = corte.filter(kine_asignado=kine)
         ingresos_mes = filtrar_mes(
-            Paciente.objects.filter(kine_asignado=kine).exclude(fecha_ingreso__isnull=True),
+            ingresos_reales(Paciente.objects.filter(kine_asignado=kine)),
             "fecha_ingreso",
             mes,
             anio,

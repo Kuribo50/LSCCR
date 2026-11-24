@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { IconType } from "react-icons";
 import {
   FiAlertTriangle,
@@ -13,6 +14,7 @@ import {
   FiXCircle,
 } from "react-icons/fi";
 import { formatearFechaHoraCorta } from "@/lib/utils";
+import SelectFiltro from "@/components/SelectFiltro";
 import type { HistorialAccionPaciente, HistorialAccionTipo } from "@/lib/types";
 
 // Cada tipo de evento del historial mapea a un icono, un color y una etiqueta.
@@ -62,16 +64,24 @@ export default function TimelinePaciente({
 }: {
   acciones: HistorialAccionPaciente[];
 }) {
+  const [tipo, setTipo] = useState("TODOS");
+  const conteo = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const a of acciones) c[a.tipo] = (c[a.tipo] ?? 0) + 1;
+    return c;
+  }, [acciones]);
+  const filtradas = tipo === "TODOS" ? acciones : acciones.filter((a) => a.tipo === tipo);
+
   if (acciones.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-400 dark:border-ink-black-600 dark:text-ink-black-400">
+      <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-500 dark:border-ink-black-600 dark:text-ink-black-400">
         Sin movimientos registrados.
       </p>
     );
   }
 
   const grupos: { mes: string; items: HistorialAccionPaciente[] }[] = [];
-  for (const accion of acciones) {
+  for (const accion of filtradas) {
     const mes = claveMes(accion.fecha);
     const ultimo = grupos[grupos.length - 1];
     if (ultimo && ultimo.mes === mes) ultimo.items.push(accion);
@@ -80,12 +90,26 @@ export default function TimelinePaciente({
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="w-full sm:w-64">
+          <SelectFiltro
+            label="Tipo de evento"
+            value={tipo}
+            onChange={setTipo}
+            todos={{ value: "TODOS", label: `Todos (${acciones.length})` }}
+            opciones={(Object.keys(conteo) as HistorialAccionTipo[]).map((t) => ({
+              value: t,
+              label: `${TIPO_META[t]?.etiqueta ?? t} (${conteo[t]})`,
+            }))}
+          />
+        </div>
+      </div>
       {grupos.map((grupo) => (
         <section key={grupo.mes} aria-label={grupo.mes}>
           <h4 className="mb-2.5 flex items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-ink-black-300">
             {grupo.mes}
             <span className="h-px flex-1 bg-slate-100 dark:bg-ink-black-700" aria-hidden="true" />
-            <span className="font-semibold normal-case text-slate-400">
+            <span className="font-semibold normal-case text-slate-500 dark:text-slate-400">
               {grupo.items.length} movimiento{grupo.items.length !== 1 ? "s" : ""}
             </span>
           </h4>
@@ -108,7 +132,7 @@ export default function TimelinePaciente({
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <p className="text-[13px] font-bold text-slate-900 dark:text-ink-black-50">{accion.titulo}</p>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${PILL[meta.tono]}`}>{meta.etiqueta}</span>
-                      <time dateTime={accion.fecha} className="ml-auto shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">
+                      <time dateTime={accion.fecha} className="ml-auto shrink-0 text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">
                         {formatearFechaHoraCorta(accion.fecha)}
                       </time>
                     </div>
@@ -126,7 +150,7 @@ export default function TimelinePaciente({
                           </span>
                         )}
                         {accion.fecha_programada && accion.nueva_fecha && (
-                          <FiArrowRight size={11} className="text-slate-400" aria-label="cambia a" />
+                          <FiArrowRight size={11} className="text-slate-500 dark:text-slate-400" aria-label="cambia a" />
                         )}
                         {accion.nueva_fecha && (
                           <span className="rounded-md bg-blue-50 px-1.5 py-0.5 tabular-nums text-blue-700 dark:bg-blue-500/15 dark:text-blue-200">
@@ -147,6 +171,9 @@ export default function TimelinePaciente({
           </ol>
         </section>
       ))}
+      <p className="border-t border-slate-100 pt-3 text-[11px] font-semibold text-slate-500 dark:border-ink-black-700 dark:text-slate-400">
+        {filtradas.length} de {acciones.length} eventos · del más reciente al más antiguo
+      </p>
     </div>
   );
 }

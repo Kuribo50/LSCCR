@@ -11,7 +11,7 @@ export default function SectorBadge({
 }) {
   const value = (sector ?? "").trim();
   if (!value || value === "-") {
-    return <span className="text-slate-400">-</span>;
+    return <span className="text-slate-500 dark:text-slate-400">-</span>;
   }
   const { dot, chip } = sectorColorClasses(value);
   return (

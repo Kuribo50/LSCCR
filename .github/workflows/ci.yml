@@ -35,6 +35,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Django system check
+        env:
+          DJANGO_SECRET_KEY: ci-test-secret-key
+          DJANGO_DEBUG: "True"
+          DJANGO_ALLOWED_HOSTS: "*"
+        run: python manage.py check
+
+      - name: Verify no pending migrations
+        env:
+          DJANGO_SECRET_KEY: ci-test-secret-key
+          DJANGO_DEBUG: "True"
+          DJANGO_ALLOWED_HOSTS: "*"
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Run migrations
         env:
           DJANGO_SECRET_KEY: ci-test-secret-key

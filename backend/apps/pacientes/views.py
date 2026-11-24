@@ -157,11 +157,11 @@ class PacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
             notas=nota,
         )
 
-    def _serializar_grupo_alerta(self, queryset):
+    def _serializar_grupo_alerta(self, queryset, limite=8):
         ordenado = queryset.annotate(orden_prioridad=ORDEN_PRIORIDAD).order_by(
             "orden_prioridad", "fecha_derivacion"
         )
-        pacientes = list(ordenado[:8])
+        pacientes = list(ordenado[:limite])
         return {
             "total": queryset.count(),
             "pacientes": PacienteSerializer(
@@ -1056,10 +1056,15 @@ class PacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
             alerta: self._filtrar_alerta_operativa(base, alerta)
             for alerta in ALERTAS_OPERATIVAS
         }
+        # `limite` (1-50) permite pedir más pacientes por grupo; por defecto son 8.
+        try:
+            limite = max(1, min(int(request.query_params.get("limite", 8)), 50))
+        except (TypeError, ValueError):
+            limite = 8
 
         return Response(
             {
-                nombre: self._serializar_grupo_alerta(queryset)
+                nombre: self._serializar_grupo_alerta(queryset, limite)
                 for nombre, queryset in grupos.items()
             }
         )

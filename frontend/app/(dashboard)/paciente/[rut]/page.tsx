@@ -8,12 +8,14 @@ import { FiArrowLeft, FiEdit3, FiPhone, FiRefreshCw } from 'react-icons/fi'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import type { Estado, Paciente, PacienteConMovimientos, PerfilPaciente } from '@/lib/types'
-import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS, getKineRowBackground } from '@/lib/types'
+import { CATEGORIA_LABELS, ESTADO_LABELS, getKineRowBackground } from '@/lib/types'
 import { formatearRut } from '@/lib/rut'
 import { puedeCorregirDatos } from '@/lib/roles'
 import EditarPacienteModal from '@/components/EditarPacienteModal'
 import CambiarEstadoModal from '@/components/CambiarEstadoModal'
 import RegistrarContactoModal from '@/components/RegistrarContactoModal'
+import BadgeEstado from '@/components/BadgeEstado'
+import BadgePrioridad from '@/components/BadgePrioridad'
 
 export default function PerfilPacientePage({ params }: { params: Promise<{ rut: string }> }) {
   const { rut } = use(params)
@@ -74,7 +76,7 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="animate-pulse text-sm font-medium text-gray-500">Cargando perfil...</div>
+        <div className="animate-pulse text-sm font-medium text-[color:var(--text-muted)]">Cargando perfil...</div>
       </div>
     )
   }
@@ -82,8 +84,8 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
   if (error || !perfil) {
     return (
       <div className="flex flex-col items-center justify-center space-y-4 pt-12">
-        <p className="text-sm font-semibold text-red-600">{error || 'Paciente no encontrado.'}</p>
-        <Link href="/lista-espera" className="text-sm text-cornflower-ocean-500 hover:underline">
+        <p className="text-sm font-semibold text-red-600 dark:text-red-300">{error || 'Paciente no encontrado.'}</p>
+        <Link href="/lista-espera" className="text-sm font-semibold text-[color:var(--brand)] hover:underline">
           Volver a Lista de Espera
         </Link>
       </div>
@@ -91,45 +93,47 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      {/* Top action bar */}
+    <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+          className="ccr-control-button inline-flex items-center gap-1.5 px-3 py-2 text-xs"
         >
           <FiArrowLeft size={14} />
           Volver
         </button>
       </div>
 
-      <div className="rounded-[10px] bg-white p-6 border border-blue-200">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 uppercase tracking-wide">
+      <header className="ccr-panel p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold uppercase tracking-wide text-[color:var(--text-primary)]">
               {perfil.nombre}
             </h1>
-            <p className="mt-1 text-sm font-semibold text-gray-500">
+            <p className="mt-1 text-sm font-semibold text-[color:var(--text-muted)]">
               RUT: <span className="font-mono">{formatearRut(perfil.rut)}</span>
             </p>
+            {perfil.mayor_60 && (
+              <span className="mt-3 inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200">
+                +60 años
+              </span>
+            )}
           </div>
-          <div className="text-right text-sm text-gray-600">
-            <p>Edad: <span className="font-semibold">{perfil.edad} años</span></p>
-            <p>Sector: <span className="font-semibold">{perfil.sector_cesfam || 'Sin dato'}</span></p>
-            <p>Sector territorial: <span className="font-semibold">{perfil.sector_oficial || 'Sin dato'}</span></p>
-          </div>
+          <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-[color:var(--text-muted)]">Edad</dt>
+            <dd className="font-semibold text-[color:var(--text-primary)]">{perfil.edad} años</dd>
+            <dt className="text-[color:var(--text-muted)]">Sector</dt>
+            <dd className="font-semibold text-[color:var(--text-primary)]">{perfil.sector_cesfam || 'Sin dato'}</dd>
+            <dt className="text-[color:var(--text-muted)]">Sector territorial</dt>
+            <dd className="font-semibold text-[color:var(--text-primary)]">{perfil.sector_oficial || 'Sin dato'}</dd>
+          </dl>
         </div>
-        {perfil.mayor_60 && (
-          <span className="mt-4 inline-block rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-800">
-            +60 Años
-          </span>
-        )}
-      </div>
+      </header>
 
       <div className="space-y-4">
-        <h2 className="text-lg font-bold text-gray-800">
-          Historial de Derivaciones ({perfil.derivaciones.length})
+        <h2 className="text-lg font-bold text-[color:var(--text-primary)]">
+          Historial de derivaciones ({perfil.derivaciones.length})
         </h2>
 
         {perfil.derivaciones.map((derivacion) => {
@@ -138,140 +142,118 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
             derivacion.kine_asignado !== null
 
           return (
-          <div
-            key={derivacion.id}
-            className="overflow-hidden rounded-[10px] bg-white border border-gray-200"
-          >
-            <div
-              className="p-5"
-              style={{ backgroundColor: getKineRowBackground(derivacion.kine_asignado_nombre) }}
+            <article
+              key={derivacion.id}
+              className="ccr-panel overflow-hidden"
+              // El color identifica al profesional responsable; solo marca el borde izquierdo.
+              style={{ borderLeft: `4px solid ${getKineRowBackground(derivacion.kine_asignado_nombre)}` }}
             >
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-800">
-                    Derivación {derivacion.id_ccr}
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Fecha: <span className="font-medium text-gray-700">{derivacion.fecha_derivacion}</span> ({derivacion.dias_en_lista} días)
-                  </p>
+              <div className="p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-[color:var(--text-primary)]">
+                      Derivación {derivacion.id_ccr}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-[color:var(--text-muted)]">
+                      Fecha: <span className="font-medium text-[color:var(--text-secondary)]">{derivacion.fecha_derivacion}</span> ({derivacion.dias_en_lista} días)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <BadgeEstado estado={derivacion.estado} />
+                    <BadgePrioridad prioridad={derivacion.prioridad} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-white/60 px-3 py-1 text-[11px] font-semibold text-gray-700 shadow-sm border border-black/5">
-                    {ESTADO_LABELS[derivacion.estado]}
-                  </span>
-                  <span className={`rounded-full px-3 py-1 text-[11px] font-semibold tracking-wide border shadow-sm ${
-                    derivacion.prioridad === 'ALTA'
-                      ? 'bg-red-50 text-red-700 border-red-200'
-                      : derivacion.prioridad === 'MEDIANA'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-green-50 text-green-700 border-green-200'
-                  }`}>
-                    {PRIORIDAD_LABELS[derivacion.prioridad]}
-                  </span>
-                </div>
-              </div>
 
-              {/* Action buttons per derivation */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {/* El Médico solo carga derivaciones: no edita ni cambia estados. */}
-                {user?.rol !== 'MEDICO' && (
-                  <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {/* El Médico solo carga derivaciones: no edita ni cambia estados. */}
+                  {user?.rol !== 'MEDICO' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEditarPaciente(derivacion)}
+                        className="ccr-control-button-primary inline-flex items-center gap-1.5 px-3 py-2 text-xs"
+                      >
+                        <FiEdit3 size={13} />
+                        Editar paciente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCambiarEstadoPaciente(derivacion)}
+                        className="ccr-control-button inline-flex items-center gap-1.5 px-3 py-2 text-xs"
+                      >
+                        <FiRefreshCw size={13} />
+                        Cambiar estado
+                      </button>
+                    </>
+                  )}
+                  {puedeRegistrarLlamado && (
                     <button
                       type="button"
-                      onClick={() => setEditarPaciente(derivacion)}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+                      onClick={() => setRegistrarContactoPaciente(derivacion)}
+                      className="ccr-control-button inline-flex items-center gap-1.5 px-3 py-2 text-xs"
                     >
-                      <FiEdit3 size={13} />
-                      Editar paciente
+                      <FiPhone size={13} />
+                      Registrar llamado
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setCambiarEstadoPaciente(derivacion)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-                    >
-                      <FiRefreshCw size={13} />
-                      Cambiar estado
-                    </button>
-                  </>
-                )}
-                {puedeRegistrarLlamado && (
-                  <button
-                    type="button"
-                    onClick={() => setRegistrarContactoPaciente(derivacion)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-50"
-                  >
-                    <FiPhone size={13} />
-                    Registrar llamado
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-700">
-                 <div>
-                  <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Técnico</p>
-                  <p>{CATEGORIA_LABELS[derivacion.categoria]}</p>
-                 </div>
-                 <div>
-                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Diagnóstico Médico</p>
-                   <p>{derivacion.diagnostico}</p>
-                 </div>
-                 <div>
-                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Prof. Derivado</p>
-                   <p>{derivacion.profesional}</p>
-                 </div>
-                 <div>
-                   <p className="text-xs uppercase text-gray-500 font-semibold mb-0.5">Responsable CCR</p>
-                   <p className="font-medium">{derivacion.responsable_nombre || derivacion.kine_asignado_nombre || 'Sin asignar'}</p>
-                 </div>
-              </div>
-
-              {derivacion.observaciones && (
-                <div className="mt-4 rounded-lg bg-white/40 p-3 text-xs italic text-gray-600 border border-black/5">
-                  <span className="font-semibold text-gray-500 not-italic mr-1">Observaciones:</span>
-                  {derivacion.observaciones}
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div className="bg-gray-50 p-5 border-t border-[#E6EEE6]">
-              <h4 className="text-[11px] uppercase tracking-wider text-gray-500 font-semibold mb-3">
-                Registro de Actividad y Días de Asistencia
-              </h4>
+                <dl className="mt-4 grid grid-cols-1 gap-4 text-sm md:grid-cols-2 lg:grid-cols-4">
+                  <Dato etiqueta="Diagnóstico técnico">{CATEGORIA_LABELS[derivacion.categoria]}</Dato>
+                  <Dato etiqueta="Diagnóstico médico">{derivacion.diagnostico}</Dato>
+                  <Dato etiqueta="Prof. derivado">{derivacion.profesional}</Dato>
+                  <Dato etiqueta="Responsable CCR">
+                    <span className="font-medium">{derivacion.responsable_nombre || derivacion.kine_asignado_nombre || 'Sin asignar'}</span>
+                  </Dato>
+                </dl>
 
-              {derivacion.movimientos.length === 0 ? (
-                <p className="text-xs text-gray-400">No hay movimientos registrados para esta derivación.</p>
-              ) : (
-                <div className="relative pl-4 space-y-4 before:absolute before:left-1.5 before:top-2 before:-bottom-2 before:w-[2px] before:bg-gray-200">
-                  {derivacion.movimientos.map((mov) => (
-                    <div key={mov.id} className="relative text-sm">
-                      <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-cornflower-ocean-500" />
-                      <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-gray-800 text-xs">
-                            {mov.estado_anterior
-                              ? `${ESTADO_LABELS[mov.estado_anterior as keyof typeof ESTADO_LABELS] || mov.estado_anterior} → ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
-                              : `Registrado en ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
-                            }
-                          </span>
-                          <span className="text-[11px] text-gray-400 font-mono">
-                            {new Date(mov.fecha).toLocaleString('es-CL')}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          Operador: <span className="font-medium text-gray-700">{mov.usuario_nombre || 'Sistema'}</span>
-                        </p>
-                        {mov.notas && (
-                          <div className="mt-2 rounded bg-gray-50 p-2 text-xs italic text-gray-600">
-                            {mov.notas}
+                {derivacion.observaciones && (
+                  <div className="mt-4 rounded-xl bg-[var(--bg-elevated)] p-3 text-xs italic text-[color:var(--text-secondary)]">
+                    <span className="mr-1 font-semibold not-italic text-[color:var(--text-muted)]">Observaciones:</span>
+                    {derivacion.observaciones}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-5">
+                <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)]">
+                  Registro de actividad y días de asistencia
+                </h4>
+
+                {derivacion.movimientos.length === 0 ? (
+                  <p className="text-xs text-[color:var(--text-muted)]">No hay movimientos registrados para esta derivación.</p>
+                ) : (
+                  <div className="relative space-y-4 pl-4 before:absolute before:-bottom-2 before:left-1.5 before:top-2 before:w-[2px] before:bg-[var(--border-default)]">
+                    {derivacion.movimientos.map((mov) => (
+                      <div key={mov.id} className="relative text-sm">
+                        <div className="absolute -left-[15px] top-1.5 h-2 w-2 rounded-full bg-[var(--brand)]" />
+                        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-[color:var(--text-primary)]">
+                              {mov.estado_anterior
+                                ? `${ESTADO_LABELS[mov.estado_anterior as keyof typeof ESTADO_LABELS] || mov.estado_anterior} → ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
+                                : `Registrado en ${ESTADO_LABELS[mov.estado_nuevo as keyof typeof ESTADO_LABELS]}`
+                              }
+                            </span>
+                            <span className="font-mono text-[11px] text-[color:var(--text-subtle)]">
+                              {new Date(mov.fecha).toLocaleString('es-CL')}
+                            </span>
                           </div>
-                        )}
+                          <p className="text-xs text-[color:var(--text-muted)]">
+                            Operador: <span className="font-medium text-[color:var(--text-secondary)]">{mov.usuario_nombre || 'Sistema'}</span>
+                          </p>
+                          {mov.notas && (
+                            <div className="mt-2 rounded-lg bg-[var(--bg-elevated)] p-2 text-xs italic text-[color:var(--text-secondary)]">
+                              {mov.notas}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </article>
           )
         })}
       </div>
@@ -311,6 +293,15 @@ export default function PerfilPacientePage({ params }: { params: Promise<{ rut: 
           }}
         />
       )}
+    </div>
+  )
+}
+
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="mb-0.5 text-xs font-semibold uppercase text-[color:var(--text-muted)]">{etiqueta}</dt>
+      <dd className="text-[color:var(--text-secondary)]">{children}</dd>
     </div>
   )
 }

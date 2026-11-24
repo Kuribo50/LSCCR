@@ -152,7 +152,7 @@ export default function ImportarPrevisualizacion({ preview }: Props) {
         <tbody>
           {registros.map((r) => (
             <tr key={claveFila(r.hoja, r.fila)} className="ccr-table-row">
-              <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
+              <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
                 {r.fila}
               </td>
               {COLUMNAS.map((col, i) => {

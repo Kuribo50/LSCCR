@@ -144,7 +144,7 @@ function SidebarNav({
             )}
           >
             {!compact && (
-              <p className="mb-1 px-2.5 text-[11px] font-semibold text-slate-400 dark:text-ink-black-300">
+              <p className="mb-1 px-2.5 text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">
                 {SECTION_LABELS[section]}
               </p>
             )}

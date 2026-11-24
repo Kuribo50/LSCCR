@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   FiEdit2,
   FiKey,
+  FiLink,
   FiPlus,
+  FiRefreshCw,
   FiSearch,
-  FiShield,
   FiTrash2,
-  FiUserCheck,
-  FiUserX,
   FiX,
 } from "react-icons/fi";
 import { api } from "@/lib/api";
@@ -24,6 +23,8 @@ import type { PaginatedResponse, Rol, Usuario } from "@/lib/types";
 import { ROL_LABELS } from "@/lib/types";
 import { TableSkeleton } from "@/components/Skeleton";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import FiltroPildoras from "@/components/FiltroPildoras";
+import MenuAcciones from "@/components/MenuAcciones";
 import { normalizeRut, normalizeSearchText } from "@/lib/utils";
 
 const ROL_BADGE_CLASSES: Record<Rol, string> = {
@@ -55,6 +56,7 @@ export default function UsuariosPage() {
   const [claveTemporal, setClaveTemporal] = useState<{ nombre: string; clave: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Usuario | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [refrescando, setRefrescando] = useState(false);
 
   useEffect(() => {
     if (user && user.rol !== "ADMIN") {
@@ -97,6 +99,16 @@ export default function UsuariosPage() {
     }),
     [usuarios],
   );
+  // Actualizar de verdad: vuelve a pedir los usuarios y muestra el loader mientras llegan.
+  async function actualizarUsuarios() {
+    setRefrescando(true);
+    try {
+      await Promise.all([mutate(), new Promise((r) => setTimeout(r, 400))]);
+    } finally {
+      setRefrescando(false);
+    }
+  }
+
   const activeFilterCount = [
     busqueda.trim(),
     rolFiltro !== "TODOS",
@@ -146,98 +158,88 @@ export default function UsuariosPage() {
 
   return (
     <div className="ccr-page-fill space-y-4 text-[13px]">
-      <header className="ccr-panel rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700 dark:text-blue-300">
-              <FiShield size={13} />
-              Administración
-            </p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Usuarios</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-ink-black-200">
-              Gestión básica de accesos y roles operativos.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setModal("crear")}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-transparent !bg-blue-500 px-4 py-2 text-xs font-bold !text-white transition hover:!bg-blue-700"
-          >
-            <FiPlus size={14} />
-            Nuevo usuario
-          </button>
-        </div>
+      <h1 className="sr-only">Usuarios</h1>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <UsuarioStat icon={<FiShield />} label="Total" value={resumen.total} tone="blue" />
-          <UsuarioStat icon={<FiUserCheck />} label="Activos" value={resumen.activos} tone="green" />
-          <UsuarioStat icon={<FiUserX />} label="Inactivos" value={resumen.inactivos} tone="slate" />
-          <UsuarioStat icon={<FiShield />} label="Admins" value={resumen.admins} tone="amber" />
-        </div>
-      </header>
-
-      <section className="ccr-panel rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-[#2a2a2a] dark:bg-[#0f0f10]">
-        <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_180px_180px_auto]">
-          <div className="relative">
-            <FiSearch
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 dark:text-blue-300"
-              size={15}
-            />
+      <section className="ccr-fill ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#0f0f10]">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-b border-slate-200 p-4 dark:border-[#262626]">
+          <div className="relative min-w-[180px] flex-1 sm:max-w-sm">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} aria-hidden="true" />
             <input
               type="text"
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
-              className="ccr-control-input w-full px-9 py-2.5 text-xs"
+              className="ccr-control-input w-full pl-9 pr-3"
               placeholder="Buscar por nombre o RUT"
+              aria-label="Buscar usuario"
             />
           </div>
-
-          <select
-            value={rolFiltro}
-            onChange={(event) => setRolFiltro(event.target.value as Rol | "TODOS")}
-            className="ccr-control-input px-3 py-2.5 text-xs"
-          >
-            <option value="TODOS">Todos los roles</option>
-            {ROLES_SELECCIONABLES.map((rol) => (
-              <option key={rol.value} value={rol.value}>
-                {rol.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={estadoFiltro}
-            onChange={(event) =>
-              setEstadoFiltro(event.target.value as "TODOS" | "ACTIVOS" | "INACTIVOS")
-            }
-            className="ccr-control-input px-3 py-2.5 text-xs"
-          >
-            <option value="TODOS">Todos los estados</option>
-            <option value="ACTIVOS">Activos</option>
-            <option value="INACTIVOS">Inactivos</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={limpiarFiltros}
-            className="ccr-control-button inline-flex items-center justify-center rounded-lg px-3 py-2.5 text-xs"
-          >
-            Limpiar filtros
-          </button>
+          <div className="w-44 shrink-0">
+            <FiltroPildoras
+              ariaLabel="Filtrar por rol"
+              valor={rolFiltro === "TODOS" ? "" : rolFiltro}
+              onChange={(v) => setRolFiltro((v || "TODOS") as Rol | "TODOS")}
+              opciones={[
+                { value: "", label: "Todos los roles", total: usuarios.length },
+                ...ROLES_SELECCIONABLES.map((rol) => ({
+                  value: rol.value,
+                  label: rol.label,
+                  total: usuarios.filter((u) => u.rol === rol.value).length,
+                })),
+              ]}
+            />
+          </div>
+          <div className="w-44 shrink-0">
+            <FiltroPildoras
+              ariaLabel="Filtrar por estado"
+              valor={estadoFiltro === "TODOS" ? "" : estadoFiltro}
+              onChange={(v) => setEstadoFiltro((v || "TODOS") as "TODOS" | "ACTIVOS" | "INACTIVOS")}
+              opciones={[
+                { value: "", label: "Todos los estados", total: resumen.total },
+                { value: "ACTIVOS", label: "Activos", dot: "bg-green-500", total: resumen.activos },
+                { value: "INACTIVOS", label: "Inactivos", dot: "bg-slate-400", total: resumen.inactivos },
+              ]}
+            />
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                aria-label="Quitar todos los filtros"
+                title="Quitar filtros"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 outline-none transition-colors hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-900/60 dark:bg-transparent dark:text-red-300"
+              >
+                <FiX size={15} aria-hidden="true" />
+              </button>
+            )}
+            <button type="button" onClick={() => setModal("crear")} className="ccr-control-button-primary">
+              <FiPlus size={13} aria-hidden="true" />
+              Nuevo usuario
+            </button>
+            <MenuAcciones
+              acciones={[
+                {
+                  label: "Actualizar",
+                  detalle: "Vuelve a cargar los usuarios",
+                  tono: "azul",
+                  icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                  onClick: () => void actualizarUsuarios(),
+                },
+                {
+                  label: "Copiar enlace",
+                  detalle: "De esta vista",
+                  tono: "gris",
+                  icon: <FiLink size={13} aria-hidden="true" />,
+                  onClick: () => {
+                    void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                  },
+                },
+              ]}
+            />
+          </div>
         </div>
-      </section>
 
-      <section className="ccr-fill ccr-panel ccr-data-table ccr-operational-table relative overflow-hidden rounded-lg bg-white shadow-sm dark:bg-[#0f0f10]">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-[#262626]">
-          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-600 dark:text-ink-black-200">
-            {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en vista
-          </p>
-          <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700 dark:bg-blue-400/10 dark:text-blue-100">
-            {activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {loading ? (
+        {loading || refrescando ? (
           <div className="p-3">
             <TableSkeleton rows={6} />
           </div>
@@ -302,7 +304,7 @@ export default function UsuariosPage() {
                           type="button"
                           onClick={() => setResetCandidate(usuario)}
                           disabled={resetLoadingId === usuario.id}
-                          className="inline-flex items-center gap-1 rounded-md border !border-amber-500 !bg-amber-500 px-2.5 py-1.5 text-xs font-bold !text-white transition hover:!border-amber-600 hover:!bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center gap-1 rounded-md border !border-amber-500 !bg-amber-500 px-2.5 py-1.5 text-xs font-bold !text-slate-900 transition hover:!border-amber-600 hover:!bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <FiKey size={13} />
                           {resetLoadingId === usuario.id ? "Reseteando" : "Reset clave"}
@@ -325,7 +327,9 @@ export default function UsuariosPage() {
 
             <div className="flex flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-4 py-2 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
               <p>
-                {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en la tabla
+                {usuariosFiltrados.length} usuario{usuariosFiltrados.length !== 1 ? "s" : ""} en la tabla · {resumen.activos} activo
+                {resumen.activos !== 1 ? "s" : ""} · {resumen.inactivos} inactivo{resumen.inactivos !== 1 ? "s" : ""} · {resumen.admins} admin
+                {resumen.admins !== 1 ? "s" : ""}
               </p>
               <p className="text-gray-400 dark:text-ink-black-400">
                 Mostrando {usuariosFiltrados.length} de {usuarios.length}
@@ -401,37 +405,6 @@ export default function UsuariosPage() {
         variant="danger"
         loading={deleteLoading}
       />
-    </div>
-  );
-}
-
-function UsuarioStat({
-  icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: number;
-  tone: "blue" | "green" | "slate" | "amber";
-}) {
-  const tones = {
-    blue: "border-blue-100 bg-blue-50 text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
-    green: "border-green-100 bg-green-50 text-green-700 dark:border-green-400/30 dark:bg-green-400/10 dark:text-green-100",
-    slate: "border-slate-100 bg-slate-50 text-slate-700 dark:border-slate-400/25 dark:bg-slate-400/10 dark:text-slate-100",
-    amber: "border-amber-100 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100",
-  };
-
-  return (
-    <div className={`rounded-lg border px-3 py-3 ${tones[tone]}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.08em]">
-          {icon}
-          {label}
-        </span>
-        <strong className="text-lg">{value}</strong>
-      </div>
     </div>
   );
 }
@@ -585,7 +558,7 @@ function UsuarioModal({
               Gestiona acceso interno a ListaEsperaCCR.
             </p>
             {subtituloDetalle && (
-              <p className="mt-1 text-xs font-semibold text-slate-400 dark:text-slate-500">{subtituloDetalle}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-500">{subtituloDetalle}</p>
             )}
           </div>
           <button

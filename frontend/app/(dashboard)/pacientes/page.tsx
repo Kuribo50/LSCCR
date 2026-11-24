@@ -170,12 +170,12 @@ export default function PacientesPage() {
 
   return (
     <div className={`space-y-4 ${vista === 'cola' ? '' : 'ccr-page-fill'}`}>
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-700 dark:text-blue-200">
             Índice de pacientes
           </p>
-          <h1 className="mt-1 text-xl font-black text-slate-950">
+          <h1 className="mt-1 text-xl font-black text-slate-950 dark:text-[color:var(--text-primary)]">
             {isSearchResults
               ? 'Resultados de búsqueda'
               : isEgresoParams
@@ -187,17 +187,17 @@ export default function PacientesPage() {
                   : 'Lista de Espera'}
           </h1>
           {isSearchResults && (
-            <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-500">
+            <p className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2.5 py-1 text-xs font-bold text-blue-500">
               <FiSearch size={12} />
               <span className="truncate">Búsqueda: {searchUrl}</span>
             </p>
           )}
           {mes && anio && (
-            <p className="mt-2 inline-block rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-500">
+            <p className="mt-2 inline-block rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2.5 py-1 text-xs font-bold text-blue-500">
               Mostrando ingresados en: {new Date(parseInt(anio), parseInt(mes) - 1).toLocaleString('es-CL', { month: 'long', year: 'numeric' })}
             </p>
           )}
-          <p className="mt-1 text-xs font-semibold text-slate-500">
+          <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
             {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''}
             {loading ? ' · cargando…' : ''}
           </p>
@@ -214,7 +214,7 @@ export default function PacientesPage() {
             </button>
           )}
           {puedeVerCola && (
-            <div className="flex overflow-hidden rounded-lg border border-blue-200 bg-white text-xs font-black shadow-sm">
+            <div className="flex overflow-hidden rounded-lg border border-blue-200 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] text-xs font-black shadow-sm">
               <button
                 type="button"
                 onClick={() => setVista('tabla')}
@@ -237,20 +237,20 @@ export default function PacientesPage() {
       </div>
 
       <div
-        className="grid gap-2 rounded-xl border border-blue-100 bg-white px-4 py-3 shadow-sm sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,1fr))_auto]"
+        className="grid gap-2 rounded-xl border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] px-4 py-3 shadow-sm sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(150px,1fr))_auto]"
       >
         <input
           type="text"
           placeholder="Buscar por nombre, RUT, sector o diagnóstico…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-3 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
 
         <select
           value={filtroCategoria}
           onChange={(e) => setFiltroCategoria(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
           <option value="">Todas las categorías</option>
           {categoriaOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -259,7 +259,7 @@ export default function PacientesPage() {
         <select
           value={filtroPrioridad}
           onChange={(e) => setFiltroPrioridad(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
           <option value="">Todas las prioridades</option>
           {prioridadOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -268,7 +268,7 @@ export default function PacientesPage() {
         <select
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
-          className="min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
           {isEgresoParams ? (
             <>
@@ -291,7 +291,7 @@ export default function PacientesPage() {
           <select
             value={filtroKine}
             onChange={(e) => setFiltroKine(e.target.value)}
-            className="min-w-0 rounded-lg border border-gray-200 px-2 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="min-w-0 rounded-lg border border-gray-200 dark:border-[var(--border-subtle)] px-2 py-2 text-xs font-semibold text-slate-700 dark:text-[color:var(--text-secondary)] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             <option value="">Todos los profesionales asignados</option>
             {kineOptions.map((k) => <option key={k.id} value={k.id}>{k.nombre}</option>)}
@@ -299,7 +299,7 @@ export default function PacientesPage() {
         )}
 
         {user.rol === 'KINE' && (
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-[color:var(--text-secondary)] cursor-pointer">
             <input
               type="checkbox"
               checked={soloMios}
@@ -314,7 +314,7 @@ export default function PacientesPage() {
           type="button"
           onClick={limpiarFiltros}
           disabled={!hasActiveFilters}
-          className="inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-45"
+          className="inline-flex items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-bold text-slate-500 dark:text-[color:var(--text-muted)] transition hover:bg-slate-50 dark:hover:bg-[var(--bg-elevated)] hover:text-slate-700 dark:hover:text-[color:var(--text-secondary)] disabled:cursor-not-allowed disabled:opacity-45"
         >
           <FiX size={13} />
           Limpiar
@@ -322,7 +322,7 @@ export default function PacientesPage() {
       </div>
 
       {loading ? (
-        <div className="ccr-fill ccr-panel ccr-data-table rounded-lg bg-white p-3">
+        <div className="ccr-fill ccr-panel ccr-data-table rounded-lg bg-white dark:bg-[var(--bg-card)] p-3">
           <TableSkeleton rows={7} />
         </div>
       ) : vista === 'cola' ? (

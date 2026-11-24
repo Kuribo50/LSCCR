@@ -375,6 +375,8 @@ h1, h2, h3, h4, h5, h6 {
 .ccr-preview-status-duplicate { background: #fff6e6 !important; border-color: #fdcb68 !important; color: #976502 !important; }
 .ccr-preview-status-error { background: #ffe6e6 !important; border-color: #fd9c9b !important; color: var(--danger-hover) !important; }
 .dark .ccr-preview-status, .dark .ccr-preview-status * { color: inherit !important; }
+.dark .ccr-preview-status-duplicate { background: rgba(233, 162, 59, 0.16) !important; border-color: rgba(233, 162, 59, 0.45) !important; color: #f3c77a !important; }
+.dark .ccr-preview-status-error { background: rgba(244, 63, 94, 0.16) !important; border-color: rgba(244, 63, 94, 0.45) !important; color: #fda4af !important; }
 
 /* ================================================================
    Badges & Misc

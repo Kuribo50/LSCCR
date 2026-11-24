@@ -7,7 +7,6 @@ import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import { useAlCambiarCargas } from "@/lib/cargasEventos";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   FiAlertTriangle,
@@ -18,6 +17,7 @@ import {
   FiFilter,
   FiFileText,
   FiInfo,
+  FiLink,
   FiRefreshCw,
   FiSearch,
   FiTrash2,
@@ -25,6 +25,7 @@ import {
   FiUsers,
   FiX,
 } from "react-icons/fi";
+import MenuAcciones from "@/components/MenuAcciones";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import FiltroPildoras from "@/components/FiltroPildoras";
 import { api } from "@/lib/api";
@@ -93,7 +94,7 @@ function fechaHora(iso: string) {
 
 export default function HistorialMensualPage() {
   const { user } = useAuth();
-  const { error: toastError, success: toastSuccess } = useToast();
+  const { error: toastError, success: toastSuccess, info: toastInfo } = useToast();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -403,57 +404,28 @@ export default function HistorialMensualPage() {
       <div className="ccr-waitlist-page flex h-[max(520px,calc(100dvh-64px-2rem))] flex-col overflow-hidden border border-slate-200 bg-white text-[13px] dark:border-ink-black-600 dark:bg-ink-black-800">
         <header className="ccr-waitlist-toolbar shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-ink-black-600 dark:bg-ink-black-800">
           <div className="space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="text-lg font-bold text-slate-950 dark:text-white">Historial de cortes mensuales</h1>
-                <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-                  <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{gruposEnriquecidos.length}</span> periodos
-                  {gruposFiltrados.length !== gruposEnriquecidos.length && (
-                    <>
-                      {" · "}mostrando <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{gruposFiltrados.length}</span>
-                    </>
-                  )}
-                  {ultimoCorte && (
-                    <>
-                      {" · "}último corte{" "}
-                      <span className="font-bold text-slate-800 dark:text-ink-black-100">{ultimoCorte.grupo.periodoLabel}</span>
-                    </>
-                  )}
-                  .
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => void cargarHistorial()} className="ccr-control-button" title="Volver a cargar">
-                  <FiRefreshCw size={13} aria-hidden="true" className={loading ? "animate-spin" : ""} />
-                  Actualizar
-                </button>
-                <Link href="/importar" className="ccr-export-button">
-                  <FiUpload size={13} aria-hidden="true" />
-                  Importar derivaciones
-                </Link>
-              </div>
-            </div>
+            <h1 className="sr-only">Historial de cortes mensuales</h1>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-ink-black-600 dark:bg-ink-black-900">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-ink-black-300">Ingresadas a lista de espera</p>
                 <p className="text-lg font-black tabular-nums leading-tight text-blue-600 dark:text-blue-300">{num(desgloseUltimoCorte?.enLista ?? 0)}</p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400 dark:text-ink-black-300">Pendientes + rescate del último corte</p>
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500 dark:text-ink-black-300">Pendientes + rescate del último corte</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-ink-black-600 dark:bg-ink-black-900">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-ink-black-300">Recurrentes</p>
                 <p className="text-lg font-black tabular-nums leading-tight text-slate-700 dark:text-white">{num(ultimoCorte?.recurrentesMes ?? 0)}</p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400 dark:text-ink-black-300">Ya estaban en el sistema</p>
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500 dark:text-ink-black-300">Ya estaban en el sistema</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-ink-black-600 dark:bg-ink-black-900">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-ink-black-300">Pacientes nuevos</p>
                 <p className="text-lg font-black tabular-nums leading-tight text-emerald-600 dark:text-emerald-300">{num(ultimoCorte?.registrosMes ?? 0)}</p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400 dark:text-ink-black-300">Ingresados por primera vez</p>
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500 dark:text-ink-black-300">Ingresados por primera vez</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 dark:border-ink-black-600 dark:bg-ink-black-900">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-ink-black-300">Total pacientes</p>
                 <p className="text-lg font-black tabular-nums leading-tight text-slate-900 dark:text-white">{num(desgloseUltimoCorte?.total ?? 0)}</p>
-                <p className="mt-0.5 text-[10px] font-medium text-slate-400 dark:text-ink-black-300">Personas del corte completo</p>
+                <p className="mt-0.5 text-[10px] font-medium text-slate-500 dark:text-ink-black-300">Personas del corte completo</p>
               </div>
             </div>
 
@@ -468,19 +440,26 @@ export default function HistorialMensualPage() {
                   className="ccr-control-input w-full pl-9 pr-3"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setMasAntiguoPrimero((v) => !v)}
-                className="ccr-control-button order-2 ml-auto"
-                title="Cambiar el orden de la tabla"
-              >
-                {masAntiguoPrimero ? <FiArrowUp size={13} aria-hidden="true" /> : <FiArrowDown size={13} aria-hidden="true" />}
-                {masAntiguoPrimero ? "Más antiguos primero" : "Más recientes primero"}
-              </button>
+              <div className="order-1 w-44 shrink-0">
+                <FiltroPildoras
+                  ariaLabel="Filtrar por estado del corte"
+                  valor={filtroEstado}
+                  onChange={setFiltroEstado}
+                  opciones={[
+                    { value: "", label: "Todos", total: gruposEnriquecidos.length },
+                    ...estadoOptions.map(([estado, label]) => ({
+                      value: estado,
+                      label,
+                      dot: DOT_ESTADO[estado],
+                      total: gruposEnriquecidos.filter(({ activo }) => activo.estado === estado).length,
+                    })),
+                  ]}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => setFiltrosAbiertos((prev) => !prev)}
-                className="ccr-control-button order-2"
+                className="ccr-control-button order-2 ml-auto"
                 aria-expanded={filtrosAbiertos}
                 aria-controls="historial-filtros"
               >
@@ -501,17 +480,51 @@ export default function HistorialMensualPage() {
                   <FiX size={15} aria-hidden="true" />
                 </button>
               )}
+              <div className="order-2">
+                <MenuAcciones
+                  acciones={[
+                    {
+                      label: "Actualizar",
+                      detalle: "Vuelve a cargar los cortes",
+                      tono: "azul",
+                      icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                      onClick: () => void cargarHistorial(),
+                    },
+                    {
+                      label: masAntiguoPrimero ? "Más recientes primero" : "Más antiguos primero",
+                      detalle: "Cambia el orden de la lista",
+                      tono: "gris",
+                      icon: masAntiguoPrimero ? <FiArrowDown size={13} aria-hidden="true" /> : <FiArrowUp size={13} aria-hidden="true" />,
+                      onClick: () => setMasAntiguoPrimero((v) => !v),
+                    },
+                    {
+                      label: "Importar derivaciones",
+                      detalle: "Subir un nuevo corte",
+                      tono: "verde",
+                      icon: <FiUpload size={13} aria-hidden="true" />,
+                      onClick: () => router.push("/importar"),
+                    },
+                    {
+                      label: "Copiar enlace",
+                      detalle: "De esta vista",
+                      tono: "gris",
+                      icon: <FiLink size={13} aria-hidden="true" />,
+                      onClick: () => {
+                        void navigator.clipboard?.writeText(window.location.href).then(() => toastInfo("Enlace copiado."));
+                      },
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {filtrosAbiertos && (
-              <motion.div
+              <div
                 id="historial-filtros"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.15 }}
-                className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-4"
+                className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
               >
                 <MultiSelectFiltro
+                  sinAnimacion
                   anchoCompleto
                   textoTodos
                   label="Año"
@@ -524,6 +537,7 @@ export default function HistorialMensualPage() {
                   onChange={setFiltroAnio}
                 />
                 <MultiSelectFiltro
+                  sinAnimacion
                   anchoCompleto
                   textoTodos
                   label="Usuario"
@@ -531,7 +545,7 @@ export default function HistorialMensualPage() {
                   opciones={usuarioOptions}
                   onChange={setFiltroUsuario}
                 />
-              </motion.div>
+              </div>
             )}
 
           </div>
@@ -546,21 +560,19 @@ export default function HistorialMensualPage() {
                 : "Solo quien subió una carga puede revertirla durante los primeros 10 minutos."}
             </span>
           </p>
-          <FiltroPildoras
-            ariaLabel="Filtrar por estado del corte"
-            layoutId="historial-estado-activo"
-            valor={filtroEstado}
-            onChange={setFiltroEstado}
-            opciones={[
-              { value: "", label: "Todos", total: gruposEnriquecidos.length },
-              ...estadoOptions.map(([estado, label]) => ({
-                value: estado,
-                label,
-                dot: DOT_ESTADO[estado],
-                total: gruposEnriquecidos.filter(({ activo }) => activo.estado === estado).length,
-              })),
-            ]}
-          />
+          <p className="text-[11px] font-medium text-slate-500 dark:text-ink-black-300">
+            <span className="font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{gruposEnriquecidos.length}</span> periodos
+            {gruposFiltrados.length !== gruposEnriquecidos.length && (
+              <>
+                {" · "}mostrando <span className="font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{gruposFiltrados.length}</span>
+              </>
+            )}
+            {ultimoCorte && (
+              <>
+                {" · "}último corte <span className="font-bold text-slate-700 dark:text-ink-black-100">{ultimoCorte.grupo.periodoLabel}</span>
+              </>
+            )}
+          </p>
         </div>
 
         {error && (
@@ -702,9 +714,9 @@ export default function HistorialMensualPage() {
                                 ] as Array<[string, number, typeof FiFileText, string]>
                               ).map(([label, value, Icon, color]) => (
                                 <div key={label} className="flex items-center gap-2 px-4 py-3 sm:px-3">
-                                  <Icon size={14} className="shrink-0 text-slate-400 dark:text-ink-black-300" aria-hidden="true" />
+                                  <Icon size={14} className="shrink-0 text-slate-500 dark:text-ink-black-300" aria-hidden="true" />
                                   <div className="min-w-0">
-                                    <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-ink-black-300">{label}</p>
+                                    <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-ink-black-300">{label}</p>
                                     <p className={`text-sm font-black tabular-nums ${color}`}>{num(value)}</p>
                                   </div>
                                 </div>
@@ -739,7 +751,7 @@ export default function HistorialMensualPage() {
                                   </Link>
                                 )}
                               </div>
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-400 dark:text-ink-black-300">
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-500 dark:text-ink-black-300">
                                 <span>Acumulado: <strong className="tabular-nums text-slate-600 dark:text-ink-black-200">{num(totalAcumulado)}</strong></span>
                                 {crecimiento !== null && (
                                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-bold ${crecimiento > 0 ? "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200" : crecimiento < 0 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200" : "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200"}`}>
@@ -841,7 +853,7 @@ export default function HistorialMensualPage() {
               <p>
                 {gruposFiltrados.length} periodo{gruposFiltrados.length !== 1 ? "s" : ""} mensual{gruposFiltrados.length !== 1 ? "es" : ""}
               </p>
-              <p className="text-gray-400">Mostrando {gruposFiltrados.length} de {gruposEnriquecidos.length}</p>
+              <p className="text-slate-500 dark:text-[color:var(--text-muted)]">Mostrando {gruposFiltrados.length} de {gruposEnriquecidos.length}</p>
             </div>
           </section>
         )}
@@ -893,7 +905,7 @@ export default function HistorialMensualPage() {
                   ] as Array<[string, number, string]>
                 ).map(([label, value, help]) => (
                   <div key={label} className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-ink-black-600 dark:bg-ink-black-800">
-                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400 dark:text-ink-black-300">{label}</p>
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-ink-black-300">{label}</p>
                     <p className="mt-1 text-xl font-black tabular-nums text-slate-900 dark:text-white">{num(value)}</p>
                     <p className="mt-1 text-[10px] font-medium leading-tight text-slate-500 dark:text-ink-black-300">{help}</p>
                   </div>

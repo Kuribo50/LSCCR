@@ -79,8 +79,11 @@ Las migraciones nuevas de esta versión (`pacientes 0017–0019`, `importar 0005
 
 ## 5. Límites y operación
 
-- **Subida de archivos**: `client_max_body_size 20M` en Nginx. El backend no valida
-  el tamaño aparte; una planilla mayor a 20 MB recibe 413 de Nginx.
+- **Subida de archivos**: el backend acepta solo `.xlsx` y rechaza archivos de más de
+  10 MB (`ImportacionDerivacionesSerializer`, que también valida la carga de teléfonos).
+  Nginx tiene además `client_max_body_size 20M` como tope general. Un archivo mayor a
+  10 MB recibe 400 del backend; uno mayor a 20 MB, 413 de Nginx. El texto pegado se
+  limita por el tope de cuerpo de Django (2,5 MB por defecto).
 - **Reversión de cargas**: ventana de 10 minutos (`MINUTOS_REVERSION` en
   `backend/apps/importar/reversion.py`). Pasado ese tiempo solo el Administrador
   puede limpiar un corte.

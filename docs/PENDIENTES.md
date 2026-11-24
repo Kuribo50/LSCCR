@@ -27,17 +27,18 @@ razonable de uso funcional.
   `llamados` en componentes mas pequenos cuando se estabilice el estreno.
 - Consolidar tablas operativas para reducir duplicacion entre lista de espera,
   ingresados y egresos.
-- Revisar si la ruta `/gestion/derivaciones` sigue siendo necesaria o si puede
-  documentarse como alias/legacy.
-- Revisar el componente `ColaDeLlamados`: aun esta referenciado por
-  `/pacientes`, por eso no fue eliminado.
+- `/gestion/derivaciones` quedo como alias legacy: redirige a `/importar` para no
+  romper enlaces o favoritos viejos. Se puede eliminar cuando ya no se use.
+- `ColaDeLlamados` sigue siendo la vista "Cola" de `/pacientes` (se activa con el
+  selector Tabla/Cola). Duplica en parte a `/llamados`; decidir si se retira esa
+  vista antes de eliminar el componente.
 - Revisar endpoints administrativos de borrado de importaciones. Existen en el
   backend y no deben eliminarse sin decidir primero la politica operativa.
 - Evaluar archivado logico de cortes de importacion para conservar trazabilidad
   sin borrar datos fisicos cuando se limpia un periodo.
 - Agregar pruebas frontend de humo para rutas principales.
-- Agregar CI con `python manage.py check`, migraciones dry-run, tests backend,
-  `npm run lint` y `npm run build`.
+- ~~Agregar CI con `check`, migraciones dry-run, tests, lint y build~~: hecho
+  (`.github/workflows/ci.yml`, incluye PostgreSQL).
 
 ## Pendientes para produccion
 

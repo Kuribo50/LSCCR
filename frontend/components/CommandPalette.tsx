@@ -337,7 +337,7 @@ export default function CommandPalette({
               onKeyDown={handleKeyDown}
               placeholder={buscarPacientes ? "Busca por nombre, RUT o sección" : "Busca una sección"}
               aria-label="Buscar paciente, sección o acción"
-              className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-slate-950 outline-none placeholder:text-slate-400 dark:text-white dark:placeholder:text-ink-black-400"
+              className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-slate-950 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-ink-black-400"
             />
             <kbd className={kbd}>Esc</kbd>
           </div>
@@ -375,7 +375,7 @@ export default function CommandPalette({
                         <p className="text-[13px] font-bold text-slate-950 dark:text-white">
                           {GROUP_LABEL[entry.kind]}
                           {total > 0 && (
-                            <span className="ml-1.5 font-semibold tabular-nums text-slate-400">{total}</span>
+                            <span className="ml-1.5 font-semibold tabular-nums text-slate-500 dark:text-slate-400">{total}</span>
                           )}
                         </p>
                         {isPatientGroup && total >= PATIENT_LIMIT && (

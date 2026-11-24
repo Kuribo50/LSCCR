@@ -270,15 +270,15 @@ export default function IngresoManual() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-bold text-gray-700">
+        <h2 className="text-sm font-bold text-gray-700 dark:text-[color:var(--text-secondary)]">
           O ingresa manualmente copiando desde Excel
         </h2>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-gray-500 dark:text-[color:var(--text-muted)]">
           Pega filas copiadas desde Excel y revísalas antes de importarlas.
         </p>
       </div>
 
-      <div className="rounded-[10px] bg-white p-5" style={{ border: '0.5px solid #a8d4f0' }}>
+      <div className="rounded-[10px] bg-white dark:bg-[var(--bg-card)] p-5" style={{ border: '0.5px solid #a8d4f0' }}>
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
@@ -296,12 +296,12 @@ export default function IngresoManual() {
               setResultado(null)
               setError('')
             }}
-            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+            className="rounded-lg border px-4 py-2 text-sm font-medium text-gray-600 dark:text-[color:var(--text-secondary)] transition hover:bg-gray-50 dark:hover:bg-[var(--bg-elevated)]"
             style={{ borderColor: '#a8d4f0' }}
           >
             Limpiar
           </button>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-[color:var(--text-muted)]">
             <span className="rounded-full px-2.5 py-1" style={{ backgroundColor: '#F0FDF4' }}>
               {resumen.ok} filas listas
             </span>
@@ -320,14 +320,14 @@ export default function IngresoManual() {
               value={textoPegado}
               onChange={(e) => manejarPegado(e.target.value)}
               placeholder="Pega aqui filas copiadas desde Excel (TSV)."
-              className="min-h-[140px] w-full rounded-xl border p-3 text-sm text-gray-700 outline-none"
+              className="min-h-[140px] w-full rounded-xl border p-3 text-sm text-gray-700 dark:text-[color:var(--text-secondary)] outline-none"
               style={{ borderColor: '#a8d4f0', backgroundColor: '#FAFCFA' }}
             />
           </div>
         )}
 
         {error && (
-          <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+          <p className="mt-4 rounded-lg bg-red-50 dark:bg-red-500/15 px-3 py-2 text-xs text-red-700 dark:text-red-300">{error}</p>
         )}
 
         {filas.length > 0 && (
@@ -365,7 +365,7 @@ export default function IngresoManual() {
                               value={fila[columna.key]}
                               onChange={(e) => actualizarCelda(fila.id, columna.key, e.target.value)}
                               placeholder={columna.placeholder}
-                              className="w-full rounded-md border bg-white px-2 py-2 text-sm text-gray-700 outline-none"
+                              className="w-full rounded-md border bg-white dark:bg-[var(--bg-card)] px-2 py-2 text-sm text-gray-700 dark:text-[color:var(--text-secondary)] outline-none"
                               style={{ borderColor: '#a8d4f0' }}
                             />
                           </td>
@@ -378,7 +378,7 @@ export default function IngresoManual() {
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 dark:text-[color:var(--text-muted)]">
                 {filasValidas} fila{filasValidas !== 1 ? 's' : ''} listas para importar de un total de {filas.length}. Las filas amarillas o rojas conviene corregirlas antes de enviar.
               </p>
               <button
@@ -396,17 +396,17 @@ export default function IngresoManual() {
       </div>
 
       {resultado && (
-        <div className="rounded-[10px] bg-white p-5 space-y-4" style={{ border: '0.5px solid #a8d4f0' }}>
-          <h3 className="text-sm font-bold text-gray-700">Resultado del ingreso manual</h3>
+        <div className="rounded-[10px] bg-white dark:bg-[var(--bg-card)] p-5 space-y-4" style={{ border: '0.5px solid #a8d4f0' }}>
+          <h3 className="text-sm font-bold text-gray-700 dark:text-[color:var(--text-secondary)]">Resultado del ingreso manual</h3>
 
           <div className="grid gap-3 text-center sm:grid-cols-3">
             <div className="rounded-lg p-3" style={{ backgroundColor: '#F9FAFB' }}>
-              <p className="text-2xl font-bold text-gray-700">{resultado.total}</p>
-              <p className="text-xs text-gray-400">Total enviado</p>
+              <p className="text-2xl font-bold text-gray-700 dark:text-[color:var(--text-secondary)]">{resultado.total}</p>
+              <p className="text-xs text-gray-400 dark:text-[color:var(--text-muted)]">Total enviado</p>
             </div>
             <div className="rounded-lg p-3" style={{ backgroundColor: '#F0FDF4' }}>
-              <p className="text-2xl font-bold text-green-700">{resultado.importados}</p>
-              <p className="text-xs text-gray-400">Importados</p>
+              <p className="text-2xl font-bold text-green-700 dark:text-emerald-200">{resultado.importados}</p>
+              <p className="text-xs text-gray-400 dark:text-[color:var(--text-muted)]">Importados</p>
             </div>
             <div
               className="rounded-lg p-3"
@@ -418,16 +418,16 @@ export default function IngresoManual() {
               >
                 {resultado.duplicados}
               </p>
-              <p className="text-xs text-gray-400">Duplicados</p>
+              <p className="text-xs text-gray-400 dark:text-[color:var(--text-muted)]">Duplicados</p>
             </div>
           </div>
 
           {resultado.errores.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-red-700">Errores por fila</p>
+              <p className="text-xs font-semibold text-red-700 dark:text-red-300">Errores por fila</p>
               <div className="max-h-48 space-y-1 overflow-auto">
                 {resultado.errores.map((item, index) => (
-                  <div key={`${item.fila}-${index}`} className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <div key={`${item.fila}-${index}`} className="rounded-lg bg-red-50 dark:bg-red-500/15 px-3 py-2 text-xs text-red-700 dark:text-red-300">
                     Fila {item.fila}: {item.motivo}
                   </div>
                 ))}

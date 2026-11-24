@@ -47,29 +47,31 @@ function Panel({
   children,
 }: {
   titulo: string;
-  detalle: string;
+  detalle?: string;
   leyenda?: Array<{ nombre: string; color: string; punteado?: boolean }>;
   children: React.ReactNode;
 }) {
   return (
-    <section className="ccr-panel flex flex-col p-5">
-      <h2 className="text-sm font-bold text-slate-950 dark:text-white">{titulo}</h2>
-      <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">{detalle}</p>
-      {leyenda && (
-        <div className="mt-2 flex flex-wrap gap-3">
-          {leyenda.map((l) => (
-            <span key={l.nombre} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-ink-black-200">
-              <span
-                aria-hidden="true"
-                className="h-0.5 w-4 rounded-full"
-                style={l.punteado ? { backgroundImage: `linear-gradient(90deg, ${l.color} 60%, transparent 0)`, backgroundSize: "6px 2px" } : { background: l.color }}
-              />
-              {l.nombre}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="mt-3 h-[220px]">{children}</div>
+    <section className="flex flex-col">
+      <div className="flex min-h-[46px] flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-slate-200 px-5 py-3 dark:border-ink-black-600">
+        <h2 className="text-sm font-bold text-slate-950 dark:text-white">{titulo}</h2>
+        {detalle && <span className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">{detalle}</span>}
+        {leyenda && (
+          <div className="flex flex-wrap gap-3">
+            {leyenda.map((l) => (
+              <span key={l.nombre} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-ink-black-200">
+                <span
+                  aria-hidden="true"
+                  className="h-0.5 w-3.5 rounded-full"
+                  style={l.punteado ? { backgroundImage: `linear-gradient(90deg, ${l.color} 60%, transparent 0)`, backgroundSize: "6px 2px" } : { background: l.color }}
+                />
+                {l.nombre}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="h-[210px] px-4 pb-3 pt-4">{children}</div>
     </section>
   );
 }
@@ -153,14 +155,14 @@ export default function GraficosInicio() {
 
   const eje = { fontSize: 11, fill: "#6B7179", fontWeight: 600 };
   const vacio = (
-    <div className="flex h-full items-center justify-center rounded-xl bg-slate-50 text-xs font-semibold text-slate-400 dark:bg-ink-black-700">
+    <div className="flex h-full items-center justify-center rounded-xl bg-slate-50 text-xs font-semibold text-slate-500 dark:text-slate-400 dark:bg-ink-black-700">
       {cargando ? "Cargando…" : "Sin datos para mostrar"}
     </div>
   );
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <Panel titulo="Lista de espera por categoría" detalle={`${pendientes.length} pacientes pendientes`}>
+    <div className="grid grid-cols-1 divide-y divide-slate-200 dark:divide-ink-black-600 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+      <Panel titulo="Lista de espera por categoría" detalle={`${pendientes.length} pendientes`}>
         {porCategoria.length === 0 ? vacio : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={porCategoria} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }} barCategoryGap={6}>
@@ -177,7 +179,7 @@ export default function GraficosInicio() {
         )}
       </Panel>
 
-      <Panel titulo="Tiempo de espera" detalle="Tiempo desde la derivación de los pacientes pendientes">
+      <Panel titulo="Tiempo de espera" detalle="Desde la derivación">
         {pendientes.length === 0 ? vacio : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={porTramo} margin={{ top: 8, right: 4, bottom: 0, left: -18 }}>
@@ -197,7 +199,6 @@ export default function GraficosInicio() {
 
       <Panel
         titulo={`Movimiento ${anio}`}
-        detalle="Pacientes derivados, ingresados y egresados por mes"
         leyenda={[
           { nombre: "Derivados", color: "#3B74E8" },
           { nombre: "Ingresos", color: "#1F7A4D" },

@@ -3,17 +3,18 @@
 import { Fragment, useCallback, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import dynamic from "next/dynamic";
-import { FiAlertTriangle, FiChevronDown, FiExternalLink, FiRefreshCw, FiSearch, FiUserX } from "react-icons/fi";
+import { FiAlertTriangle, FiChevronDown, FiExternalLink, FiLink, FiRefreshCw, FiSearch, FiUserX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useToast } from "@/lib/toast-context";
 import { getErrorMessage } from "@/lib/errors";
-import { esEncargado } from "@/lib/roles";
 import { formatearRut, limpiarRut } from "@/lib/rut";
 import type { InasistenciasResumen, InasistenciaPacienteResumen, Paciente } from "@/lib/types";
 import BadgeEstado from "@/components/BadgeEstado";
 import SelectFiltro from "@/components/SelectFiltro";
+import MenuAcciones from "@/components/MenuAcciones";
 import { TableSkeleton } from "@/components/Skeleton";
+import { fechaDDMMAAAA } from "@/lib/utils";
 
 const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr: false });
 
@@ -29,11 +30,7 @@ const PERIODOS = [
 ];
 
 type Vista = "TODOS" | "RIESGO" | "UNA";
-
-function fechaCorta(iso: string) {
-  const [y, m, d] = iso.split("-");
-  return y && m && d ? `${d}/${m}/${y}` : iso;
-}
+type Orden = "SIN_JUSTIFICAR" | "RECIENTE" | "NOMBRE";
 
 function hace(dias: number) {
   const f = new Date();
@@ -43,15 +40,6 @@ function hace(dias: number) {
 
 function toNombre(valor: string) {
   return valor.toLocaleLowerCase("es-CL").replace(/\p{L}+/gu, (w) => w.charAt(0).toLocaleUpperCase("es-CL") + w.slice(1));
-}
-
-function Stat({ label, valor }: { label: string; valor: number }) {
-  return (
-    <span className="ccr-waitlist-stat">
-      <span>{label}</span>
-      <strong>{valor}</strong>
-    </span>
-  );
 }
 
 function ContadorInasistencias({ item }: { item: InasistenciaPacienteResumen }) {
@@ -87,6 +75,7 @@ export default function InasistenciasPage() {
   const [kine, setKine] = useState("TODOS");
   const [vista, setVista] = useState<Vista>("TODOS");
   const [busqueda, setBusqueda] = useState("");
+  const [orden, setOrden] = useState<Orden>("SIN_JUSTIFICAR");
   const [abierto, setAbierto] = useState<number | null>(null);
 
   // Al cambiar el periodo se vuelve a mostrar el estado de carga (ajuste durante el render).
@@ -137,7 +126,7 @@ export default function InasistenciasPage() {
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     const qRut = limpiarRut(busqueda).toLowerCase();
-    return items.filter((i) => {
+    const lista = items.filter((i) => {
       if (kine !== "TODOS" && (i.kine_nombre || "Sin responsable") !== kine) return false;
       if (vista === "RIESGO" && i.no_justificadas < 2) return false;
       if (vista === "UNA" && i.no_justificadas !== 1) return false;
@@ -148,47 +137,24 @@ export default function InasistenciasPage() {
         (i.id_ccr || "").toLowerCase().includes(q)
       );
     });
-  }, [items, kine, vista, busqueda]);
-
-  const puedeVerTodos = user?.rol === "ADMIN" || esEncargado(user);
+    return [...lista].sort((a, b) => {
+      if (orden === "NOMBRE") return a.nombre.localeCompare(b.nombre, "es");
+      if (orden === "RECIENTE") return (b.ultima_fecha || "").localeCompare(a.ultima_fecha || "");
+      return b.no_justificadas - a.no_justificadas || (b.ultima_fecha || "").localeCompare(a.ultima_fecha || "");
+    });
+  }, [items, kine, vista, busqueda, orden]);
 
   if (!user) return null;
 
   return (
     <div className="ccr-dashboard-content space-y-4">
-      <header className="ccr-waitlist-toolbar ccr-panel rounded-2xl p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:!text-white">Inasistencias</h1>
-            <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-ink-black-200">
-              {puedeVerTodos
-                ? "Pacientes con inasistencias registradas y cuántas lleva cada uno."
-                : "Tus pacientes con inasistencias registradas y cuántas lleva cada uno."}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-            <div className="grid grid-cols-2 gap-2 sm:flex">
-              <Stat label="Pacientes" valor={data?.total_pacientes ?? 0} />
-              <Stat label="Inasistencias" valor={data?.total_inasistencias ?? 0} />
-              <Stat label="Sin justificar" valor={data?.no_justificadas ?? 0} />
-              <Stat label="En riesgo" valor={data?.en_riesgo ?? 0} />
-            </div>
-            <button
-              type="button"
-              onClick={() => void cargar()}
-              className="ccr-button-refresh inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-bold"
-            >
-              <FiRefreshCw size={13} className={loading ? "animate-spin" : ""} />
-              Recargar
-            </button>
-          </div>
-        </div>
-      </header>
+      <h1 className="sr-only">Inasistencias</h1>
 
-      <section className="ccr-panel space-y-3 rounded-2xl p-4">
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px_220px]">
+      <section className="ccr-panel ccr-data-table overflow-hidden rounded-2xl">
+      <div className="border-b border-[var(--border-subtle)] p-4">
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_200px_200px_230px_200px_auto]">
           <div className="relative">
-            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} />
             <input
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
@@ -210,37 +176,56 @@ export default function InasistenciasPage() {
             opciones={kines.map((k) => ({ value: k, label: k }))}
             onChange={setKine}
           />
+          <SelectFiltro
+            label="Categoría"
+            value={vista}
+            onChange={(v) => setVista(v as Vista)}
+            opciones={[
+              { value: "TODOS", label: `Todos (${items.length})` },
+              { value: "RIESGO", label: `2 o más sin justificar (${items.filter((i) => i.no_justificadas >= 2).length})`, dot: "bg-red-500" },
+              { value: "UNA", label: `1 sin justificar (${items.filter((i) => i.no_justificadas === 1).length})`, dot: "bg-amber-400" },
+            ]}
+          />
+          <SelectFiltro
+            label="Ordenar por"
+            value={orden}
+            onChange={(v) => setOrden(v as Orden)}
+            opciones={[
+              { value: "SIN_JUSTIFICAR", label: "Más sin justificar" },
+              { value: "RECIENTE", label: "Última inasistencia" },
+              { value: "NOMBRE", label: "Nombre (A-Z)" },
+            ]}
+          />
+          <div className="flex items-center justify-end">
+            <MenuAcciones
+              acciones={[
+                {
+                  label: "Actualizar",
+                  detalle: "Vuelve a cargar las inasistencias",
+                  tono: "azul",
+                  icon: <FiRefreshCw size={13} aria-hidden="true" className={loading ? "animate-spin" : ""} />,
+                  onClick: () => void cargar(),
+                },
+                {
+                  label: "Copiar enlace",
+                  detalle: "De esta vista",
+                  tono: "gris",
+                  icon: <FiLink size={13} aria-hidden="true" />,
+                  onClick: () => {
+                    void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                  },
+                },
+              ]}
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {(
-            [
-              { v: "TODOS", label: "Todos", n: items.length },
-              { v: "RIESGO", label: "2 o más sin justificar", n: items.filter((i) => i.no_justificadas >= 2).length },
-              { v: "UNA", label: "1 sin justificar", n: items.filter((i) => i.no_justificadas === 1).length },
-            ] as Array<{ v: Vista; label: string; n: number }>
-          ).map((f) => (
-            <button
-              key={f.v}
-              type="button"
-              onClick={() => setVista(f.v)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                vista === f.v
-                  ? "bg-blue-600 text-white"
-                  : "bg-[var(--bg-elevated)] text-slate-600 hover:bg-blue-50 dark:!text-ink-black-200"
-              }`}
-            >
-              {f.label}
-              <span className={`tabular-nums ${vista === f.v ? "text-white/80" : "text-[var(--text-muted)]"}`}>{f.n}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+      </div>
 
       {error && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:!bg-red-500/10 dark:!text-red-100">{error}</div>
+        <div className="m-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 dark:!bg-red-500/10 dark:!text-red-100">{error}</div>
       )}
 
-      <section className="ccr-panel ccr-data-table overflow-hidden rounded-2xl">
+      <div>
         {loading ? (
           <div className="p-3">
             <TableSkeleton rows={6} />
@@ -301,7 +286,7 @@ export default function InasistenciasPage() {
                         <td className="px-3 py-3 font-semibold tabular-nums text-slate-600 dark:!text-ink-black-200">{item.justificadas}</td>
                         <td className="px-3 py-3 font-bold tabular-nums text-slate-800 dark:!text-white">{item.total}</td>
                         <td className="px-3 py-3 text-slate-600 dark:!text-ink-black-200">
-                          <span className="block font-semibold">{fechaCorta(item.ultima_fecha)}</span>
+                          <span className="block font-semibold">{fechaDDMMAAAA(item.ultima_fecha)}</span>
                           {item.ultimo_motivo && (
                             <span className="block max-w-[200px] truncate text-[10px] text-[var(--text-muted)]" title={item.ultimo_motivo}>
                               {item.ultimo_motivo}
@@ -322,7 +307,7 @@ export default function InasistenciasPage() {
                             </button>
                             <FiChevronDown
                               size={15}
-                              className={`text-slate-400 transition-transform ${expandido ? "rotate-180" : ""}`}
+                              className={`text-slate-500 dark:text-slate-400 transition-transform ${expandido ? "rotate-180" : ""}`}
                               aria-hidden
                             />
                           </span>
@@ -334,7 +319,7 @@ export default function InasistenciasPage() {
                             <ul className="space-y-1.5">
                               {item.detalle.map((d) => (
                                 <li key={d.id} className="flex flex-wrap items-center gap-2 text-[11px]">
-                                  <span className="w-20 font-bold tabular-nums text-slate-700 dark:!text-white">{fechaCorta(d.fecha)}</span>
+                                  <span className="w-20 font-bold tabular-nums text-slate-700 dark:!text-white">{fechaDDMMAAAA(d.fecha)}</span>
                                   <span
                                     className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                       d.justificada
@@ -360,11 +345,16 @@ export default function InasistenciasPage() {
           </div>
         )}
         {!loading && visibles.length > 0 && (
-          <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2.5 text-[11px] font-semibold text-[var(--text-muted)]">
-            Mostrando {visibles.length} de {items.length} pacientes · el número en rojo marca 2 o más inasistencias sin justificar
-            (evaluar abandono).
+          <div className="flex flex-col gap-1 border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-2.5 text-[11px] font-semibold text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Mostrando {visibles.length} de {items.length} pacientes · {data?.total_inasistencias ?? 0} inasistencias ·{" "}
+              {data?.no_justificadas ?? 0} sin justificar ·{" "}
+              <span className={(data?.en_riesgo ?? 0) > 0 ? "font-bold text-red-600 dark:text-red-300" : ""}>{data?.en_riesgo ?? 0} en riesgo</span>
+            </p>
+            <p>El número en rojo marca 2 o más sin justificar (evaluar abandono).</p>
           </div>
         )}
+      </div>
       </section>
 
       {fichaPaciente && user && (

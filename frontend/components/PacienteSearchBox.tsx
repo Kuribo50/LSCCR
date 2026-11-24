@@ -389,51 +389,51 @@ export default function PacienteSearchBox({
           className={classes(
             "group flex w-full items-start gap-3 border-l-2 px-3 py-3 text-left transition",
             active
-              ? "border-blue-500 bg-blue-50"
-              : "border-transparent bg-white hover:border-blue-200 hover:bg-slate-50",
+              ? "border-blue-500 bg-blue-50 dark:bg-[var(--brand-light)]"
+              : "border-transparent bg-white dark:bg-[var(--bg-card)] hover:border-blue-200 dark:hover:border-[var(--brand-border)] hover:bg-slate-50 dark:hover:bg-[var(--bg-elevated)]",
           )}
         >
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-700 shadow-sm transition group-hover:border-blue-200">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 dark:border-[var(--brand-border)] bg-white dark:bg-[var(--bg-card)] text-blue-700 dark:text-blue-200 shadow-sm transition group-hover:border-blue-200 dark:group-hover:border-[var(--brand-border)]">
             <FiUser size={14} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-start justify-between gap-3">
               <span className="min-w-0">
-                <span className="block truncate text-[13px] font-black text-slate-950">
+                <span className="block truncate text-[13px] font-black text-slate-950 dark:text-[color:var(--text-primary)]">
                   {paciente.nombre}
                 </span>
-                <span className="mt-0.5 block truncate font-mono text-[11px] font-semibold text-slate-500">
+                <span className="mt-0.5 block truncate font-mono text-[11px] font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
                   {formatearRut(paciente.rut)}
                 </span>
               </span>
-              <span className="shrink-0 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700">
+              <span className="shrink-0 rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2 py-0.5 text-[10px] font-black text-blue-700 dark:text-blue-200">
                 {prioridadLabel}
               </span>
             </span>
             <span
-              className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold text-slate-600"
+              className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] font-semibold text-slate-600 dark:text-[color:var(--text-secondary)]"
               title={paciente.diagnostico}
             >
-              <FiClipboard className="shrink-0 text-slate-400" size={12} />
+              <FiClipboard className="shrink-0 text-slate-500 dark:text-[color:var(--text-muted)]" size={12} />
               <span className="truncate">{paciente.diagnostico}</span>
             </span>
             <span className="mt-1 flex flex-wrap gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-[var(--border-subtle)] bg-slate-50 dark:bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-[color:var(--text-secondary)]">
                 <FiBriefcase size={10} />
                 {estadoLabel}
               </span>
               {sectorCesfam && (
-                <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-slate-200 dark:border-[var(--border-subtle)] bg-slate-50 dark:bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-[color:var(--text-secondary)]">
                   <FiMapPin size={10} />
                   Sector {sectorCesfam}
                 </span>
               )}
               {sectorOficial && (
-                <span className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                <span className="max-w-full truncate rounded-full border border-slate-200 dark:border-[var(--border-subtle)] bg-slate-50 dark:bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:text-[color:var(--text-secondary)]">
                   Oficial {sectorOficial}
                 </span>
               )}
-              <span className="max-w-full truncate rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+              <span className="max-w-full truncate rounded-full border border-blue-100 dark:border-[var(--brand-border)] bg-blue-50 dark:bg-[var(--brand-light)] px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-200">
                 {kineAsignadoLabel(paciente)}
               </span>
             </span>
@@ -447,7 +447,7 @@ export default function PacienteSearchBox({
     <div ref={rootRef} className={classes("relative", className)}>
       <div className="group relative">
         <FiSearch
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors group-focus-within:text-blue-500"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-[color:var(--text-muted)] transition-colors group-focus-within:text-blue-500"
           size={15}
         />
         <input
@@ -469,7 +469,7 @@ export default function PacienteSearchBox({
           onFocus={() => setFocused(true)}
           onKeyDown={handleKeyDown}
           className={classes(
-            "w-full border border-zinc-200 bg-white pl-9 text-zinc-950 outline-none transition-all placeholder:text-zinc-500 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100",
+            "w-full border border-zinc-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] pl-9 text-zinc-950 dark:text-[color:var(--text-primary)] outline-none transition-all placeholder:text-zinc-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:bg-white dark:focus:bg-[var(--bg-card)] focus:ring-2 focus:ring-blue-100",
             size === "overlay"
               ? "rounded-2xl py-4 pr-12 text-base shadow-[0_14px_36px_-28px_rgba(51,95,219,0.75)]"
               : "rounded-lg",
@@ -485,7 +485,7 @@ export default function PacienteSearchBox({
             aria-label="Limpiar búsqueda"
             onClick={clearSearch}
             className={classes(
-              "absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100",
+              "absolute right-3 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-full bg-slate-100 dark:bg-[var(--bg-hover)] text-slate-500 dark:text-[color:var(--text-muted)] transition hover:bg-blue-50 dark:hover:bg-[var(--brand-light)] hover:text-blue-700 dark:hover:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-100",
               size === "overlay" ? "h-8 w-8" : "h-5 w-5",
             )}
           >
@@ -509,34 +509,34 @@ export default function PacienteSearchBox({
         role="listbox"
         aria-label="Resultados de búsqueda de pacientes"
         className={classes(
-          "absolute left-0 right-0 top-full z-[70] mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_42px_-24px_rgba(15,23,42,0.55)] transition duration-150 motion-reduce:transition-none",
+          "absolute left-0 right-0 top-full z-[70] mt-2 overflow-hidden rounded-xl border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] shadow-[0_18px_42px_-24px_rgba(15,23,42,0.55)] transition duration-150 motion-reduce:transition-none",
           size === "overlay" && "mt-4 rounded-2xl",
           panelOpen
             ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
             : "pointer-events-none -translate-y-1 scale-[0.98] opacity-0",
         )}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-[var(--border-subtle)] px-3 py-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-[color:var(--text-muted)]">
             {showHistory ? "Historial de búsqueda" : "Vista previa"}
           </p>
           {showHistory && visibleHistory.length > 0 ? (
             <button
               type="button"
               onClick={clearHistory}
-              className="text-[10px] font-bold text-blue-700 transition hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="text-[10px] font-bold text-blue-700 dark:text-blue-200 transition hover:text-blue-700 dark:hover:text-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-100"
             >
               Borrar historial
             </button>
           ) : (
-            <span className="text-[10px] font-bold text-blue-700">
+            <span className="text-[10px] font-bold text-blue-700 dark:text-blue-200">
               {loading ? "Buscando..." : `${suggestions.length} resultado${suggestions.length === 1 ? "" : "s"}`}
             </span>
           )}
         </div>
 
         {error ? (
-          <div className="px-3 py-3 text-xs font-semibold text-red-700">{error}</div>
+          <div className="px-3 py-3 text-xs font-semibold text-red-700 dark:text-red-300">{error}</div>
         ) : showHistory && activeItems.length > 0 ? (
           <ul className="max-h-72 overflow-y-auto py-1">
             {activeItems.map((paciente, index) => renderPacienteOption(paciente, index))}
@@ -545,7 +545,7 @@ export default function PacienteSearchBox({
           <div className="max-h-80 overflow-y-auto py-1">
             {indexedSuggestionGroups.map((grupo) => (
               <div key={grupo.id} role="group" aria-label={grupo.label}>
-                <div className="px-3 pb-1 pt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                <div className="px-3 pb-1 pt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-[color:var(--text-muted)]">
                   {grupo.label}
                 </div>
                 <ul>{grupo.items.map(({ paciente, index }) => renderPacienteOption(paciente, index))}</ul>
@@ -553,21 +553,21 @@ export default function PacienteSearchBox({
             ))}
           </div>
         ) : searched && !loading ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
             Sin pacientes para esta búsqueda.
           </div>
         ) : showHistory ? (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
             Sin búsquedas recientes.
           </div>
         ) : (
-          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500">
+          <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500 dark:text-[color:var(--text-muted)]">
             Escribe al menos 2 caracteres.
           </div>
         )}
 
         {!showHistory && canSearch && onViewAll && (
-          <div className="border-t border-slate-100 p-2">
+          <div className="border-t border-slate-100 dark:border-[var(--border-subtle)] p-2">
             <a
               href={viewAllHref}
               onClick={viewAllResults}

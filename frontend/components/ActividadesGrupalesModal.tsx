@@ -62,7 +62,7 @@ const DURACIONES = [30, 45, 60, 90, 120].map((m) => ({
 const ESTADO_TONO: Record<ActividadGrupal["estado"], string> = {
   PROGRAMADA: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200",
   REALIZADA: "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200",
-  CANCELADA: "bg-white text-slate-400 line-through ring-1 ring-inset ring-slate-200 dark:bg-transparent dark:ring-ink-black-600",
+  CANCELADA: "bg-white text-slate-500 dark:text-slate-400 line-through ring-1 ring-inset ring-slate-200 dark:bg-transparent dark:ring-ink-black-600",
 };
 
 function pad(n: number) {
@@ -198,7 +198,7 @@ export default function ActividadesGrupalesModal({
                   type="button"
                   onClick={onClose}
                   aria-label="Cerrar"
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
                 >
                   <FiX size={18} />
                 </button>
@@ -315,7 +315,7 @@ function ListaActividades({
       </div>
 
       {cargando ? (
-        <p className="py-10 text-center text-sm font-semibold text-slate-400">Cargando actividades…</p>
+        <p className="py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Cargando actividades…</p>
       ) : visibles.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-200 px-6 py-10 text-center dark:border-ink-black-600">
           <FiUsers className="mx-auto text-slate-300" size={26} aria-hidden="true" />
@@ -362,7 +362,7 @@ function ListaActividades({
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-[15px] font-extrabold tabular-nums text-slate-900 dark:text-ink-black-50">{a.total_participantes}</p>
-                  <p className="text-[10px] font-semibold text-slate-400">
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
                     {a.estado === "REALIZADA" ? `${a.total_asistentes} asistieron` : "pacientes"}
                   </p>
                 </div>
@@ -594,7 +594,7 @@ function DetalleActividad({
   const [confirmarEliminar, setConfirmarEliminar] = useState(false);
 
   if (!actividad) {
-    return <p className="flex-1 px-6 py-10 text-center text-sm font-semibold text-slate-400">Cargando actividad…</p>;
+    return <p className="flex-1 px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Cargando actividad…</p>;
   }
   const a = actividad;
   const puedeEditar = usuario.rol === "ADMIN" || a.responsable === usuario.id;
@@ -623,14 +623,14 @@ function DetalleActividad({
             </div>
             <p className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] font-semibold text-slate-600 dark:text-ink-black-200">
               <span className="inline-flex items-center gap-1.5">
-                <FiCalendar size={14} className="text-slate-400" aria-hidden="true" /> {fechaLarga(a.fecha_hora)}
+                <FiCalendar size={14} className="text-slate-500 dark:text-slate-400" aria-hidden="true" /> {fechaLarga(a.fecha_hora)}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <FiClock size={14} className="text-slate-400" aria-hidden="true" /> {a.duracion_minutos} min
+                <FiClock size={14} className="text-slate-500 dark:text-slate-400" aria-hidden="true" /> {a.duracion_minutos} min
               </span>
               {a.lugar && (
                 <span className="inline-flex items-center gap-1.5">
-                  <FiMapPin size={14} className="text-slate-400" aria-hidden="true" /> {a.lugar}
+                  <FiMapPin size={14} className="text-slate-500 dark:text-slate-400" aria-hidden="true" /> {a.lugar}
                 </span>
               )}
             </p>
@@ -655,7 +655,7 @@ function DetalleActividad({
 
         <div className="mt-5 flex items-center justify-between">
           <h4 className="text-[13px] font-extrabold text-slate-900 dark:text-ink-black-50">
-            Participantes <span className="font-semibold text-slate-400">({a.total_participantes})</span>
+            Participantes <span className="font-semibold text-slate-500 dark:text-slate-400">({a.total_participantes})</span>
           </h4>
           <span className="text-[12px] font-semibold text-slate-500">
             <span className="font-bold text-green-700 dark:text-green-300">{a.total_asistentes}</span> asistieron

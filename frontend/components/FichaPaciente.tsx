@@ -89,7 +89,7 @@ interface Props {
 
 function Field({ label, value, full = false }: { label: string; value: ReactNode; full?: boolean }) {
   const vacio = value === null || value === undefined || value === "";
-  const displayValue = vacio ? <span className="font-medium text-slate-400 dark:text-ink-black-400">Sin dato</span> : value;
+  const displayValue = vacio ? <span className="font-medium text-slate-500 dark:text-ink-black-400">Sin dato</span> : value;
   if (full) {
     return (
       <div className="border-b border-slate-100 py-2.5 last:border-b-0 dark:border-ink-black-700">
@@ -111,7 +111,7 @@ function Indicador({ label, value, detalle, alerta = false }: { label: string; v
     <div className="min-w-0 px-5 py-3">
       <p className="text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">{label}</p>
       <p className={`mt-0.5 truncate text-lg font-extrabold tabular-nums ${alerta ? "text-red-600 dark:text-red-300" : "text-slate-900 dark:text-ink-black-50"}`}>{value}</p>
-      {detalle && <p className="truncate text-[11px] font-medium text-slate-400 dark:text-ink-black-400">{detalle}</p>}
+      {detalle && <p className="truncate text-[11px] font-medium text-slate-500 dark:text-ink-black-400">{detalle}</p>}
     </div>
   );
 }
@@ -157,12 +157,12 @@ function AccionFicha({
   }[tono];
   const clase = `group flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
     disabled
-      ? "cursor-not-allowed text-slate-400 dark:text-ink-black-500"
+      ? "cursor-not-allowed text-slate-500 dark:text-ink-black-500"
       : "text-slate-800 hover:bg-white dark:text-ink-black-100 dark:hover:bg-ink-black-700"
   }`;
   const contenido = (
     <>
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${disabled ? "bg-slate-100 text-slate-400 dark:bg-ink-black-700" : chip}`} aria-hidden="true">
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${disabled ? "bg-slate-100 text-slate-500 dark:text-slate-400 dark:bg-ink-black-700" : chip}`} aria-hidden="true">
         {icon}
       </span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -386,7 +386,7 @@ export default function FichaPaciente({
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-600 dark:text-ink-black-200">
                 <span className="font-bold tabular-nums text-slate-900 dark:text-ink-black-50">{formatearRut(paciente.rut)}</span>
                 <span className="text-slate-300" aria-hidden="true">·</span>
-                <span className={paciente.edad > 0 ? "font-bold text-slate-900 dark:text-ink-black-50" : "font-medium text-slate-400"}>{edadTexto}</span>
+                <span className={paciente.edad > 0 ? "font-bold text-slate-900 dark:text-ink-black-50" : "font-medium text-slate-500 dark:text-slate-400"}>{edadTexto}</span>
                 <span className="text-slate-300" aria-hidden="true">·</span>
                 <span className="font-semibold">{CATEGORIA_LABELS[paciente.categoria]}</span>
               </p>
@@ -420,7 +420,7 @@ export default function FichaPaciente({
               <button
                 type="button"
                 onClick={onClose}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
                 aria-label="Cerrar ficha"
               >
                 <FiX size={18} />
@@ -678,7 +678,7 @@ export default function FichaPaciente({
               <p className={`mt-0.5 text-[13px] font-extrabold ${kineNombre ? "text-slate-900 dark:text-ink-black-50" : "text-amber-700 dark:text-amber-300"}`}>
                 {kineNombre ?? "Sin asignar"}
               </p>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-400 dark:text-ink-black-400">
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-ink-black-400">
                 {ESTADO_LABELS[paciente.estado]} desde {paciente.fecha_cambio_estado ? formatearFecha(paciente.fecha_cambio_estado) : formatearFecha(paciente.fecha_derivacion)}
               </p>
             </div>
@@ -815,7 +815,7 @@ function labelAccion(tipo: HistorialAccionPaciente["tipo"]) {
 
 function HistorialAcciones({ items }: { items: HistorialAccionPaciente[] }) {
   if (items.length === 0) {
-    return <p className="py-6 text-center text-sm font-semibold text-slate-400 dark:text-ink-black-400">Sin movimientos para este filtro.</p>;
+    return <p className="py-6 text-center text-sm font-semibold text-slate-500 dark:text-ink-black-400">Sin movimientos para este filtro.</p>;
   }
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-ink-black-600">

@@ -141,7 +141,7 @@ export default function CompletarTelefonos() {
             </button>
           </span>
         )}
-        {cargando === "previa" && <span className="text-xs font-semibold text-slate-400">Revisando archivo...</span>}
+        {cargando === "previa" && <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Revisando archivo...</span>}
       </div>
 
       {error && (
@@ -166,7 +166,7 @@ export default function CompletarTelefonos() {
                   <span className={`rounded border px-1.5 py-0.5 text-[10.5px] font-bold ${ETIQUETAS[d.resultado].clase}`}>
                     {ETIQUETAS[d.resultado].label}
                   </span>
-                  {d.fila != null && <span className="font-mono text-slate-400">Fila {d.fila}</span>}
+                  {d.fila != null && <span className="font-mono text-slate-500 dark:text-slate-400">Fila {d.fila}</span>}
                   <span className="font-semibold text-slate-800 dark:!text-white">{d.nombre ?? d.rut}</span>
                   {d.telefono && <span className="font-mono text-slate-600 dark:!text-ink-black-200">{d.telefono}</span>}
                   <span className="text-slate-500 dark:!text-ink-black-300">{d.motivo}</span>

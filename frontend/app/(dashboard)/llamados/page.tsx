@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   FiArrowLeft,
@@ -13,13 +13,16 @@ import {
   FiEdit2,
   FiEye,
   FiMoreHorizontal,
-  FiPhone,
   FiPhoneCall,
   FiPhoneMissed,
+  FiLink,
+  FiList,
   FiPrinter,
   FiRefreshCw,
   FiRotateCcw,
   FiSearch,
+  FiSliders,
+  FiX,
 } from "react-icons/fi";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
@@ -37,9 +40,10 @@ import {
 import { formatearRut } from "@/lib/rut";
 import { useAPI } from "@/lib/swr";
 import { useToast } from "@/lib/toast-context";
+import MenuAcciones from "@/components/MenuAcciones";
 import type { LlamadoPaciente, Paciente, ResultadoLlamado } from "@/lib/types";
-import { ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
-import { formatearFecha, formatearFechaHoraCorta, normalizeRut, normalizeSearchText } from "@/lib/utils";
+import { CATEGORIA_LABELS, ESTADO_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
+import { formatearFecha, formatearFechaHoraCorta, normalizeRut, normalizeSearchText, nombreLegible } from "@/lib/utils";
 
 const RegistrarContactoModal = dynamic(() => import("@/components/RegistrarContactoModal"), { ssr: false });
 const EditarPacienteModal = dynamic(() => import("@/components/EditarPacienteModal"), { ssr: false });
@@ -49,10 +53,6 @@ type Cola = { por_contactar: Paciente[]; por_citar: Paciente[] };
 type Seccion = "contactar" | "citar";
 type Grupo = { id: string; titulo: string; ayuda: string; pacientes: Paciente[] };
 type UltimoRegistro = { paciente: Paciente; llamadoId: number; resultado: ResultadoLlamado; en: number };
-
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
-}
 
 function tieneTelefono(p: Paciente) {
   return !!(p.telefono?.trim() || p.telefono_recados?.trim());
@@ -116,14 +116,31 @@ function Llamados() {
   const { toast } = useToast();
   const reducir = useReducedMotion();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const esKine = user?.rol === "KINE";
 
   const { data, isLoading, error, mutate } = useAPI<Cola>(user ? "/pacientes/cola-llamados/" : null);
+  const [refrescando, setRefrescando] = useState(false);
+
+  // Actualizar de verdad: vuelve a pedir la cola y muestra el estado de carga mientras llega.
+  async function actualizarCola() {
+    setRefrescando(true);
+    try {
+      await Promise.all([mutate(), new Promise((r) => setTimeout(r, 400))]);
+    } finally {
+      setRefrescando(false);
+    }
+  }
   const [seccion, setSeccion] = useState<Seccion>(searchParams.get("seccion") === "citar" ? "citar" : "contactar");
   const [busqueda, setBusqueda] = useState("");
+  const [masFiltros, setMasFiltros] = useState(false);
   const [estados, setEstados] = useState<string[]>([]);
   const [prioridades, setPrioridades] = useState<string[]>([]);
   const [responsables, setResponsables] = useState<string[]>([]);
+  const [sectores, setSectores] = useState<string[]>([]);
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [antiguedades, setAntiguedades] = useState<string[]>([]);
+  const [historiales, setHistoriales] = useState<string[]>([]);
   const [seleccionId, setSeleccionId] = useState<number | null>(null);
   const [verDetalleMovil, setVerDetalleMovil] = useState(false);
   const [modal, setModal] = useState<{ paciente: Paciente; resultado?: ResultadoLlamado } | null>(null);
@@ -146,6 +163,20 @@ function Llamados() {
     return Array.from(mapa.entries()).map(([value, v]) => ({ value, ...v })).sort((a, b) => a.label.localeCompare(b.label, "es"));
   }, [base]);
 
+  const opcionesSector = useMemo(() => {
+    const c = new Map<string, number>();
+    base.forEach((p) => p.sector_cesfam && c.set(p.sector_cesfam, (c.get(p.sector_cesfam) ?? 0) + 1));
+    return Array.from(c.entries()).map(([value, total]) => ({ value, label: value, total })).sort((a, b) => a.label.localeCompare(b.label, "es"));
+  }, [base]);
+  const opcionesCategoria = useMemo(() => {
+    const c = new Map<string, number>();
+    base.forEach((p) => p.categoria && c.set(p.categoria, (c.get(p.categoria) ?? 0) + 1));
+    return Array.from(c.entries())
+      .map(([value, total]) => ({ value, label: CATEGORIA_LABELS[value as keyof typeof CATEGORIA_LABELS] ?? value, total }))
+      .sort((a, b) => a.label.localeCompare(b.label, "es"));
+  }, [base]);
+  const tramoAntiguedad = (d: number) => (d >= 365 ? "ANIO" : d >= 180 ? "SEMESTRE" : "RECIENTE");
+
   const visibles = useMemo(() => {
     const q = normalizeSearchText(busqueda);
     const rut = normalizeRut(busqueda);
@@ -153,11 +184,15 @@ function Llamados() {
       if (seccion === "contactar" && estados.length && !estados.includes(p.estado)) return false;
       if (prioridades.length && !prioridades.includes(p.prioridad)) return false;
       if (responsables.length && !responsables.includes(String(p.kine_asignado))) return false;
+      if (sectores.length && !sectores.includes(p.sector_cesfam)) return false;
+      if (categorias.length && !categorias.includes(p.categoria)) return false;
+      if (antiguedades.length && !antiguedades.includes(tramoAntiguedad(p.dias_en_lista))) return false;
+      if (historiales.length && !historiales.includes(p.ultimo_llamado ? "CON" : "SIN")) return false;
       if (!q) return true;
       const texto = normalizeSearchText([p.nombre, p.id_ccr, p.diagnostico, p.sector_cesfam, p.telefono, p.telefono_recados].join(" "));
       return texto.includes(q) || (!!rut && normalizeRut(p.rut).includes(rut));
     });
-  }, [base, busqueda, estados, prioridades, responsables, seccion]);
+  }, [base, busqueda, estados, prioridades, responsables, sectores, categorias, antiguedades, historiales, seccion]);
 
   const grupos = useMemo(() => agrupar(visibles), [visibles]);
   const orden = useMemo(() => grupos.flatMap((g) => g.pacientes), [grupos]);
@@ -269,33 +304,168 @@ function Llamados() {
 
   if (!user) return null;
 
-  const filtrosActivos = busqueda || estados.length || prioridades.length || responsables.length;
+  const nExtra = prioridades.length + responsables.length + sectores.length + categorias.length + antiguedades.length + historiales.length;
+  const filtrosActivos = busqueda || estados.length || nExtra;
 
   return (
     <div className="flex flex-col gap-3 text-[13px] lg:h-[max(560px,calc(100dvh-64px-2rem))]">
-      <header className="ccr-panel shrink-0 rounded-2xl px-5 py-4 print:hidden">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-bold text-slate-950 dark:text-white">Llamados</h1>
-            <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-              <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{paraHoy(porContactar) + paraHoy(porCitar)}</span> para llamar hoy
-              {" · "}
-              {porContactar.length} en lista de espera · {porCitar.length} ingresado{porCitar.length !== 1 ? "s" : ""} sin cita
-            </p>
+      <div className="ccr-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl print:hidden">
+      <header className="shrink-0 px-5 py-4 print:hidden">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="sr-only">Llamados</h1>
+              <p className="text-xs font-medium text-slate-500 dark:text-ink-black-300">
+                <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{paraHoy(porContactar) + paraHoy(porCitar)}</span> para llamar hoy · mostrando{" "}
+                <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{orden.length}</span>
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar">
-              <FiRefreshCw size={13} aria-hidden="true" />
-              Actualizar
-            </button>
-            <button type="button" onClick={() => window.print()} className="ccr-control-button">
-              <FiPrinter size={13} aria-hidden="true" />
-              Imprimir
-            </button>
-          </div>
-        </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
+            <div className="relative min-w-[180px] flex-1 sm:max-w-sm">
+              <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" size={14} aria-hidden="true" />
+              <input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="ccr-control-input w-full pl-9 pr-3"
+                placeholder="Nombre, RUT, teléfono o diagnóstico"
+                aria-label="Buscar paciente"
+              />
+            </div>
+          {seccion === "contactar" && (
+            <MultiSelectFiltro
+                sinAnimacion
+              label="Estado"
+              textoTodos
+              values={estados}
+              opciones={[
+                { value: "PENDIENTE", label: "Pendiente", total: porContactar.filter((p) => p.estado === "PENDIENTE").length },
+                { value: "RESCATE", label: "Rescate", total: porContactar.filter((p) => p.estado === "RESCATE").length },
+              ]}
+              onChange={setEstados}
+            />
+          )}
+            <button
+              type="button"
+              aria-expanded={masFiltros}
+              aria-controls="llamados-mas-filtros"
+              onClick={() => setMasFiltros((v) => !v)}
+              className="ccr-control-button ml-auto"
+            >
+              <FiSliders size={13} aria-hidden="true" />
+              Filtros
+              {nExtra > 0 && <span className="rounded-full bg-blue-500 px-1.5 text-[10px] font-bold leading-4 text-white">{nExtra}</span>}
+            </button>
+            {filtrosActivos ? (
+              <button
+                type="button"
+                aria-label="Limpiar filtros"
+                title="Limpiar filtros"
+                onClick={() => {
+                  setBusqueda("");
+                  setEstados([]);
+                  setPrioridades([]);
+                  setResponsables([]);
+                  setSectores([]);
+                  setCategorias([]);
+                  setAntiguedades([]);
+                  setHistoriales([]);
+                }}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-600 outline-none hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-500/30 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10"
+              >
+                <FiX size={14} aria-hidden="true" />
+              </button>
+            ) : null}
+            <MenuAcciones
+              acciones={[
+                {
+                  label: "Actualizar",
+                  detalle: "Vuelve a cargar la cola",
+                  tono: "azul",
+                  icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                  onClick: () => void actualizarCola(),
+                },
+                {
+                  label: "Imprimir",
+                  detalle: "Lista de pacientes por llamar",
+                  tono: "verde",
+                  icon: <FiPrinter size={13} aria-hidden="true" />,
+                  onClick: () => window.print(),
+                },
+                {
+                  label: "Copiar enlace",
+                  detalle: "De esta vista",
+                  tono: "gris",
+                  icon: <FiLink size={13} aria-hidden="true" />,
+                  onClick: () => {
+                    void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                  },
+                },
+                {
+                  label: "Ir a Lista de espera",
+                  detalle: "Ver todos los pacientes",
+                  tono: "gris",
+                  icon: <FiList size={13} aria-hidden="true" />,
+                  onClick: () => router.push("/lista-espera"),
+                },
+              ]}
+            />
+          </div>
+
+          {masFiltros && (
+            <div id="llamados-mas-filtros" className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+          <MultiSelectFiltro
+            anchoCompleto
+            sinAnimacion
+            label="Prioridad"
+            values={prioridades}
+            opciones={(["ALTA", "MEDIANA", "MODERADA", "LICENCIA_MEDICA"] as const).map((v) => ({
+              value: v,
+              label: PRIORIDAD_LABELS[v],
+              total: base.filter((p) => p.prioridad === v).length,
+            }))}
+            onChange={setPrioridades}
+          />
+          {!esKine && opcionesResponsable.length > 1 && (
+            <MultiSelectFiltro anchoCompleto sinAnimacion label="Responsable" textoTodos values={responsables} opciones={opcionesResponsable} onChange={setResponsables} />
+          )}
+          {opcionesSector.length > 1 && (
+            <MultiSelectFiltro anchoCompleto sinAnimacion label="Sector" textoTodos values={sectores} opciones={opcionesSector} onChange={setSectores} />
+          )}
+          {opcionesCategoria.length > 1 && (
+            <MultiSelectFiltro anchoCompleto sinAnimacion label="Categoría" values={categorias} opciones={opcionesCategoria} onChange={setCategorias} />
+          )}
+          <MultiSelectFiltro
+            anchoCompleto
+            sinAnimacion
+            label="Antigüedad"
+            values={antiguedades}
+            opciones={[
+              { value: "ANIO", label: "1 año o más", total: base.filter((p) => tramoAntiguedad(p.dias_en_lista) === "ANIO").length },
+              { value: "SEMESTRE", label: "6 a 12 meses", total: base.filter((p) => tramoAntiguedad(p.dias_en_lista) === "SEMESTRE").length },
+              { value: "RECIENTE", label: "Menos de 6 meses", total: base.filter((p) => tramoAntiguedad(p.dias_en_lista) === "RECIENTE").length },
+            ]}
+            onChange={setAntiguedades}
+          />
+          <MultiSelectFiltro
+            anchoCompleto
+            sinAnimacion
+            label="Llamados"
+            textoTodos
+            values={historiales}
+            opciones={[
+              { value: "SIN", label: "Sin llamados previos", total: base.filter((p) => !p.ultimo_llamado).length },
+              { value: "CON", label: "Ya llamados", total: base.filter((p) => !!p.ultimo_llamado).length },
+            ]}
+            onChange={setHistoriales}
+          />
+            </div>
+          )}
+        </div>
+      </header>
+
+      <div className="flex shrink-0 items-center gap-3 border-t border-slate-200 bg-slate-50/60 px-5 py-2.5 dark:border-ink-black-600 dark:bg-ink-black-900/40 print:hidden">
           <div className="inline-flex rounded-lg bg-slate-100 p-1 dark:bg-ink-black-900" role="tablist" aria-label="Sección">
             {(
               [
@@ -313,19 +483,10 @@ function Llamados() {
                   setSeleccionId(null);
                   setEstados([]);
                 }}
-                className={`relative inline-flex h-7 items-center rounded-md px-3 text-xs font-bold outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
-                  seccion === id ? "text-blue-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
+                className={`relative inline-flex h-7 items-center rounded-md px-3 text-xs font-bold outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                  seccion === id ? "bg-white text-blue-700 shadow-sm dark:bg-ink-black-700 dark:text-blue-200" : "text-slate-500 hover:text-slate-900 dark:text-ink-black-300"
                 }`}
               >
-                {seccion === id && (
-                  // Fondo blanco que se desliza entre pestañas (mismo patrón que Grupos).
-                  <motion.span
-                    layoutId="llamados-seccion"
-                    aria-hidden="true"
-                    className="absolute inset-0 z-0 rounded-md bg-white shadow-sm dark:bg-ink-black-700"
-                    transition={reducir ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 34 }}
-                  />
-                )}
                 <span className="relative z-10 inline-flex items-center gap-1.5">
                   {label}
                   <span className="rounded-full bg-slate-200/70 px-1.5 text-[10px] tabular-nums leading-4 text-slate-600 dark:bg-ink-black-600 dark:text-ink-black-200">{total}</span>
@@ -333,57 +494,7 @@ function Llamados() {
               </button>
             ))}
           </div>
-          <div className="relative min-w-0 flex-1 sm:max-w-xs">
-            <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} aria-hidden="true" />
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="ccr-control-input w-full pl-9 pr-3"
-              placeholder="Nombre, RUT, teléfono o diagnóstico"
-              aria-label="Buscar paciente"
-            />
-          </div>
-          {seccion === "contactar" && (
-            <MultiSelectFiltro
-              label="Estado"
-              textoTodos
-              values={estados}
-              opciones={[
-                { value: "PENDIENTE", label: "Pendiente", total: porContactar.filter((p) => p.estado === "PENDIENTE").length },
-                { value: "RESCATE", label: "Rescate", total: porContactar.filter((p) => p.estado === "RESCATE").length },
-              ]}
-              onChange={setEstados}
-            />
-          )}
-          <MultiSelectFiltro
-            label="Prioridad"
-            values={prioridades}
-            opciones={(["ALTA", "MEDIANA", "MODERADA", "LICENCIA_MEDICA"] as const).map((v) => ({
-              value: v,
-              label: PRIORIDAD_LABELS[v],
-              total: base.filter((p) => p.prioridad === v).length,
-            }))}
-            onChange={setPrioridades}
-          />
-          {!esKine && opcionesResponsable.length > 1 && (
-            <MultiSelectFiltro label="Responsable" textoTodos values={responsables} opciones={opcionesResponsable} onChange={setResponsables} />
-          )}
-          {filtrosActivos ? (
-            <button
-              type="button"
-              onClick={() => {
-                setBusqueda("");
-                setEstados([]);
-                setPrioridades([]);
-                setResponsables([]);
-              }}
-              className="text-xs font-bold text-slate-500 hover:text-slate-900 hover:underline dark:text-ink-black-300"
-            >
-              Limpiar
-            </button>
-          ) : null}
-        </div>
-      </header>
+      </div>
 
       <AnimatePresence initial={false}>
         {ultimo && (
@@ -392,7 +503,7 @@ function Llamados() {
             animate={{ opacity: 1, y: 0 }}
             exit={reducir ? undefined : { opacity: 0, y: -6 }}
             role="status"
-            className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm print:hidden dark:border-ink-black-600 dark:bg-ink-black-800"
+            className="mx-4 mb-3 flex shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm print:hidden dark:border-ink-black-600 dark:bg-ink-black-800"
           >
             <FiCheckCircle size={15} className="shrink-0 text-blue-600 dark:text-blue-300" aria-hidden="true" />
             <p className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-slate-700 dark:text-ink-black-100">
@@ -407,16 +518,16 @@ function Llamados() {
       </AnimatePresence>
 
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 print:hidden">
+        <p className="mx-4 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 print:hidden">
           {getErrorMessage(error, "No se pudo cargar la cola de llamados.")}
         </p>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 print:hidden lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 border-t border-slate-200 print:hidden dark:border-ink-black-600 lg:grid-cols-[minmax(300px,380px)_minmax(0,1fr)]">
         {/* Lista */}
         <section
           aria-label="Pacientes por llamar"
-          className={`ccr-panel min-h-0 flex-col overflow-hidden rounded-2xl ${verDetalleMovil ? "hidden lg:flex" : "flex"}`}
+          className={`min-h-0 flex-col overflow-hidden lg:border-r lg:border-slate-200 dark:lg:border-ink-black-600 ${verDetalleMovil ? "hidden lg:flex" : "flex"}`}
         >
           {/* Sin initial={false}: así las filas también entran escalonadas al abrir la página. */}
           <AnimatePresence mode="wait">
@@ -424,13 +535,13 @@ function Llamados() {
             key={seccion}
             // "Por contactar" entra desde la izquierda e "Ingresados" desde la
             // derecha, siguiendo la posicion de la pestaña.
-            initial={reducir ? false : { opacity: 0, x: seccion === "contactar" ? -18 : 18 }}
+            initial={false}
             animate={{ opacity: 1, x: 0 }}
-            exit={reducir ? undefined : { opacity: 0, x: seccion === "contactar" ? -12 : 12 }}
+            exit={undefined}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2"
           >
-            {isLoading ? (
+            {isLoading || refrescando ? (
               <div className="space-y-2 p-1">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="h-[58px] animate-pulse rounded-xl bg-slate-100 dark:bg-ink-black-700" />
@@ -447,7 +558,7 @@ function Llamados() {
               grupos.map((g) => (
                 <div key={g.id} className="mb-2 last:mb-0">
                   <p className="sticky top-0 z-10 bg-white/95 px-2 pb-1 pt-1.5 text-[11px] font-bold text-slate-500 backdrop-blur dark:bg-ink-black-800/95 dark:text-ink-black-300" title={g.ayuda}>
-                    {g.titulo} <span className="tabular-nums text-slate-400">{g.pacientes.length}</span>
+                    {g.titulo} <span className="tabular-nums text-slate-500">{g.pacientes.length}</span>
                   </p>
                   <ul className="space-y-1">
                     {g.pacientes.map((p) => (
@@ -479,7 +590,7 @@ function Llamados() {
           </motion.div>
           </AnimatePresence>
           {orden.length > 0 && (
-            <p className="hidden shrink-0 border-t border-slate-100 px-4 py-2 text-[11px] font-medium text-slate-400 dark:border-ink-black-700 lg:block">
+            <p className="hidden shrink-0 border-t border-slate-100 px-4 py-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 dark:border-ink-black-700 lg:block">
               {orden.length} paciente{orden.length !== 1 ? "s" : ""} · usa ↑ ↓ para moverte
             </p>
           )}
@@ -488,7 +599,7 @@ function Llamados() {
         {/* Detalle */}
         <section
           aria-label="Paciente seleccionado"
-          className={`ccr-panel min-h-0 flex-col rounded-2xl lg:overflow-hidden ${verDetalleMovil ? "flex" : "hidden lg:flex"}`}
+          className={`min-h-0 flex-col lg:overflow-hidden ${verDetalleMovil ? "flex" : "hidden lg:flex"}`}
         >
           <AnimatePresence mode="wait" initial={false}>
           {seleccionado ? (
@@ -526,6 +637,7 @@ function Llamados() {
           )}
           </AnimatePresence>
         </section>
+      </div>
       </div>
 
       {modal && (
@@ -652,7 +764,7 @@ function ItemLista({ paciente: p, activo, onClick }: { paciente: Paciente; activ
     >
       <span className="flex items-center justify-between gap-2">
         <span className="truncate text-[13px] font-extrabold text-slate-900 dark:text-ink-black-50">{nombreLegible(p.nombre)}</span>
-        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{p.dias_en_lista} d</span>
+        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">{p.dias_en_lista} d</span>
       </span>
       <span className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.prioridad === "ALTA" ? "bg-red-500" : p.prioridad === "MEDIANA" ? "bg-amber-500" : p.prioridad === "MODERADA" ? "bg-emerald-500" : "bg-slate-400"}`} aria-hidden="true" />
@@ -687,16 +799,12 @@ function Telefono({ etiqueta, numero }: { etiqueta: string; numero: string }) {
         onClick={() => {
           void navigator.clipboard?.writeText(numero).then(() => toast.info("Número copiado."));
         }}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-ink-black-700"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-ink-black-700"
         aria-label={`Copiar ${numero}`}
         title="Copiar"
       >
         <FiCopy size={14} />
       </button>
-      <a href={`tel:${numero}`} className="ccr-control-button" aria-label={`Llamar al ${numero}`}>
-        <FiPhone size={13} aria-hidden="true" />
-        Llamar
-      </a>
     </div>
   );
 }
@@ -810,7 +918,7 @@ function Detalle({
         <section>
           <h3 className="mb-2 text-[12px] font-bold text-slate-700 dark:text-ink-black-100">Llamados anteriores</h3>
           {llamados.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-center text-xs font-medium text-slate-400 dark:border-ink-black-600">Todavía no se le ha llamado.</p>
+            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-4 text-center text-xs font-medium text-slate-500 dark:text-slate-400 dark:border-ink-black-600">Todavía no se le ha llamado.</p>
           ) : (
             <ol className="space-y-1.5">
               {llamados.slice(0, 8).map((ll) => (
@@ -823,7 +931,7 @@ function Detalle({
                     </span>
                     {ll.notas && <span className="block text-[12px] text-slate-600 dark:text-ink-black-200">{ll.notas}</span>}
                   </span>
-                  <span className="hidden shrink-0 text-[11px] font-medium text-slate-400 sm:block">{ll.usuario_nombre ?? ""}</span>
+                  <span className="hidden shrink-0 text-[11px] font-medium text-slate-500 dark:text-slate-400 sm:block">{ll.usuario_nombre ?? ""}</span>
                 </li>
               ))}
             </ol>
@@ -832,37 +940,39 @@ function Detalle({
       </div>
 
       {/* En movil la barra queda fija al pie de la pantalla para tenerla siempre a mano. */}
-      <footer className="fixed inset-x-0 bottom-0 z-30 shrink-0 border-t shadow-[0_-8px_24px_-16px_rgba(15,23,42,0.35)] lg:shadow-none border-slate-200 bg-slate-50 px-5 py-3 dark:border-ink-black-600 dark:bg-ink-black-900 lg:static lg:bg-slate-50/70 lg:dark:bg-ink-black-900/60">
+      <footer className="fixed inset-x-0 bottom-0 z-30 shrink-0 border-t border-slate-200 bg-white px-5 py-3.5 shadow-[0_-8px_24px_-16px_rgba(15,23,42,0.35)] dark:border-ink-black-600 dark:bg-ink-black-800 lg:static lg:bg-slate-50/70 lg:shadow-none lg:dark:bg-ink-black-900/60">
         {efectoNo.cambiaEstado && (
-          <p className={`mb-2 text-[11.5px] font-semibold ${efectoNo.grave ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
+          <p className={`mb-3 text-[11.5px] font-semibold ${efectoNo.grave ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}`}>
             Si no contesta: {efectoNo.texto.replace(/^Intento \d+ de \d+( sin respuesta| en Rescate)?: /, "").toLowerCase()}
           </p>
         )}
-        <p className="mb-2 hidden text-[10.5px] font-medium text-slate-400 lg:block">
-          Teclado: ↑ ↓ recorrer la lista · 1–4 registrar el resultado · Ctrl+Z deshacer el último
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={ocupado} onClick={() => onResultado("CONTESTA_CONFIRMADO")} className="ccr-control-button-primary flex-1 justify-center disabled:opacity-50 sm:flex-none">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <button type="button" disabled={ocupado} onClick={() => onResultado("CONTESTA_CONFIRMADO")} className="ccr-control-button-primary h-10 flex-1 justify-center px-5 disabled:opacity-50 sm:flex-none">
             <FiCheckCircle size={14} aria-hidden="true" />
             Contesta y agenda
             <Atajo tecla="1" />
           </button>
-          <button type="button" disabled={ocupado} onClick={onNoContesta} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
-            <FiPhoneMissed size={14} aria-hidden="true" />
-            No contesta
-            <Atajo tecla="2" />
-          </button>
-          <button type="button" disabled={ocupado} onClick={() => onResultado("REAGENDAR_LLAMADO")} className="ccr-control-button flex-1 justify-center disabled:opacity-50 sm:flex-none">
-            <FiClock size={14} aria-hidden="true" />
-            Volver a llamar
-            <Atajo tecla="3" />
-          </button>
-          <button type="button" disabled={ocupado} onClick={() => onResultado()} className="ccr-control-button justify-center disabled:opacity-50 sm:ml-auto">
+          <div className="flex flex-1 flex-wrap items-center gap-2.5 sm:flex-none">
+            <button type="button" disabled={ocupado} onClick={onNoContesta} className="ccr-control-button h-10 flex-1 justify-center px-4 disabled:opacity-50 sm:flex-none">
+              <FiPhoneMissed size={14} aria-hidden="true" />
+              No contesta
+              <Atajo tecla="2" />
+            </button>
+            <button type="button" disabled={ocupado} onClick={() => onResultado("REAGENDAR_LLAMADO")} className="ccr-control-button h-10 flex-1 justify-center px-4 disabled:opacity-50 sm:flex-none">
+              <FiClock size={14} aria-hidden="true" />
+              Volver a llamar
+              <Atajo tecla="3" />
+            </button>
+          </div>
+          <button type="button" disabled={ocupado} onClick={() => onResultado()} className="h-10 justify-center rounded-lg px-3 text-[12.5px] font-bold text-slate-600 inline-flex items-center gap-1.5 outline-none transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:opacity-50 dark:text-ink-black-200 dark:hover:bg-ink-black-700 sm:ml-auto">
             <FiMoreHorizontal size={14} aria-hidden="true" />
             Otro resultado
             <Atajo tecla="4" />
           </button>
         </div>
+        <p className="mt-3 hidden text-[10.5px] font-medium text-slate-500 dark:text-slate-400 lg:block">
+          Teclado: ↑ ↓ recorrer la lista · 1–4 registrar el resultado · Ctrl+Z deshacer el último
+        </p>
       </footer>
     </div>
   );

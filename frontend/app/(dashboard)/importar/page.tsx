@@ -16,6 +16,7 @@ import {
   FiCalendar,
   FiCheckCircle,
   FiClipboard,
+  FiClock,
   FiDownload,
   FiFileText,
   FiRefreshCw,
@@ -26,6 +27,7 @@ import {
 } from "react-icons/fi";
 import RevertirCarga from "@/components/RevertirCarga";
 import FondoPestana from "@/components/FondoPestana";
+import MenuAcciones from "@/components/MenuAcciones";
 import SelectFiltro from "@/components/SelectFiltro";
 import ImportarPrevisualizacion, {
   type CorreccionesMap,
@@ -788,16 +790,10 @@ export default function ImportarPage() {
         <div className="space-y-3">
           <div className="ccr-panel ccr-dashboard-card overflow-hidden rounded-2xl">
             {/* Encabezado */}
-            <div className="flex flex-col gap-4 p-5 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center justify-between gap-4 p-5 pb-4">
               <div className="min-w-0">
-                <h1 className="text-lg font-bold text-gray-900 dark:!text-white">
-                  Importar derivaciones
-                </h1>
-                <p className="mt-0.5 text-xs font-semibold text-gray-500 dark:!text-ink-black-200">
-                  Carga una planilla, revisa la previsualización y confirma el
-                  corte mensual.
-                </p>
-                <ol className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                <h1 className="sr-only">Importar derivaciones</h1>
+                <ol className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
                   {[
                     { n: 1, label: "Origen de datos", done: hayOrigen },
                     { n: 2, label: "Previsualización", done: !!preview },
@@ -829,16 +825,26 @@ export default function ImportarPage() {
                 </ol>
               </div>
 
-              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void descargarPlantilla()}
-                  disabled={descargandoPlantilla}
-                  className="ccr-control-button inline-flex items-center justify-center gap-2 px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <FiDownload size={14} />
-                  {descargandoPlantilla ? "Descargando..." : "Plantilla .xlsx"}
-                </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <MenuAcciones
+                  acciones={[
+                    {
+                      label: descargandoPlantilla ? "Descargando…" : "Plantilla .xlsx",
+                      detalle: "Planilla modelo para completar",
+                      tono: "verde",
+                      icon: <FiDownload size={13} aria-hidden="true" />,
+                      onClick: () => void descargarPlantilla(),
+                      disabled: descargandoPlantilla,
+                    },
+                    {
+                      label: "Historial de cortes",
+                      detalle: "Ver las cargas anteriores",
+                      tono: "gris",
+                      icon: <FiClock size={13} aria-hidden="true" />,
+                      onClick: () => router.push("/historial-mensual"),
+                    },
+                  ]}
+                />
               </div>
             </div>
 
@@ -886,7 +892,7 @@ export default function ImportarPage() {
                     className={`relative inline-flex items-center gap-2.5 px-1 pb-3 pt-2 text-sm font-bold transition-colors duration-300 ${
                       active
                         ? opcion.texto
-                        : "text-slate-400 hover:text-slate-600 dark:!text-ink-black-400"
+                        : "text-slate-500 hover:text-slate-600 dark:!text-ink-black-400"
                     }`}
                   >
                     <Icon size={16} />
@@ -986,7 +992,7 @@ export default function ImportarPage() {
                             Arrastra el archivo aquí o selecciona desde tu
                             equipo
                           </p>
-                          <p className="mt-1 text-xs font-medium text-slate-400 dark:!text-ink-black-400">
+                          <p className="mt-1 text-xs font-medium text-slate-500 dark:!text-ink-black-400">
                             Formatos: .xlsx / .xls
                           </p>
                         </div>
@@ -1126,7 +1132,7 @@ export default function ImportarPage() {
                                   key={`${rowIndex}-${fila.join("-")}`}
                                   className="ccr-table-row"
                                 >
-                                  <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
+                                  <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
                                     {rowIndex + 1}
                                   </td>
                                   {PEGADO_HEADERS.map((header, cellIndex) => {
@@ -1387,7 +1393,7 @@ export default function ImportarPage() {
                 type="button"
                 onClick={() => setConfirmImportOpen(false)}
                 aria-label="Cerrar"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:!bg-[#202020]"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:!bg-[#202020]"
               >
                 <FiX size={16} />
               </button>
@@ -1396,7 +1402,7 @@ export default function ImportarPage() {
             <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
               {/* Corte de destino */}
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                   Se registrará como corte de
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1429,7 +1435,7 @@ export default function ImportarPage() {
 
               {/* Qué ocurrirá */}
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                   Qué ocurrirá
                 </p>
                 <ul className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 dark:divide-[#262626] dark:!border-[#262626]">

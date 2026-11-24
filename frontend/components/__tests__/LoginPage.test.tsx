@@ -30,6 +30,14 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: "Entrar" })).toBeInTheDocument();
   });
 
+  // Sin NEXT_PUBLIC_DEMO_MODE=true (el valor por defecto y el de producción) no hay accesos de prueba.
+  it("sin modo demo no muestra accesos de prueba ni precarga credenciales", () => {
+    render(<LoginPage />);
+    expect(screen.queryByText(/Accesos de prueba/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Administrador CCR")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ingresa tu contraseña")).toHaveValue("");
+  });
+
   it("aplica el tema oscuro guardado", async () => {
     window.localStorage.setItem("ccr-login-theme", "dark");
     render(<LoginPage />);

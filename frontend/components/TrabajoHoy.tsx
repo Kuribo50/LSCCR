@@ -69,7 +69,7 @@ export default function TrabajoHoy({
   onVerGrupo,
 }: Props) {
   return (
-    <section className="ccr-panel p-5">
+    <section className="p-5">
       <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-extrabold text-[color:var(--ink)]">Trabajo de hoy</h2>

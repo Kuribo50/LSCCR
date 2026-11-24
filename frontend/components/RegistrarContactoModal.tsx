@@ -31,6 +31,7 @@ import {
   resultadosPara,
 } from "@/lib/llamados";
 import CampoFecha from "./CampoFecha";
+import { nombreLegible } from "@/lib/utils";
 
 const ICONOS: Record<ResultadoLlamado, IconType> = {
   CONTESTA_CONFIRMADO: FiCheckCircle,
@@ -43,11 +44,7 @@ const ICONOS: Record<ResultadoLlamado, IconType> = {
 };
 
 const INPUT =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
-
-function nombreLegible(nombre: string) {
-  return nombre.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, sep: string, l: string) => sep + l.toUpperCase());
-}
+  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50";
 
 interface Props {
   paciente: Paciente;
@@ -156,7 +153,7 @@ export default function RegistrarContactoModal({ paciente, onClose, onSuccess, r
               onClick={onClose}
               disabled={guardando}
               aria-label="Cerrar"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 dark:text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:hover:bg-ink-black-700"
             >
               <FiX size={18} />
             </button>
@@ -173,7 +170,7 @@ export default function RegistrarContactoModal({ paciente, onClose, onSuccess, r
                   >
                     <FiPhone size={13} aria-hidden="true" />
                     {t.valor}
-                    <span className="text-[10px] font-semibold text-slate-400">{t.label}</span>
+                    <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">{t.label}</span>
                   </a>
                 ))}
               </div>
@@ -202,9 +199,9 @@ export default function RegistrarContactoModal({ paciente, onClose, onSuccess, r
                           : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-ink-black-600 dark:text-ink-black-100 dark:hover:bg-ink-black-700"
                       }`}
                     >
-                      <Icon size={15} aria-hidden="true" className={activo ? "text-blue-600 dark:text-blue-300" : "text-slate-400"} />
+                      <Icon size={15} aria-hidden="true" className={activo ? "text-blue-600 dark:text-blue-300" : "text-slate-500 dark:text-slate-400"} />
                       <span className="flex-1">{op.label}</span>
-                      <kbd className="rounded border border-slate-200 px-1 text-[10px] font-semibold text-slate-400 dark:border-ink-black-600">{i + 1}</kbd>
+                      <kbd className="rounded border border-slate-200 px-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 dark:border-ink-black-600">{i + 1}</kbd>
                     </button>
                   );
                 })}
@@ -256,7 +253,7 @@ export default function RegistrarContactoModal({ paciente, onClose, onSuccess, r
             {resultado && (
               <label className="block">
                 <span className="mb-1.5 block text-[12px] font-bold text-slate-700 dark:text-ink-black-100">
-                  Observación {efecto?.requiereNota ? <span className="text-red-600">(obligatoria)</span> : <span className="font-medium text-slate-400">(opcional)</span>}
+                  Observación {efecto?.requiereNota ? <span className="text-red-600">(obligatoria)</span> : <span className="font-medium text-slate-500 dark:text-slate-400">(opcional)</span>}
                 </span>
                 <textarea
                   value={notas}

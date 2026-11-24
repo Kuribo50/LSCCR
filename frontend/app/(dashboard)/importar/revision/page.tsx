@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
-import Link from "next/link";
 import dynamic from "next/dynamic";
-import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   FiAlertTriangle,
   FiEdit2,
   FiPlus,
   FiArrowLeft,
+  FiLink,
   FiChevronDown,
   FiChevronUp,
   FiFilter,
@@ -30,12 +29,13 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getErrorMessage } from "@/lib/errors";
 import { useToast } from "@/lib/toast-context";
+import MenuAcciones from "@/components/MenuAcciones";
 import CampoFecha, { fechaHoyKey } from "@/components/CampoFecha";
 import LoaderKine from "@/components/LoaderKine";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import SectorBadge from "@/components/SectorBadge";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
-import { formatDateDisplay, sinAcentos } from "@/lib/utils";
+import { formatDateDisplay, sinAcentos, fechaDDMMAAAA } from "@/lib/utils";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import type { Categoria, Paciente, Prioridad } from "@/lib/types";
 import type {
@@ -197,7 +197,7 @@ function detectarProblemas(item: ImportacionRevisionItem, form: RevisionForm): P
 
   const h = item.historico;
   if (h?.encontrado) {
-    if (h.fallecido) agregar("general", `Figura como fallecido el ${fechaCorta(h.fecha_fallecimiento)}.`, { grave: true });
+    if (h.fallecido) agregar("general", `Figura como fallecido el ${fechaDDMMAAAA(h.fecha_fallecimiento)}.`, { grave: true });
     if (h.otra_comuna) agregar("general", `Inscrito en otra comuna: ${h.comuna}.`, { grave: false });
     if (h.nombre_coincide === false) agregar("nombre", "No coincide con el nombre de la carga automática.", { grave: false });
     if (h.edad_coincide === false) agregar("edad", "No coincide con la edad de la carga automática.", { grave: false });
@@ -316,7 +316,7 @@ function PanelPlegable({
           {icono}
           {titulo}
         </span>
-        <FiChevronDown size={14} className={`text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} />
+        <FiChevronDown size={14} className={`text-slate-500 dark:text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} />
       </button>
       {abierto && <div className="border-t border-[var(--border-subtle)] px-3 pb-3 pt-2.5">{children}</div>}
     </section>
@@ -326,7 +326,7 @@ function PanelPlegable({
 function Seccion({ titulo }: { titulo: string }) {
   return (
     <div className="flex items-center gap-2 pt-2 sm:col-span-6">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{titulo}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{titulo}</span>
       <span className="h-px flex-1 bg-slate-100 dark:bg-ink-black-700" />
     </div>
   );
@@ -469,12 +469,6 @@ function valorOrden(item: ImportacionRevisionItem, col: ColumnaId): string | num
     default:
       return "";
   }
-}
-
-function fechaCorta(iso?: string) {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  return y && m && d ? `${d}/${m}/${y}` : iso;
 }
 
 function Chip({ children, tono }: { children: React.ReactNode; tono: "rojo" | "ambar" | "azul" | "verde" }) {
@@ -847,8 +841,8 @@ export default function RevisionImportacionPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h1 className="text-lg font-bold text-slate-950 dark:text-white">Revisión de carga</h1>
-                <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
+                <h1 className="sr-only">Revisión de carga</h1>
+                <p className="text-xs font-medium text-slate-500 dark:text-ink-black-300">
                   <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{data?.pendientes ?? 0}</span> observaciones pendientes
                   {itemsFiltrados.length !== (data?.items.length ?? 0) && (
                     <>
@@ -864,16 +858,6 @@ export default function RevisionImportacionPage() {
                   .
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => void cargarRevision()} className="ccr-control-button" title="Volver a cargar">
-                  <FiRefreshCw size={13} aria-hidden="true" className={loading ? "animate-spin" : ""} />
-                  Actualizar
-                </button>
-                <Link href="/importar" className="ccr-export-button">
-                  <FiArrowLeft size={13} aria-hidden="true" />
-                  Volver a importar
-                </Link>
-              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
@@ -885,6 +869,19 @@ export default function RevisionImportacionPage() {
                   placeholder="Buscar nombre, RUT o motivo"
                   aria-label="Buscar en la revisión"
                   className="ccr-control-input w-full pl-9 pr-3"
+                />
+              </div>
+              <div className="order-1 w-40 shrink-0">
+                <FiltroPildoras
+                  ariaLabel="Filtrar por tipo de observación"
+                  valor={tipo === "TODOS" ? "" : tipo}
+                  onChange={(v) => setTipo((v || "TODOS") as "TODOS" | ImportacionRevisionTipo)}
+                  opciones={TIPOS.map((t) => ({
+                    value: t.value === "TODOS" ? "" : t.value,
+                    label: t.label,
+                    dot: t.value === "ERROR" ? "bg-red-500" : t.value === "ADVERTENCIA" ? "bg-amber-400" : t.value === "RECURRENTE" ? "bg-blue-500" : undefined,
+                    total: conteoTipo(t.value),
+                  }))}
                 />
               </div>
               <button
@@ -911,17 +908,44 @@ export default function RevisionImportacionPage() {
                   <FiX size={15} aria-hidden="true" />
                 </button>
               )}
+              <div className="order-2">
+                <MenuAcciones
+                  acciones={[
+                    {
+                      label: "Actualizar",
+                      detalle: "Vuelve a cargar la revisión",
+                      tono: "azul",
+                      icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                      onClick: () => void cargarRevision(),
+                    },
+                    {
+                      label: "Volver a importar",
+                      detalle: "Subir otra planilla",
+                      tono: "verde",
+                      icon: <FiArrowLeft size={13} aria-hidden="true" />,
+                      onClick: () => router.push("/importar"),
+                    },
+                    {
+                      label: "Copiar enlace",
+                      detalle: "De esta vista",
+                      tono: "gris",
+                      icon: <FiLink size={13} aria-hidden="true" />,
+                      onClick: () => {
+                        void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                      },
+                    },
+                  ]}
+                />
+              </div>
             </div>
 
             {mostrarFiltros && (
-              <motion.div
+              <div
                 id="revision-filtros"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.15 }}
-                className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-4"
+                className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 dark:border-ink-black-700 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
               >
                 <MultiSelectFiltro
+                  sinAnimacion
                   anchoCompleto
                   textoTodos
                   label="Estado"
@@ -935,13 +959,14 @@ export default function RevisionImportacionPage() {
                   }))}
                   onChange={(v) => setEstado(unico<"TODOS" | ImportacionRevisionEstado>(v, "TODOS"))}
                 />
-                <MultiSelectFiltro anchoCompleto textoTodos label="Corte" values={filtroCorte} opciones={opcionesFiltro.cortes} onChange={setFiltroCorte} />
-                <MultiSelectFiltro anchoCompleto label="Prioridad" values={filtroPrioridad} opciones={opcionesFiltro.prioridades} onChange={setFiltroPrioridad} />
-                <MultiSelectFiltro anchoCompleto label="Categoría" values={filtroCategoria} opciones={opcionesFiltro.categorias} onChange={setFiltroCategoria} />
-                <MultiSelectFiltro anchoCompleto textoTodos label="Sector" values={filtroSector} opciones={opcionesFiltro.sectores} onChange={setFiltroSector} />
-                <MultiSelectFiltro anchoCompleto textoTodos label="Sector territorial" values={filtroTerritorial} opciones={opcionesFiltro.territoriales} onChange={setFiltroTerritorial} />
-                <MultiSelectFiltro anchoCompleto label="Hoja" values={filtroHoja} opciones={opcionesFiltro.hojas} onChange={setFiltroHoja} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto textoTodos label="Corte" values={filtroCorte} opciones={opcionesFiltro.cortes} onChange={setFiltroCorte} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto label="Prioridad" values={filtroPrioridad} opciones={opcionesFiltro.prioridades} onChange={setFiltroPrioridad} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto label="Categoría" values={filtroCategoria} opciones={opcionesFiltro.categorias} onChange={setFiltroCategoria} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto textoTodos label="Sector" values={filtroSector} opciones={opcionesFiltro.sectores} onChange={setFiltroSector} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto textoTodos label="Sector territorial" values={filtroTerritorial} opciones={opcionesFiltro.territoriales} onChange={setFiltroTerritorial} />
+                <MultiSelectFiltro sinAnimacion anchoCompleto label="Hoja" values={filtroHoja} opciones={opcionesFiltro.hojas} onChange={setFiltroHoja} />
                 <MultiSelectFiltro
+                  sinAnimacion
                   anchoCompleto
                   label="Carga automática"
                   values={alerta ? [alerta] : []}
@@ -953,7 +978,7 @@ export default function RevisionImportacionPage() {
                   ]}
                   onChange={(v) => setAlerta(unico<ImportacionRevisionAlerta | "">(v, ""))}
                 />
-              </motion.div>
+              </div>
             )}
 
             {ultimaAccion && (
@@ -1018,20 +1043,6 @@ export default function RevisionImportacionPage() {
             )}
           </div>
         </header>
-
-        <FiltroPildoras
-          franja
-          ariaLabel="Filtrar por tipo de observación"
-          layoutId="revision-tipo-activo"
-          valor={tipo === "TODOS" ? "" : tipo}
-          onChange={(v) => setTipo((v || "TODOS") as "TODOS" | ImportacionRevisionTipo)}
-          opciones={TIPOS.map((t) => ({
-            value: t.value === "TODOS" ? "" : t.value,
-            label: t.label,
-            dot: t.value === "ERROR" ? "bg-red-500" : t.value === "ADVERTENCIA" ? "bg-amber-400" : t.value === "RECURRENTE" ? "bg-blue-500" : undefined,
-            total: conteoTipo(t.value),
-          }))}
-        />
 
         {error && (
           <div className="border-b border-red-100 bg-red-50 px-5 py-3 text-xs font-semibold text-red-700 dark:!bg-red-500/10 dark:!text-red-100">{error}</div>
@@ -1109,7 +1120,7 @@ export default function RevisionImportacionPage() {
                       <div className={celda}>
                         <div className="min-w-0 leading-tight" title={nombre}>
                           <p className="truncate text-[13px] font-bold text-slate-950 dark:text-white">
-                            {nombre ? nombreTitulo(nombre) : <span className="font-medium text-slate-400">Sin nombre</span>}
+                            {nombre ? nombreTitulo(nombre) : <span className="font-medium text-slate-500 dark:text-slate-400">Sin nombre</span>}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] font-medium tabular-nums text-slate-500">
                             {rut ? formatearRut(rut) : "Sin RUT"}
@@ -1125,30 +1136,30 @@ export default function RevisionImportacionPage() {
                       </div>
                       {/* RUT */}
                       <div className={celda}>
-                        <span className="truncate font-mono text-gray-600">{rut ? formatearRut(rut) : <span className="font-sans text-[11px] text-slate-400">Sin RUT</span>}</span>
+                        <span className="truncate font-mono text-gray-600">{rut ? formatearRut(rut) : <span className="font-sans text-[11px] text-slate-500">Sin RUT</span>}</span>
                       </div>
                       {/* Edad */}
                       <div className={celda}>
                         {item.edad ? (
                           <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{item.edad}</span>
                         ) : (
-                          <span className="text-[11px] font-medium text-slate-400">Sin dato</span>
+                          <span className="text-[11px] font-medium text-slate-500">Sin dato</span>
                         )}
                       </div>
                       {/* Sector */}
                       <div className={celda}>
-                        {item.sector_cesfam ? <SectorBadge sector={item.sector_cesfam} /> : <span className="text-[11px] text-slate-400">Sin sector</span>}
+                        {item.sector_cesfam ? <SectorBadge sector={item.sector_cesfam} /> : <span className="text-[11px] text-slate-500">Sin sector</span>}
                       </div>
                       {/* Sector territorial */}
                       <div className={celda}>
                         <span className="block truncate text-gray-600" title={item.sector_oficial}>
-                          {item.sector_oficial || <span className="text-[11px] text-slate-400">—</span>}
+                          {item.sector_oficial || <span className="text-[11px] text-slate-500">—</span>}
                         </span>
                       </div>
                       {/* Diagnóstico */}
                       <div className={celda}>
                         <span className="truncate text-gray-600" title={item.diagnostico}>
-                          {item.diagnostico || <span className="text-[11px] text-slate-400">Sin diagnóstico</span>}
+                          {item.diagnostico || <span className="text-[11px] text-slate-500">Sin diagnóstico</span>}
                         </span>
                       </div>
                       {/* Derivación */}
@@ -1162,7 +1173,7 @@ export default function RevisionImportacionPage() {
                         {item.prioridad && PRIORIDAD_LABELS[item.prioridad as Prioridad] ? (
                           <BadgePrioridad prioridad={item.prioridad as Prioridad} />
                         ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
+                          <span className="text-[11px] text-slate-500">—</span>
                         )}
                       </div>
                       {/* Categoría */}
@@ -1175,7 +1186,7 @@ export default function RevisionImportacionPage() {
                             <span className="truncate">{CATEGORIA_LABELS[item.categoria as Categoria] ?? item.categoria}</span>
                           </span>
                         ) : (
-                          <span className="text-[11px] text-slate-400">—</span>
+                          <span className="text-[11px] text-slate-500">—</span>
                         )}
                       </div>
                       {/* Corte */}
@@ -1185,9 +1196,9 @@ export default function RevisionImportacionPage() {
                       {/* Carga automática */}
                       <div className={`${celda} justify-between gap-1`}>
                         {!hist ? (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-slate-500 dark:text-slate-400">—</span>
                         ) : !hist.encontrado ? (
-                          gestionada ? <span className="text-slate-400">—</span> : <Chip tono="ambar">Sin datos</Chip>
+                          gestionada ? <span className="text-slate-500 dark:text-slate-400">—</span> : <Chip tono="ambar">Sin datos</Chip>
                         ) : hist.fallecido ? (
                           <Chip tono="rojo">
                             <FiAlertTriangle size={10} /> Fallecido
@@ -1234,7 +1245,7 @@ export default function RevisionImportacionPage() {
         <div className="flex shrink-0 items-center justify-between border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200">
           <p>
             {itemsFiltrados.length} observaci{itemsFiltrados.length !== 1 ? "ones" : "ón"} en la tabla
-            <span className="text-gray-400"> · mostrando {mostrados.length}</span>
+            <span className="text-slate-500 dark:text-[color:var(--text-muted)]"> · mostrando {mostrados.length}</span>
           </p>
           {itemsFiltrados.length > mostrados.length && (
             <button type="button" onClick={() => setVisibles((v) => v + PAGINA)} className="font-bold text-blue-700 hover:underline dark:text-ink-black-300">
@@ -1358,7 +1369,7 @@ export default function RevisionImportacionPage() {
                                 [
                                   ["Nombre", h.nombre],
                                   ["Edad", h.edad ?? "—"],
-                                  ["Nacimiento", fechaCorta(h.fecha_nacimiento) || "—"],
+                                  ["Nacimiento", fechaDDMMAAAA(h.fecha_nacimiento) || "—"],
                                   ["Sector", h.sector_cesfam || "—"],
                                   ["Territorial", h.sector_oficial || "—"],
                                   ["Teléfono", h.telefono || "—"],
@@ -1441,7 +1452,7 @@ export default function RevisionImportacionPage() {
                       sugerencia={sug(h?.fecha_nacimiento, form.fecha_nacimiento, (v) => {
                         const e = edadDesde(v);
                         setForm({ ...form, fecha_nacimiento: v, edad: e !== null ? String(e) : form.edad });
-                      }, fechaCorta)}
+                      }, fechaDDMMAAAA)}
                     >
                       <CampoFecha
                         compacto

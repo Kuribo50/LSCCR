@@ -160,6 +160,34 @@ class ReportesOperativosTests(APITestCase):
         self.assertEqual(febrero["ingresos"], 1)
         self.assertEqual(febrero["egresos_total"], 1)
 
+    def test_serie_mensual_no_cuenta_la_carga_inicial_como_ingresos(self):
+        from django.utils import timezone
+
+        from apps.importar.models import ImportacionMensual
+
+        hoy = timezone.localdate()
+        importacion = ImportacionMensual.objects.create(archivo="x.xlsx", mes=hoy.month, anio=hoy.year)
+        # Llegó ya ingresado en una carga: su fecha de ingreso es el día de la importación.
+        self.crear_paciente(
+            fecha_derivacion=date(2025, 1, 1),
+            fecha_ingreso=hoy,
+            estado=Paciente.Estado.INGRESADO,
+            importacion_origen=importacion,
+        )
+        # Ingreso real: el paciente estaba en lista de espera y se ingresó hoy.
+        self.crear_paciente(
+            fecha_derivacion=date(2025, 1, 1),
+            fecha_ingreso=hoy,
+            estado=Paciente.Estado.INGRESADO,
+        )
+
+        response = self.client.get(f"/api/reportes/serie-mensual/?anio={hoy.year}")
+
+        self.assertEqual(response.data["meses"][hoy.month - 1]["ingresos"], 1)
+
+        resumen = self.client.get(f"/api/reportes/resumen/?mes={hoy.month}&anio={hoy.year}")
+        self.assertEqual(resumen.data["actividad_mes"]["ingresos"], 1)
+
     def test_permisos_reportes(self):
         autenticado = self.client.get("/api/reportes/resumen/?mes=7&anio=2025")
         self.assertEqual(autenticado.status_code, status.HTTP_200_OK)

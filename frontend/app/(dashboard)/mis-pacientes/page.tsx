@@ -21,6 +21,7 @@ import {
   FiChevronDown,
   FiChevronUp,
   FiFilter,
+  FiLink,
   FiMinus,
   FiRefreshCw,
   FiSearch,
@@ -33,6 +34,8 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { TONO_CATEGORIA } from "@/components/AgendaGrid";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
+import MenuAcciones from "@/components/MenuAcciones";
+import { useToast } from "@/lib/toast-context";
 import SectorBadge from "@/components/SectorBadge";
 import BadgePrioridad from "@/components/BadgePrioridad";
 import LoaderKine from "@/components/LoaderKine";
@@ -234,6 +237,7 @@ export default function MisPacientesPage() {
   // "Guardar como grupo" crea el grupo aqui mismo y luego lleva a /grupos.
   const [nuevoGrupo, setNuevoGrupo] = useState<number[] | null>(null);
   const router = useRouter();
+  const { toast } = useToast();
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [draftFilters, setDraftFilters] = useState<FilterDraftState>({});
   const [filterQueries, setFilterQueries] = useState<FilterQueryState>({});
@@ -277,6 +281,17 @@ export default function MisPacientesPage() {
       : "/pacientes/?estado=INGRESADO"
     : null;
   const { data: swrData, error: swrError, isLoading: loading, mutate } = useAPI<Paciente[] | PaginatedResponse<Paciente>>(swrPath);
+  const [refrescando, setRefrescando] = useState(false);
+
+  // Actualizar de verdad: vuelve a pedir la lista y muestra el loader mientras llega.
+  async function actualizarLista() {
+    setRefrescando(true);
+    try {
+      await Promise.all([mutate(), new Promise((r) => setTimeout(r, 400))]);
+    } finally {
+      setRefrescando(false);
+    }
+  }
   const pacientes = useMemo(
     () => unwrapResults(swrData).filter((p) => p.estado === "INGRESADO"),
     [swrData],
@@ -433,7 +448,7 @@ export default function MisPacientesPage() {
         filterFn: multiSelectFilter,
         meta: { label: "Profesional", filterable: true } satisfies ColumnMeta,
         cell: (info) => (
-          <span className={`block truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-400"}`}>
+          <span className={`block truncate ${info.getValue() ? "font-semibold text-slate-800 dark:text-ink-black-100" : "font-medium text-slate-500"}`}>
             {info.getValue() || "Sin asignar"}
           </span>
         ),
@@ -460,7 +475,7 @@ export default function MisPacientesPage() {
           info.getValue() ? (
             <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{info.getValue()}</span>
           ) : (
-            <span className="text-[11px] font-medium text-slate-400">Sin dato</span>
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Sin dato</span>
           ),
       }),
       columnHelper.accessor("categoriaLabel", {
@@ -724,41 +739,7 @@ export default function MisPacientesPage() {
     <div className="ccr-waitlist-page flex h-[max(520px,calc(100dvh-64px-1.5rem))] flex-col overflow-hidden border border-slate-200 bg-white text-[13px] dark:border-ink-black-600 dark:bg-ink-black-800 sm:h-[max(520px,calc(100dvh-64px-2rem))]">
       <header className="ccr-waitlist-toolbar shrink-0 border-b border-slate-200 bg-white px-5 py-4 dark:border-ink-black-600 dark:bg-ink-black-800">
         <div className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="text-lg font-bold text-slate-950 dark:text-white">{esKine ? "Mis pacientes" : "Pacientes ingresados"}</h1>
-              <p className="mt-0.5 text-xs font-medium text-slate-500 dark:text-ink-black-300">
-                <span className="font-bold tabular-nums text-blue-600 dark:text-blue-300">{pacientes.length}</span>{" "}
-                {pacientes.length === 1 ? "paciente" : "pacientes"} {esKine ? "en tu cartera" : "en tratamiento"}
-                {sinAgendar > 0 && (
-                  <>
-                    {" · "}
-                    <span className="font-bold tabular-nums text-amber-700 dark:text-amber-300">{sinAgendar}</span> sin sesión agendada
-                  </>
-                )}
-                {filteredRows !== pacientes.length && (
-                  <>
-                    {" · "}mostrando <span className="font-bold tabular-nums text-slate-800 dark:text-ink-black-100">{filteredRows}</span>
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void mutate()} className="ccr-control-button" title="Volver a cargar">
-                <FiRefreshCw size={13} aria-hidden="true" />
-                Actualizar
-              </button>
-              <button type="button" onClick={() => setCreando(true)} className="ccr-control-button">
-                <FiUserPlus size={13} aria-hidden="true" />
-                Agregar paciente
-              </button>
-              <button type="button" onClick={() => setGrupos({})} className="ccr-control-button-primary">
-                <FiUsers size={13} aria-hidden="true" />
-                Actividades grupales
-              </button>
-            </div>
-          </div>
-
+          <h1 className="sr-only">{esKine ? "Mis pacientes" : "Pacientes ingresados"}</h1>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-3">
             <div className="relative order-1 min-w-0 flex-1 sm:max-w-sm">
               <FiSearch className="ccr-waitlist-search-icon pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" size={15} aria-hidden="true" />
@@ -813,6 +794,42 @@ export default function MisPacientesPage() {
                 <FiX size={15} aria-hidden="true" />
               </button>
             )}
+            <div className="order-2">
+              <MenuAcciones
+                acciones={[
+                  {
+                    label: "Actualizar",
+                    detalle: "Vuelve a cargar la lista",
+                    tono: "azul",
+                    icon: <FiRefreshCw size={13} aria-hidden="true" />,
+                    onClick: () => void actualizarLista(),
+                  },
+                  {
+                    label: "Agregar paciente",
+                    detalle: "Ingresar uno nuevo",
+                    tono: "verde",
+                    icon: <FiUserPlus size={13} aria-hidden="true" />,
+                    onClick: () => setCreando(true),
+                  },
+                  {
+                    label: "Actividades grupales",
+                    detalle: "Crear o registrar una sesión",
+                    tono: "azul",
+                    icon: <FiUsers size={13} aria-hidden="true" />,
+                    onClick: () => setGrupos({}),
+                  },
+                  {
+                    label: "Copiar enlace",
+                    detalle: "De esta vista",
+                    tono: "gris",
+                    icon: <FiLink size={13} aria-hidden="true" />,
+                    onClick: () => {
+                      void navigator.clipboard?.writeText(window.location.href).then(() => toast.info("Enlace copiado."));
+                    },
+                  },
+                ]}
+              />
+            </div>
           </div>
 
           {showQuickFilters && (
@@ -903,7 +920,7 @@ export default function MisPacientesPage() {
         <EmptyState variant="error" compact message={error} />
       ) : (
         <section className="ccr-data-table ccr-operational-table relative flex min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-ink-black-800">
-          {(loading || isPending || !hasHydrated) && (
+          {(loading || refrescando || isPending || !hasHydrated) && (
             <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/80 backdrop-blur-[1px] dark:bg-[#151515]/75">
               <LoaderKine enLinea retrasoMs={0} />
             </div>
@@ -1082,8 +1099,14 @@ export default function MisPacientesPage() {
           <div className="flex shrink-0 flex-col gap-1 border-t border-gray-200 bg-gray-50/50 px-5 py-3 text-[11px] font-medium text-gray-600 dark:border-[#262626] dark:bg-[#0f0f10] dark:text-ink-black-200 sm:flex-row sm:items-center sm:justify-between">
             <p>
               {filteredRows} paciente{filteredRows !== 1 ? "s" : ""} ingresado{filteredRows !== 1 ? "s" : ""}
+              {sinAgendar > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-bold tabular-nums text-amber-700 dark:text-amber-300">{sinAgendar}</span> sin sesión agendada
+                </>
+              )}
             </p>
-            <p className="text-gray-400">
+            <p className="text-slate-500 dark:text-[color:var(--text-muted)]">
               Mostrando {filteredRows} de {pacientes.length}
             </p>
           </div>
