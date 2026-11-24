@@ -259,7 +259,7 @@ ENCABEZADO_DERIVACIONES_PEGADO = [
     ],
 ]
 
-CENTROS_DESDE_PEGADO = {"CAR", "CES", "CCE", "HT", "HH", "FST", "FST HT", "TMT", "TMT HT"}
+CENTROS_DESDE_PEGADO = {"CAR", "CES", "CCE", "FET", "FCE", "HT", "HH", "HLH", "HPL", "FST", "FST HT", "TMT", "TMT HT"}
 PRIORIDADES_PEGADO = {"ALTA", "MEDIANA", "MEDIA", "MODERADA", "BAJA"}
 PROFESIONALES_PEGADO = {
     "KINESIOLOGO",
@@ -1165,7 +1165,16 @@ def _procesar_importacion_archivo(
         resultado["lote"] = lote
         resultado["importaciones"] = [{"id": c.id, "periodo_label": c.periodo_label} for c in cortes]
         if cortes:
-            resultado["revertible_hasta"] = revertible_hasta(cortes[0]).isoformat()
+            # Solo se ofrece "Revertir carga" si de verdad se puede (p. ej. no si sobrescribió un mes).
+            no_revertibles = [
+                e["motivo_no_revertible"]
+                for e in (estado_reversion(c, request.user) for c in cortes)
+                if not e["revertible"]
+            ]
+            if no_revertibles:
+                resultado["no_revertible_motivo"] = no_revertibles[0]
+            else:
+                resultado["revertible_hasta"] = revertible_hasta(cortes[0]).isoformat()
 
         resultado.pop("pacientes", None)
         resultado.pop("registros", None)

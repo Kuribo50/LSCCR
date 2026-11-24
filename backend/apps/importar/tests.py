@@ -125,6 +125,96 @@ class ImportacionesMensualesTests(APITestCase):
                 is_active=True,
             )
 
+    def planilla_pegada(self, filas):
+        """Texto como lo copia Excel: título, dos filas de encabezado y las derivaciones."""
+        t = "\t"
+        cabecera = [
+            "Derivación a Centro Comunitario de Rehabilitación Cesfam Dr. Alberto Reyes" + t * 13,
+            "FECHA " + t * 5 + "DIAGNÓSTICO MÉDICO\tPROFESIONAL DERIVADO\tGRADO PRIORIDAD\tOBSERVACIONES\tUSUARIO PREFERENTE" + t * 7,
+            "\tNOMBRE\tRUT\tEDAD\tDESDE" + t * 12,
+        ]
+        datos = [
+            f"{fecha}\t{nombre} \t{rut}\t{edad}\t{desde}\t{diag}\tKINESIOLOGO\tALTA" + t * 8
+            for fecha, nombre, rut, edad, desde, diag in filas
+        ]
+        return "\n".join(cabecera + datos)
+
+    def test_carga_pegada_completa_conflicto_agregar_sobrescribir_y_revertir(self):
+        url = "/api/importar/derivaciones-pegado/"
+        base = [
+            ("05-10-2026", "ANA PEREZ SOTO", "11111111-1", 70, "CAR", "LUMBAGO"),
+            ("06-10-2026", "LUIS GOMEZ DIAZ", "22222222-2", 65, "FET", "GONARTROSIS"),
+            ("07-10-2026", "SIN DIAGNOSTICO", "33333333-3", 60, "FCE", ""),
+        ]
+        texto = self.planilla_pegada(base)
+        opciones = {"periodo_mes": 10, "periodo_anio": 2026}
+
+        # 1) Carga nueva: crea 2 pacientes, 1 error va a revisión y se puede revertir.
+        r = self.client.post(url, {"texto": texto, **opciones}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED, r.data)
+        self.assertEqual(r.data["importados"], 2)
+        self.assertEqual(r.data["errores_count"], 1)
+        self.assertIn("revertible_hasta", r.data)
+        self.assertEqual(Paciente.objects.count(), 2)
+        luis = Paciente.objects.get(rut="222222222")
+        self.assertEqual(luis.percapita_desde, "CECOSF EL SANTO")  # FET
+        corte_id = r.data["importaciones"][0]["id"]
+
+        # 2) El mismo mes otra vez: pide decidir (409), sin cambiar nada.
+        r = self.client.post(url, {"texto": texto, **opciones}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(r.data["tipo"], "conflicto_mes")
+        self.assertEqual(Paciente.objects.count(), 2)
+
+        # 3) Agregar: suma solo el paciente nuevo; el existente no se duplica.
+        mas = self.planilla_pegada(
+            [base[0], ("08-10-2026", "MARIA ROJAS LEAL", "44444444-4", 72, "HPL", "ARTROSIS")]
+        )
+        r = self.client.post(url, {"texto": mas, "modo_suplementar": True, **opciones}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED, r.data)
+        self.assertEqual(r.data["importados"], 1)
+        self.assertEqual(Paciente.objects.count(), 3)
+        self.assertEqual(Paciente.objects.filter(rut="111111111").count(), 1)
+        self.assertIn("revertible_hasta", r.data)
+
+        # 4) Agregar se revierte: queda como antes de agregar.
+        corte_agregado = r.data["importaciones"][0]["id"]
+        r = self.client.delete(f"/api/importar/historial/corte/{corte_agregado}/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
+        self.assertEqual(Paciente.objects.count(), 2)
+
+        # 5) Sobrescribir: reemplaza la carga y no se ofrece revertir.
+        r = self.client.post(url, {"texto": texto, "forzar_reemplazo": True, **opciones}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED, r.data)
+        self.assertNotIn("revertible_hasta", r.data)
+        self.assertIn("no_revertible_motivo", r.data)
+        self.assertEqual(Paciente.objects.count(), 2)
+        anterior = ImportacionMensual.objects.get(id=corte_id)
+        self.assertEqual(anterior.estado, ImportacionMensual.Estado.REEMPLAZADO)
+
+    def test_preview_completa_sector_y_territorio_con_el_historico(self):
+        HistoricoPaciente.objects.create(
+            rut="111111111", nombre="Paciente Nuevo", codigo_sector="A7", sector="FRUTILLARES"
+        )
+        archivo = self.archivo(
+            [
+                [date(2025, 7, 2), "Paciente Nuevo", "11111111-1", 50, "CAR", "Lumbago", "KINESIOLOGO", "ALTA", ""],
+                [date(2025, 7, 2), "Sin Padron", "22222222-2", 60, "CAR", "Hombro", "KINESIOLOGO", "ALTA", ""],
+            ]
+        )
+        response = self.client.post(
+            "/api/importar/previsualizar/", {"archivo": archivo, "mes": 7, "anio": 2025}, format="multipart"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        por_rut = {r["rut"]: r for r in response.data["registros"]}
+        con_historico = por_rut["111111111"]
+        self.assertEqual(con_historico["sector_cesfam"], "AZUL")
+        self.assertEqual(con_historico["sector_oficial"], "FRUTILLARES")
+        # Sin histórico queda como antes: el "desde" hace de sector y no hay territorio.
+        sin_historico = por_rut["222222222"]
+        self.assertEqual(sin_historico["sector_oficial"], "")
+        self.assertEqual(sin_historico["sector_cesfam"], "CESFAM DR. ALBERTO REYES")
+
     def test_preview_no_crea_pacientes_y_entrega_resumen(self):
         archivo = self.archivo(
             [

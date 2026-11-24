@@ -11,6 +11,9 @@ from apps.pacientes.services import categoria_por_diagnostico, prioridad_normali
 from apps.pacientes.telefonos import normalizar_telefono
 from apps.usuarios.models import Usuario
 
+from .models import HistoricoPaciente
+from .sectorizacion import sectores_desde_codigo
+
 CENTROS_VALIDOS = {
     "CAR", "CST", "CCEQ", "CCE", "CES", "HT", "HH", "TMT", "FST",
     "HLH", "TMT HT", "FST HT", "CEQ", "CESFAM", "CECOSF", "SANTO",
@@ -176,7 +179,11 @@ def _normalizar_percapita(valor: str) -> str:
         "HOSPITAL DE TOME": "HOSPITAL DE TOMÉ",
         "HOSPITAL DE TOMÉ": "HOSPITAL DE TOMÉ",
         "HH": "HOSPITAL HIGUERAS",
+        "HLH": "HOSPITAL HIGUERAS",
         "HOSPITAL HIGUERAS": "HOSPITAL HIGUERAS",
+        "HOSPITAL LAS HIGUERAS": "HOSPITAL HIGUERAS",
+        "HPL": "HOSPITAL PENCO LIRQUÉN",
+        "HOSPITAL PENCO LIRQUEN": "HOSPITAL PENCO LIRQUÉN",
         "FST": "FST",
         "FST HT": "FST HT",
         "TMT": "TMT",
@@ -185,9 +192,11 @@ def _normalizar_percapita(valor: str) -> str:
         "CECOSF CERRO ESTANQUE": "CECOSF CERRO ESTANQUE",
         "CCE": "CECOSF CERRO ESTANQUE",
         "CCEC": "CECOSF CERRO ESTANQUE",
+        "FCE": "CECOSF CERRO ESTANQUE",
         "EL SANTO": "CECOSF EL SANTO",
         "CECOSF EL SANTO": "CECOSF EL SANTO",
         "CES": "CECOSF EL SANTO",
+        "FET": "CECOSF EL SANTO",
     }
     return centros.get(normalizado, limpio)
 
@@ -211,7 +220,11 @@ def _normalizar_sector_cesfam(valor: str) -> tuple[str, str]:
         "HOSPITAL DE TOME": "HOSPITAL DE TOMÉ",
         "HOSPITAL DE TOMÉ": "HOSPITAL DE TOMÉ",
         "HH": "HOSPITAL HIGUERAS",
+        "HLH": "HOSPITAL HIGUERAS",
         "HOSPITAL HIGUERAS": "HOSPITAL HIGUERAS",
+        "HOSPITAL LAS HIGUERAS": "HOSPITAL HIGUERAS",
+        "HPL": "HOSPITAL PENCO LIRQUÉN",
+        "HOSPITAL PENCO LIRQUEN": "HOSPITAL PENCO LIRQUÉN",
         "FST": "FST",
         "FST HT": "FST HT",
         "TMT": "TMT",
@@ -220,9 +233,11 @@ def _normalizar_sector_cesfam(valor: str) -> tuple[str, str]:
         "CECOSF CERRO ESTANQUE": "CECOSF CERRO ESTANQUE",
         "CCE": "CECOSF CERRO ESTANQUE",
         "CCEC": "CECOSF CERRO ESTANQUE",
+        "FCE": "CECOSF CERRO ESTANQUE",
         "EL SANTO": "CECOSF EL SANTO",
         "CECOSF EL SANTO": "CECOSF EL SANTO",
         "CES": "CECOSF EL SANTO",
+        "FET": "CECOSF EL SANTO",
     }
     return mapping.get(normalizado, normalizado), ""
 
@@ -663,6 +678,23 @@ def _registro_preview(
     }
 
 
+def _historicos_de_la_hoja(ws, columnas: dict, header_row: int) -> dict[str, HistoricoPaciente]:
+    """Histórico de Tomé de los RUT de la hoja, en una sola consulta por tandas."""
+    if "rut" not in columnas:
+        return {}
+    ruts = {
+        _normalizar_rut(_leer_celda(ws, fila, columnas, "rut"))
+        for fila in range(header_row + 1, ws.max_row + 1)
+    }
+    ruts.discard("")
+    ruts_lista = sorted(ruts)
+    encontrados: dict[str, HistoricoPaciente] = {}
+    for i in range(0, len(ruts_lista), 500):
+        for h in HistoricoPaciente.objects.filter(rut__in=ruts_lista[i : i + 500]):
+            encontrados[h.rut] = h
+    return encontrados
+
+
 def _procesar_hoja(
     ws,
     sheet_name: str,
@@ -694,6 +726,8 @@ def _procesar_hoja(
         "estado_sugerido", "recepcion_original", "categoria_excel", "asignado_historico",
     ]
 
+    historicos = _historicos_de_la_hoja(ws, columnas, header_row)
+
     for row_idx in range(header_row + 1, ws.max_row + 1):
         valores = {campo: _leer_celda(ws, row_idx, columnas, campo) for campo in campos_lectura}
         if not any(valores.values()):
@@ -713,6 +747,16 @@ def _procesar_hoja(
         if not valores["sector_cesfam"] and desde:
             sector_cesfam = desde
             sector_cesfam_motivo = ""
+        # Autocompletado: lo que la planilla no trae (sector y territorio) se toma del
+        # histórico de Tomé por RUT. Lo escrito en la planilla siempre manda.
+        historico = historicos.get(rut)
+        if historico:
+            sectores = sectores_desde_codigo(historico.codigo_sector, historico.sector)
+            if not sector_oficial and sectores["sector_oficial"]:
+                sector_oficial = _normalizar_sector_oficial(sectores["sector_oficial"])
+            if not valores["sector_cesfam"] and sectores["sector_cesfam"]:
+                sector_cesfam = sectores["sector_cesfam"]
+                sector_cesfam_motivo = ""
         recepcion_original = _cs(valores["recepcion_original"])
         categoria_excel = _cs(valores["categoria_excel"])
         asignado_historico = _normalizar_asignado_historico(valores["asignado_historico"])

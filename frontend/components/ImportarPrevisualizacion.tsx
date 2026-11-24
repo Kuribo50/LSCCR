@@ -46,66 +46,39 @@ interface ColumnaPreview {
   render?: (r: ImportacionPreviewRegistro) => ReactNode;
 }
 
-function estadoClase(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR")
-    return "ccr-preview-status ccr-preview-status-error";
-  if (registro.estado === "DUPLICADO" || registro.estado === "REVISION")
-    return "ccr-preview-status ccr-preview-status-duplicate";
-  return "ccr-preview-status ccr-preview-status-ok";
-}
-
-function estadoEtiqueta(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR") return "Error";
-  if (registro.estado === "DUPLICADO") return "Recurrente";
-  if (registro.estado === "REVISION") return "Revisar";
-  return "Nuevo";
-}
-
-/** Texto explicativo de por que la fila quedo en ese estado (solo errores y revisiones). */
-function estadoDetalle(registro: ImportacionPreviewRegistro) {
-  if (registro.estado === "ERROR") return registro.error || "Fila con error";
-  if (registro.estado === "REVISION")
-    return registro.motivo_revision || registro.advertencias?.join(" · ") || "";
-  return "";
+/** Sin columna de estado, las filas con error se marcan en rojo y explican el motivo al pasar el cursor. */
+function motivoError(registro: ImportacionPreviewRegistro) {
+  return registro.estado === "ERROR" ? registro.error || "Fila con error" : "";
 }
 
 const COLUMNAS: ColumnaPreview[] = [
-  {
-    label: "ESTADO",
-    width: "11%",
-    texto: (r) => {
-      const detalle = estadoDetalle(r);
-      return detalle ? `${estadoEtiqueta(r)}: ${detalle}` : estadoEtiqueta(r);
-    },
-    render: (r) => (
-      <span className={`inline-flex ${estadoClase(r)}`}>
-        {estadoEtiqueta(r)}
-      </span>
-    ),
-  },
-  { label: "FECHA", width: "12%", texto: (r) => r.fecha_derivacion || "" },
-  { label: "NOMBRE", width: "20%", texto: (r) => r.nombre || "" },
-  { label: "RUT", width: "11%", texto: (r) => r.rut || "" },
+  { label: "FECHA", width: "9%", texto: (r) => r.fecha_derivacion || "" },
+  { label: "NOMBRE", width: "18%", texto: (r) => r.nombre || "" },
+  { label: "RUT", width: "9%", texto: (r) => r.rut || "" },
   {
     label: "EDAD",
-    width: "6%",
+    width: "5%",
     texto: (r) => (r.edad ? String(r.edad) : ""),
   },
+  { label: "DESDE", width: "12%", texto: (r) => r.percapita_desde || "" },
   {
     label: "DIAGNÓSTICO MÉDICO",
-    width: "20%",
+    width: "14%",
     texto: (r) => r.diagnostico || "",
   },
   {
     label: "PROFESIONAL DERIVADO",
-    width: "13%",
+    width: "10%",
     texto: (r) => r.profesional || "",
   },
   {
     label: "GRADO PRIORIDAD",
-    width: "10%",
+    width: "8%",
     texto: (r) => String(r.prioridad ?? "").toUpperCase(),
   },
+  // Se completan solos con el histórico de Tomé cuando la planilla no los trae.
+  { label: "SECTOR", width: "7%", texto: (r) => r.sector_cesfam || "" },
+  { label: "TERRITORIO", width: "8%", texto: (r) => r.sector_oficial || "" },
 ];
 
 // =============================================================================
@@ -151,7 +124,11 @@ export default function ImportarPrevisualizacion({ preview }: Props) {
         </thead>
         <tbody>
           {registros.map((r) => (
-            <tr key={claveFila(r.hoja, r.fila)} className="ccr-table-row">
+            <tr
+              key={claveFila(r.hoja, r.fila)}
+              title={motivoError(r) || undefined}
+              className={`ccr-table-row ${motivoError(r) ? "bg-red-50 dark:!bg-red-500/10" : ""}`}
+            >
               <td className="border-b border-r border-slate-200 bg-slate-50 px-2 py-1 text-center font-mono text-[10px] font-bold text-slate-500 dark:text-slate-400 dark:!border-[#262626] dark:!bg-[#181818]">
                 {r.fila}
               </td>

@@ -411,6 +411,8 @@ export interface ImportacionResultado {
   lote?: string;
   importaciones?: { id: number; periodo_label: string }[];
   revertible_hasta?: string;
+  /** Por qué esta carga no se puede revertir (p. ej. sobrescribió un mes). */
+  no_revertible_motivo?: string;
 }
 
 export type ResultadoTelefono = "ACTUALIZADO" | "SIN_CAMBIOS" | "CONFLICTO" | "NO_ENCONTRADO" | "INVALIDO";
