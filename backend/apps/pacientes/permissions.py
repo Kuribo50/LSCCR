@@ -82,7 +82,10 @@ class PuedeGestionarActividadGrupal(BasePermission):
             return True
         if request.user.rol == Usuario.Rol.ADMIN:
             return True
-        return request.user.id in {obj.responsable_id, obj.creado_por_id}
+        if request.user.id in {obj.responsable_id, obj.creado_por_id}:
+            return True
+        # Los demas profesionales de la actividad tambien la gestionan.
+        return obj.profesionales.filter(id=request.user.id).exists()
 
 
 def puede_editar_observacion(user, observacion) -> bool:

@@ -31,6 +31,7 @@ export default function FiltroPildoras({
   onChange,
   ariaLabel,
   franja = false,
+  etiqueta,
 }: {
   opciones: OpcionPildora[];
   valor: string;
@@ -40,6 +41,8 @@ export default function FiltroPildoras({
   layoutId?: string;
   /** Pone el filtro en una franja con borde inferior (sobre tablas o grillas). */
   franja?: boolean;
+  /** Texto fijo antes del valor, como en los demás filtros ("Periodo: …"). */
+  etiqueta?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   const raiz = useRef<HTMLDivElement>(null);
@@ -63,7 +66,7 @@ export default function FiltroPildoras({
   }, [abierto]);
 
   const control = (
-    <div ref={raiz} className="relative w-full max-w-[13rem]">
+    <div ref={raiz} className={`relative w-full ${etiqueta ? "" : "max-w-[13rem]"}`}>
       <button
         type="button"
         aria-label={ariaLabel}
@@ -73,6 +76,7 @@ export default function FiltroPildoras({
         onClick={() => setAbierto((a) => !a)}
         className="flex h-9 w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-[13px] font-semibold text-slate-900 outline-none transition-colors hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-white"
       >
+        {etiqueta && <span className="shrink-0 font-semibold text-slate-500 dark:text-ink-black-300">{etiqueta}:</span>}
         {actual && <Contenido op={actual} />}
         <svg
           aria-hidden="true"

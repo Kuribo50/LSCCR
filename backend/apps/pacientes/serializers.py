@@ -15,6 +15,8 @@ from .models import (
     ParticipanteActividad,
     RegistroAgendaPaciente,
 )
+from apps.usuarios.models import Usuario
+
 from .llamados import intentos_en_estado, umbral_intentos
 from .permissions import puede_editar_observacion
 from .services import ESTADOS_REQUIEREN_NOTA
@@ -337,11 +339,12 @@ class DiagnosticoCatalogoSerializer(serializers.ModelSerializer):
 
 
 
-def validar_pacientes_para_grupo(ids, request, permitir_vacio=False):
+def validar_pacientes_para_grupo(ids, request, permitir_vacio=False, kines_extra=()):
     """Valida ids de pacientes para actividades y grupos.
 
     Deben existir y estar ingresados; un KINE solo puede usar pacientes de su
-    cartera. Devuelve la lista sin duplicados.
+    cartera (o de la de `kines_extra`, los co-profesionales de la actividad).
+    Devuelve la lista sin duplicados.
     """
     ids = list(dict.fromkeys(ids))
     if not ids:
@@ -358,7 +361,8 @@ def validar_pacientes_para_grupo(ids, request, permitir_vacio=False):
         )
     user = getattr(request, "user", None)
     if user is not None and getattr(user, "rol", None) == "KINE":
-        if any(p.kine_asignado_id != user.id for p in pacientes):
+        permitidos = {user.id, *kines_extra}
+        if any(p.kine_asignado_id not in permitidos for p in pacientes):
             raise serializers.ValidationError(
                 {"paciente_ids": "Solo puedes agregar pacientes de tu cartera."}
             )
@@ -405,6 +409,10 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
     grupo_nombre = serializers.CharField(source="grupo.nombre", read_only=True, default=None)
     total_participantes = serializers.SerializerMethodField()
     total_asistentes = serializers.SerializerMethodField()
+    profesionales = serializers.SerializerMethodField()
+    profesional_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False
+    )
 
     class Meta:
         model = ActividadGrupal
@@ -419,6 +427,8 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
             "estado_label",
             "responsable",
             "responsable_nombre",
+            "profesionales",
+            "profesional_ids",
             "creado_por_nombre",
             "grupo",
             "grupo_nombre",
@@ -439,6 +449,20 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
             if p.asistencia == ParticipanteActividad.Asistencia.ASISTIO
         )
 
+    def get_profesionales(self, obj):
+        return [{"id": u.id, "nombre": u.nombre} for u in obj.profesionales.all()]
+
+    def validate_profesional_ids(self, value):
+        ids = list(dict.fromkeys(value))
+        validos = set(
+            Usuario.objects.filter(
+                id__in=ids, rol__in=[Usuario.Rol.KINE, Usuario.Rol.ADMIN], is_active=True
+            ).values_list("id", flat=True)
+        )
+        if len(validos) != len(ids):
+            raise serializers.ValidationError("Hay profesionales que no existen o no pueden dirigir actividades.")
+        return ids
+
     def validate_nombre(self, value):
         value = value.strip()
         if not value:
@@ -456,7 +480,15 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
             if self.instance is None:
                 raise serializers.ValidationError({"paciente_ids": "Selecciona al menos un paciente."})
             return attrs
-        attrs["paciente_ids"] = validar_pacientes_para_grupo(ids, self.context.get("request"))
+        if "profesional_ids" in attrs:
+            equipo = set(attrs["profesional_ids"])
+        elif self.instance is not None:
+            equipo = set(self.instance.profesionales.values_list("id", flat=True))
+        else:
+            equipo = set()
+        attrs["paciente_ids"] = validar_pacientes_para_grupo(
+            ids, self.context.get("request"), kines_extra=equipo
+        )
         return attrs
 
     def _guardar_participantes(self, actividad, ids):
@@ -471,17 +503,27 @@ class ActividadGrupalSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         ids = validated_data.pop("paciente_ids", None)
+        profesionales = validated_data.pop("profesional_ids", None)
         actividad = ActividadGrupal.objects.create(**validated_data)
         self._guardar_participantes(actividad, ids)
+        self._guardar_profesionales(actividad, profesionales)
         return actividad
 
     def update(self, instance, validated_data):
         ids = validated_data.pop("paciente_ids", None)
+        profesionales = validated_data.pop("profesional_ids", None)
         for campo, valor in validated_data.items():
             setattr(instance, campo, valor)
         instance.save()
         self._guardar_participantes(instance, ids)
+        self._guardar_profesionales(instance, profesionales)
         return instance
+
+    def _guardar_profesionales(self, actividad, ids):
+        if ids is None:
+            return
+        # El responsable ya dirige la actividad: no se repite como profesional adicional.
+        actividad.profesionales.set([i for i in ids if i != actividad.responsable_id])
 
 
 class AsistenciaActividadSerializer(serializers.Serializer):

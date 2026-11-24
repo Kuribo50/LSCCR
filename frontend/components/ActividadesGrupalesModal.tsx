@@ -417,6 +417,11 @@ function FormularioActividad({
     actividad ? actividad.participantes.map((p) => p.paciente_id) : grupoInicial ? citablesDe(grupoInicial) : (preseleccion ?? []),
   );
   const kines = useKines(usuario);
+  const { data: profesionalesData } = useAPI<{ id: number; nombre: string }[]>("/actividades-grupales/profesionales/");
+  const [coProfesionales, setCoProfesionales] = useState<number[]>(actividad?.profesionales.map((p) => p.id) ?? []);
+  const responsableId = esAdmin ? Number(responsable) : (actividad?.responsable ?? usuario.id);
+  // Quien ya es responsable no se ofrece como profesional adicional.
+  const otrosProfesionales = (profesionalesData ?? []).filter((p) => p.id !== responsableId);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
 
@@ -459,6 +464,7 @@ function FormularioActividad({
         lugar: lugar.trim(),
         descripcion: descripcion.trim(),
         paciente_ids: seleccion,
+        profesional_ids: coProfesionales.filter((id) => id !== responsableId),
         grupo: grupoId ? Number(grupoId) : null,
         ...(esAdmin ? { responsable: Number(responsable) } : {}),
       };
@@ -503,6 +509,39 @@ function FormularioActividad({
             </div>
           ) : (
             <div />
+          )}
+          {otrosProfesionales.length > 0 && (
+            <fieldset className="sm:col-span-2">
+              <legend className="mb-1.5 block text-[12px] font-semibold text-slate-600 dark:text-ink-black-200">
+                Otros profesionales (opcional)
+              </legend>
+              <div className="flex flex-wrap gap-1.5">
+                {otrosProfesionales.map((p) => {
+                  const activo = coProfesionales.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      aria-pressed={activo}
+                      onClick={() =>
+                        setCoProfesionales((prev) => (activo ? prev.filter((id) => id !== p.id) : [...prev, p.id]))
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-bold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
+                        activo
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-700 dark:border-ink-black-600 dark:bg-transparent dark:text-ink-black-200"
+                      }`}
+                    >
+                      {activo && <FiCheck size={12} aria-hidden="true" />}
+                      {nombreLegible(p.nombre)}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] font-medium text-slate-500">
+                Quienes dirigen la misma actividad la ven en su agenda, pueden marcar asistencia y citar a sus pacientes.
+              </p>
+            </fieldset>
           )}
           <label className="sm:col-span-2">
             <span className="mb-1.5 block text-[12px] font-semibold text-slate-600 dark:text-ink-black-200">Descripción (opcional)</span>
@@ -597,7 +636,8 @@ function DetalleActividad({
     return <p className="flex-1 px-6 py-10 text-center text-sm font-semibold text-slate-500 dark:text-slate-400">Cargando actividad…</p>;
   }
   const a = actividad;
-  const puedeEditar = usuario.rol === "ADMIN" || a.responsable === usuario.id;
+  const puedeEditar = usuario.rol === "ADMIN" || a.responsable === usuario.id || a.profesionales.some((p) => p.id === usuario.id);
+  const profesionalesTexto = [a.responsable_nombre, ...a.profesionales.map((p) => p.nombre)].filter(Boolean).map((n) => nombreLegible(n as string));
 
   async function accion(clave: string, fn: () => Promise<unknown>, mensaje: string) {
     setOcupado(clave);
@@ -636,7 +676,12 @@ function DetalleActividad({
             </p>
             {(a.responsable_nombre || a.grupo_nombre) && (
               <p className="mt-1 text-[12px] font-medium text-slate-500">
-                {[a.responsable_nombre ? `Responsable: ${a.responsable_nombre}` : "", a.grupo_nombre ? `Grupo: ${a.grupo_nombre}` : ""].filter(Boolean).join(" · ")}
+                {[
+                  profesionalesTexto.length ? `${profesionalesTexto.length > 1 ? "Profesionales" : "Responsable"}: ${profesionalesTexto.join(", ")}` : "",
+                  a.grupo_nombre ? `Grupo: ${a.grupo_nombre}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             )}
             {a.descripcion && (

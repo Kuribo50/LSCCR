@@ -901,12 +901,7 @@ export function DetalleGrupo({
                 <ul className="space-y-1.5">
                   {actividades.map((a) => (
                     <li key={a.id}>
-                      <button
-                        type="button"
-                        disabled={!onAbrirActividad}
-                        onClick={() => onAbrirActividad?.(a.id)}
-                        className="flex w-full items-center gap-3 rounded-lg border border-slate-100 px-3 py-2.5 text-left outline-none transition-colors enabled:hover:border-blue-200 enabled:hover:bg-blue-50/40 focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:border-ink-black-700"
-                      >
+                      <div className="flex w-full items-center gap-3 rounded-lg border border-slate-100 px-3 py-2.5 dark:border-ink-black-700">
                         <span className="w-[118px] shrink-0 text-[12px] font-bold tabular-nums text-slate-700 dark:text-ink-black-100">{fechaCorta(a.fecha_hora)}</span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-bold text-slate-900 dark:text-ink-black-50">{a.nombre}</span>
@@ -916,7 +911,17 @@ export function DetalleGrupo({
                         <span className="w-16 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">
                           {a.estado === "REALIZADA" ? `${a.total_asistentes}/${a.total_participantes}` : `${a.total_participantes} pac.`}
                         </span>
-                      </button>
+                        {onAbrirActividad && (
+                          <button
+                            type="button"
+                            onClick={() => onAbrirActividad(a.id)}
+                            aria-label={`Ver actividad ${a.nombre}`}
+                            className="ccr-control-button shrink-0"
+                          >
+                            Ver actividad
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

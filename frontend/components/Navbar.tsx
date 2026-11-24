@@ -15,7 +15,7 @@ const TITULOS_RUTA: Record<string, string> = {
   '/inasistencias': 'Inasistencias',
   '/egresos': 'Historial de egresos',
   '/riesgo-abandono': 'Riesgo de abandono',
-  '/linea-tiempo': 'Línea de tiempo',
+  '/linea-tiempo': 'Actividad reciente',
   '/usuarios': 'Usuarios',
   '/pacientes': 'Pacientes',
   '/importar': 'Importar derivaciones',

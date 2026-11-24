@@ -650,7 +650,7 @@ export default function FichaPaciente({
                 />
               )}
               {onTomar && <AccionFicha icon={<FiUserPlus size={14} />} label="Tomar paciente" onClick={onTomar} />}
-              <AccionFicha icon={<FiGitCommit size={14} />} label="Línea de tiempo" onClick={() => router.push(`/linea-tiempo?rut=${paciente.rut}`)} />
+              <AccionFicha icon={<FiGitCommit size={14} />} label="Ver actividad" onClick={() => router.push(`/linea-tiempo?rut=${paciente.rut}`)} />
             </GrupoAcciones>
 
             <GrupoAcciones titulo="Comunicación">

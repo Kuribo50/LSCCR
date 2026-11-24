@@ -18,35 +18,66 @@ import SelectFiltro from "@/components/SelectFiltro";
 import type { HistorialAccionPaciente, HistorialAccionTipo } from "@/lib/types";
 
 // Cada tipo de evento del historial mapea a un icono, un color y una etiqueta.
-const TIPO_META: Record<HistorialAccionTipo, { icon: IconType; tono: Tono; etiqueta: string }> = {
-  CAMBIO_ESTADO: { icon: FiRefreshCw, tono: "slate", etiqueta: "Estado" },
+export const TIPO_META: Record<HistorialAccionTipo, { icon: IconType; tono: Tono; etiqueta: string }> = {
+  CAMBIO_ESTADO: { icon: FiRefreshCw, tono: "indigo", etiqueta: "Estado" },
   CONTACTO: { icon: FiPhone, tono: "blue", etiqueta: "Contacto" },
   INASISTENCIA: { icon: FiAlertTriangle, tono: "amber", etiqueta: "Inasistencia" },
   AGENDA_ASISTIO: { icon: FiCheckCircle, tono: "green", etiqueta: "Asistió" },
-  AGENDA_NO_ASISTIO: { icon: FiXCircle, tono: "amber", etiqueta: "No asistió" },
-  AGENDA_REAGENDADO: { icon: FiCalendar, tono: "blue", etiqueta: "Reagendada" },
-  AGENDA_CANCELADO: { icon: FiTrash2, tono: "red", etiqueta: "Cancelada" },
-  ACTIVIDAD_GRUPAL: { icon: FiUsers, tono: "blue", etiqueta: "Actividad grupal" },
+  AGENDA_NO_ASISTIO: { icon: FiXCircle, tono: "rose", etiqueta: "No asistió" },
+  AGENDA_REAGENDADO: { icon: FiCalendar, tono: "sky", etiqueta: "Reagendada" },
+  AGENDA_CANCELADO: { icon: FiTrash2, tono: "slate", etiqueta: "Cancelada" },
+  ACTIVIDAD_GRUPAL: { icon: FiUsers, tono: "violet", etiqueta: "Actividad grupal" },
 };
 
-type Tono = "slate" | "blue" | "amber" | "green" | "red" | "violet";
+export type Tono = "slate" | "blue" | "amber" | "green" | "red" | "violet" | "indigo" | "rose" | "sky";
 
-const ICONO: Record<Tono, string> = {
+export const ICONO: Record<Tono, string> = {
   slate: "bg-slate-100 text-slate-600 ring-white dark:bg-ink-black-700 dark:text-ink-black-100 dark:ring-ink-black-800",
   blue: "bg-blue-50 text-blue-600 ring-white dark:bg-blue-500/15 dark:text-blue-300 dark:ring-ink-black-800",
   amber: "bg-amber-50 text-amber-700 ring-white dark:bg-amber-500/15 dark:text-amber-300 dark:ring-ink-black-800",
   green: "bg-green-50 text-green-700 ring-white dark:bg-green-500/15 dark:text-green-300 dark:ring-ink-black-800",
   red: "bg-red-50 text-red-700 ring-white dark:bg-red-500/15 dark:text-red-300 dark:ring-ink-black-800",
   violet: "bg-violet-50 text-violet-700 ring-white dark:bg-violet-500/15 dark:text-violet-300 dark:ring-ink-black-800",
+  indigo: "bg-indigo-50 text-indigo-700 ring-white dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-ink-black-800",
+  rose: "bg-rose-50 text-rose-700 ring-white dark:bg-rose-500/15 dark:text-rose-300 dark:ring-ink-black-800",
+  sky: "bg-sky-50 text-sky-700 ring-white dark:bg-sky-500/15 dark:text-sky-300 dark:ring-ink-black-800",
 };
 
-const PILL: Record<Tono, string> = {
+export const PILL: Record<Tono, string> = {
   slate: "bg-slate-100 text-slate-600 dark:bg-ink-black-700 dark:text-ink-black-200",
   blue: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200",
   amber: "bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200",
   green: "bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-200",
   red: "bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-200",
   violet: "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200",
+  indigo: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
+  rose: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200",
+  sky: "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
+};
+
+/** Franja de color a la izquierda de cada evento y punto del filtro. */
+export const BARRA: Record<Tono, string> = {
+  slate: "border-l-slate-300 dark:border-l-slate-500",
+  blue: "border-l-blue-400",
+  amber: "border-l-amber-400",
+  green: "border-l-green-500",
+  red: "border-l-red-500",
+  violet: "border-l-violet-500",
+  indigo: "border-l-indigo-500",
+  rose: "border-l-rose-500",
+  sky: "border-l-sky-400",
+};
+
+export const PUNTO: Record<Tono, string> = {
+  slate: "bg-slate-400",
+  blue: "bg-blue-500",
+  amber: "bg-amber-400",
+  green: "bg-green-500",
+  red: "bg-red-500",
+  violet: "bg-violet-500",
+  indigo: "bg-indigo-500",
+  rose: "bg-rose-500",
+  sky: "bg-sky-400",
 };
 
 const MES = new Intl.DateTimeFormat("es-CL", { month: "long", year: "numeric" });

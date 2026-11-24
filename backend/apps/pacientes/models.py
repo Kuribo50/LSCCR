@@ -314,6 +314,12 @@ class ActividadGrupal(models.Model):
         related_name="actividades_grupales_creadas",
         on_delete=models.SET_NULL,
     )
+    # Otros profesionales que dirigen la misma actividad (ademas del responsable).
+    profesionales = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="actividades_grupales_compartidas",
+    )
     pacientes = models.ManyToManyField(
         Paciente, through="ParticipanteActividad", related_name="actividades_grupales"
     )

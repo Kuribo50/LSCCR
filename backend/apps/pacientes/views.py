@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import date, datetime, timedelta
 
 from django.db import transaction
@@ -100,6 +101,14 @@ ESTADOS_LISTA_ESPERA = [
 
 # Notas generadas por agenda para no duplicar esos eventos en el timeline
 # cuando ya existe un RegistroAgendaPaciente equivalente.
+# Movimientos que genera una carga o importación (no una acción de una persona del equipo):
+# la actividad reciente los oculta salvo que se pidan con `incluir_cargas=1`.
+MOVIMIENTO_DE_CARGA = re.compile(
+    r"importaci|carga autom|carga inicial|planilla|recurrencia|registrado nuevamente|"
+    r"paso intermedio|observaci[oó]n del corte|observaci[oó]n vinculada|revisi[oó]n de importaci",
+    re.IGNORECASE,
+)
+
 AGENDA_MOVIMIENTO_NOTAS = {
     "Paciente asistió a atención programada.",
     "No asiste a atención programada.",
@@ -1029,6 +1038,7 @@ class PacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
                     "tipo": "ACTIVIDAD_GRUPAL",
                     "fecha": actividad.fecha_hora,
                     "usuario_nombre": actividad.responsable.nombre if actividad.responsable else None,
+                    "actividad_id": actividad.id,
                     "titulo": actividad.nombre,
                     "descripcion": " · ".join(detalle),
                     "observacion": actividad.descripcion,
@@ -1044,6 +1054,193 @@ class PacienteViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
                     paciente, context=self.get_serializer_context()
                 ).data,
                 "acciones": acciones,
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="actividad-reciente")
+    def actividad_reciente(self, request):
+        """Línea de tiempo del equipo: lo que pasó en todos los pacientes, del más reciente al más antiguo.
+
+        Reúne cambios de estado, contactos, citas, inasistencias y actividades grupales.
+        Filtros opcionales: `desde` y `hasta` (AAAA-MM-DD; por defecto los últimos 7 días),
+        `tipo` (uno o varios separados por coma), `usuario` (id de quien lo registró),
+        `search` (nombre, RUT o ID del paciente), `incluir_cargas` (1 para ver también lo que generan las
+        importaciones), `limite` (1-200, por defecto 50) y `offset`.
+        El profesional ve solo su cartera y lo que él registró; el encargado y el administrador, todo.
+        """
+        hoy = timezone.localdate()
+
+        def leer_fecha(nombre, defecto):
+            valor = request.query_params.get(nombre)
+            if not valor:
+                return defecto
+            try:
+                return date.fromisoformat(valor)
+            except ValueError:
+                raise ValidationError({nombre: "Fecha inválida (use AAAA-MM-DD)."})
+
+        hasta = leer_fecha("hasta", hoy)
+        desde = leer_fecha("desde", hasta - timedelta(days=6))
+        if desde > hasta:
+            raise ValidationError({"desde": "La fecha inicial no puede ser posterior a la final."})
+        if (hasta - desde).days > 366:
+            raise ValidationError({"desde": "El rango máximo es de un año."})
+        try:
+            limite = max(1, min(int(request.query_params.get("limite", 50)), 200))
+            offset = max(0, int(request.query_params.get("offset", 0)))
+            usuario_id = int(request.query_params["usuario"]) if request.query_params.get("usuario") else None
+        except ValueError:
+            raise ValidationError({"detail": "Parámetros numéricos inválidos."})
+        tipos = {t.strip().upper() for t in request.query_params.get("tipo", "").split(",") if t.strip()}
+        search = (request.query_params.get("search") or "").strip()
+        incluir_cargas = request.query_params.get("incluir_cargas") in {"1", "true", "True"}
+
+        zona = timezone.get_current_timezone()
+        inicio = timezone.make_aware(datetime.combine(desde, datetime.min.time()), zona)
+        fin = timezone.make_aware(datetime.combine(hasta + timedelta(days=1), datetime.min.time()), zona)
+
+        solo_cartera = request.user.rol == Usuario.Rol.KINE and not es_encargado(request.user)
+
+        def filtrar(qs, campo_usuario, prefijo="paciente__"):
+            if solo_cartera:
+                qs = qs.filter(Q(**{f"{prefijo}kine_asignado": request.user}) | Q(**{campo_usuario: request.user}))
+            if usuario_id:
+                qs = qs.filter(**{campo_usuario: usuario_id})
+            if search:
+                qs = qs.filter(
+                    Q(**{f"{prefijo}nombre__icontains": search})
+                    | Q(**{f"{prefijo}rut__icontains": search})
+                    | Q(**{f"{prefijo}rut__icontains": normalizar_rut(search)})
+                    | Q(**{f"{prefijo}rut__icontains": search.replace(".", "")})
+                    | Q(**{f"{prefijo}id_ccr__icontains": search})
+                )
+            return qs
+
+        estado_labels = dict(Paciente.Estado.choices)
+        eventos = []
+
+        def base(paciente, tipo, fecha, usuario, titulo, descripcion, observacion="", **extra):
+            return {
+                **extra,
+                "tipo": tipo,
+                "fecha": fecha,
+                "usuario_id": usuario.id if usuario else None,
+                "usuario_nombre": usuario.nombre if usuario else None,
+                "paciente_id": paciente.id if paciente else None,
+                "paciente_nombre": paciente.nombre if paciente else None,
+                "paciente_rut": paciente.rut if paciente else None,
+                "paciente_id_ccr": paciente.id_ccr if paciente else None,
+                "titulo": titulo,
+                "descripcion": descripcion,
+                "observacion": observacion or "",
+            }
+
+        movimientos = filtrar(
+            MovimientoPaciente.objects.filter(fecha__gte=inicio, fecha__lt=fin).select_related("paciente", "usuario"),
+            "usuario",
+        )
+        for mov in movimientos:
+            if mov.estado_anterior == mov.estado_nuevo and mov.notas in AGENDA_MOVIMIENTO_NOTAS:
+                continue
+            if not incluir_cargas and MOVIMIENTO_DE_CARGA.search(mov.notas or ""):
+                continue
+            descripcion = (
+                f"{estado_labels.get(mov.estado_anterior, 'Sin estado previo')} -> {estado_labels.get(mov.estado_nuevo, mov.estado_nuevo)}"
+                if mov.estado_anterior != mov.estado_nuevo
+                else estado_labels.get(mov.estado_nuevo, mov.estado_nuevo)
+            )
+            eventos.append(
+                base(
+                    mov.paciente, "CAMBIO_ESTADO", mov.fecha, mov.usuario, "Cambio de estado", descripcion, mov.notas,
+                    estado_anterior=mov.estado_anterior, estado_nuevo=mov.estado_nuevo,
+                )
+            )
+
+        llamados = filtrar(
+            LlamadoPaciente.objects.filter(fecha__gte=inicio, fecha__lt=fin).select_related("paciente", "usuario"),
+            "usuario",
+        )
+        for llamado in llamados:
+            titulo = (
+                "Contacto confirmado"
+                if llamado.resultado == LlamadoPaciente.Resultado.CONTESTA_CONFIRMADO
+                else "Contacto sin respuesta"
+            )
+            eventos.append(
+                base(llamado.paciente, "CONTACTO", llamado.fecha, llamado.usuario, titulo, f"Resultado: {llamado.get_resultado_display()}", llamado.notas)
+            )
+
+        agenda_tipos = {
+            RegistroAgendaPaciente.Resultado.ASISTIO: ("AGENDA_ASISTIO", "Asistió a atención", "Paciente asistió a la atención programada."),
+            RegistroAgendaPaciente.Resultado.NO_ASISTIO: ("AGENDA_NO_ASISTIO", "No asistió a atención", "Paciente no asistió a la atención programada."),
+            RegistroAgendaPaciente.Resultado.REAGENDADO: ("AGENDA_REAGENDADO", "Atención reagendada", "Se actualizó la fecha de atención."),
+            RegistroAgendaPaciente.Resultado.CANCELADO: ("AGENDA_CANCELADO", "Cita eliminada", "Se eliminó la próxima atención programada."),
+        }
+        registros = filtrar(
+            RegistroAgendaPaciente.objects.filter(creado_en__gte=inicio, creado_en__lt=fin).select_related("paciente", "usuario"),
+            "usuario",
+        )
+        no_asistio_agenda = set()
+        for registro in registros:
+            tipo, titulo, descripcion = agenda_tipos[registro.resultado]
+            if registro.resultado == RegistroAgendaPaciente.Resultado.NO_ASISTIO:
+                no_asistio_agenda.add((registro.paciente_id, registro.fecha_programada.date()))
+            eventos.append(
+                base(
+                    registro.paciente, tipo, registro.creado_en, registro.usuario, titulo, descripcion, registro.observacion,
+                    fecha_programada=registro.fecha_programada,
+                    nueva_fecha=registro.nueva_fecha,
+                )
+            )
+
+        inasistencias = filtrar(
+            InasistenciaPaciente.objects.filter(fecha__gte=desde, fecha__lte=hasta).select_related("paciente", "usuario"),
+            "usuario",
+        )
+        for ina in inasistencias:
+            if (ina.paciente_id, ina.fecha) in no_asistio_agenda:
+                continue
+            fecha = timezone.make_aware(datetime.combine(ina.fecha, datetime.min.time()), zona)
+            eventos.append(
+                base(ina.paciente, "INASISTENCIA", fecha, ina.usuario, "Inasistencia", "Justificada" if ina.justificada else "No justificada", ina.motivo)
+            )
+
+        actividades = ActividadGrupal.objects.filter(fecha_hora__gte=inicio, fecha_hora__lt=fin).select_related("responsable")
+        if solo_cartera:
+            actividades = actividades.filter(Q(responsable=request.user) | Q(profesionales=request.user)).distinct()
+        if usuario_id:
+            actividades = actividades.filter(Q(responsable=usuario_id) | Q(profesionales=usuario_id)).distinct()
+        if search:
+            actividades = actividades.filter(nombre__icontains=search)
+        for actividad in actividades.annotate(n_participantes=Count("participantes", distinct=True)):
+            detalle = [f"{actividad.n_participantes} participante{'s' if actividad.n_participantes != 1 else ''}"]
+            if actividad.estado == ActividadGrupal.Estado.CANCELADA:
+                detalle = ["Actividad cancelada"]
+            if actividad.lugar:
+                detalle.append(actividad.lugar)
+            eventos.append(base(None, "ACTIVIDAD_GRUPAL", actividad.fecha_hora, actividad.responsable, actividad.nombre, " · ".join(detalle), actividad.descripcion, actividad_id=actividad.id))
+
+        # Resúmenes antes de filtrar por tipo, para que los filtros muestren cuánto hay en cada opción.
+        por_tipo = {}
+        por_usuario = {}
+        for e in eventos:
+            por_tipo[e["tipo"]] = por_tipo.get(e["tipo"], 0) + 1
+            if e["usuario_id"]:
+                item = por_usuario.setdefault(e["usuario_id"], {"id": e["usuario_id"], "nombre": e["usuario_nombre"], "total": 0})
+                item["total"] += 1
+
+        if tipos:
+            eventos = [e for e in eventos if e["tipo"] in tipos]
+        eventos.sort(key=lambda e: e["fecha"], reverse=True)
+
+        return Response(
+            {
+                "desde": desde.isoformat(),
+                "hasta": hasta.isoformat(),
+                "total": len(eventos),
+                "por_tipo": por_tipo,
+                "usuarios": sorted(por_usuario.values(), key=lambda u: u["nombre"] or ""),
+                "acciones": eventos[offset : offset + limite],
             }
         )
 
@@ -1450,12 +1647,15 @@ class ActividadGrupalViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = ActividadGrupal.objects.select_related("responsable", "creado_por", "grupo").prefetch_related(
-            "participantes__paciente"
+            "participantes__paciente", "profesionales"
         )
         user = self.request.user
         if user.rol == Usuario.Rol.KINE:
             qs = qs.filter(
-                Q(responsable=user) | Q(creado_por=user) | Q(participantes__paciente__kine_asignado=user)
+                Q(responsable=user)
+                | Q(creado_por=user)
+                | Q(profesionales=user)
+                | Q(participantes__paciente__kine_asignado=user)
             ).distinct()
         params = self.request.query_params
         desde = params.get("desde")
@@ -1495,6 +1695,12 @@ class ActividadGrupalViewSet(BloqueaMedicoMixin, viewsets.ModelViewSet):
             serializer.save(responsable=serializer.instance.responsable)
         else:
             serializer.save()
+
+    @action(detail=False, methods=["get"], url_path="profesionales")
+    def profesionales(self, request):
+        """Profesionales activos que pueden sumarse a una actividad (para cualquier rol que gestione)."""
+        usuarios = Usuario.objects.filter(rol=Usuario.Rol.KINE, is_active=True).order_by("nombre")
+        return Response([{"id": u.id, "nombre": u.nombre} for u in usuarios])
 
     @action(detail=True, methods=["post"], url_path="asistencia")
     def asistencia(self, request, pk=None):

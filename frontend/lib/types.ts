@@ -185,6 +185,7 @@ export interface HistorialAccionPaciente {
   tipo: HistorialAccionTipo;
   fecha: string;
   usuario_nombre: string | null;
+  actividad_id?: number;
   titulo: string;
   descripcion: string;
   observacion: string;
@@ -192,6 +193,37 @@ export interface HistorialAccionPaciente {
   estado_nuevo: Estado | null;
   fecha_programada?: string | null;
   nueva_fecha?: string | null;
+}
+
+/** Un evento de la actividad reciente del equipo (de cualquier paciente). */
+export interface ActividadEquipoEvento {
+  tipo: HistorialAccionTipo;
+  fecha: string;
+  usuario_id: number | null;
+  usuario_nombre: string | null;
+  /** Solo en las actividades grupales: para abrir su detalle. */
+  actividad_id?: number;
+  /** Nulo en las actividades grupales, que no son de un solo paciente. */
+  paciente_id: number | null;
+  paciente_nombre: string | null;
+  paciente_rut: string | null;
+  paciente_id_ccr: string | null;
+  titulo: string;
+  descripcion: string;
+  observacion: string;
+  estado_anterior?: Estado | null;
+  estado_nuevo?: Estado | null;
+  fecha_programada?: string | null;
+  nueva_fecha?: string | null;
+}
+
+export interface ActividadEquipoRespuesta {
+  desde: string;
+  hasta: string;
+  total: number;
+  por_tipo: Partial<Record<HistorialAccionTipo, number>>;
+  usuarios: { id: number; nombre: string | null; total: number }[];
+  acciones: ActividadEquipoEvento[];
 }
 
 export interface HistorialAccionesPaciente {
@@ -800,6 +832,8 @@ export interface ActividadGrupal {
   estado_label: string;
   responsable: number | null;
   responsable_nombre: string | null;
+  /** Otros profesionales que dirigen la actividad junto al responsable. */
+  profesionales: { id: number; nombre: string }[];
   creado_por_nombre: string | null;
   grupo: number | null;
   grupo_nombre: string | null;

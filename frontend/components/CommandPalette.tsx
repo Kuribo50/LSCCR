@@ -63,7 +63,7 @@ const NAV_DESCRIPTIONS: Record<string, string> = {
   "/importar/revision": "Observaciones y duplicados de la última carga",
   "/historial-mensual": "Cortes mensuales importados",
   "/egresos": "Altas, abandonos y egresos",
-  "/linea-tiempo": "Movimientos de pacientes en el tiempo",
+  "/linea-tiempo": "Lo que hizo el equipo: contactos, citas y cambios de estado",
   "/riesgo-abandono": "Pacientes con inasistencias repetidas",
   "/analisis/estadisticas": "Reportes mensuales y por profesional",
   "/usuarios": "Cuentas, roles y claves del equipo",

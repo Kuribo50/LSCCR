@@ -804,6 +804,86 @@ class PacienteWorkflowTests(APITestCase):
         self.assertEqual(response.data["rescates_activos"]["total"], 10)
         self.assertLessEqual(len(response.data["rescates_activos"]["pacientes"]), 8)
 
+    def test_actividad_reciente_reune_eventos_y_oculta_lo_que_generan_las_cargas(self):
+        paciente = self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        LlamadoPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.kine,
+            resultado=LlamadoPaciente.Resultado.NO_CONTESTA,
+        )
+        MovimientoPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.kine,
+            estado_anterior=Paciente.Estado.PENDIENTE,
+            estado_nuevo=Paciente.Estado.INGRESADO,
+            notas="Ingresa a tratamiento.",
+        )
+        MovimientoPaciente.objects.create(
+            paciente=paciente,
+            usuario=self.admin,
+            estado_anterior=None,
+            estado_nuevo=Paciente.Estado.PENDIENTE,
+            notas="Diagnóstico agregado desde importación recurrente: LUMBAGO.",
+        )
+
+        response = self.client.get("/api/pacientes/actividad-reciente/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tipos = [a["tipo"] for a in response.data["acciones"]]
+        self.assertIn("CONTACTO", tipos)
+        self.assertIn("CAMBIO_ESTADO", tipos)
+        notas = [a["observacion"] for a in response.data["acciones"]]
+        self.assertNotIn("Diagnóstico agregado desde importación recurrente: LUMBAGO.", notas)
+        self.assertEqual(response.data["acciones"][0]["paciente_nombre"], paciente.nombre)
+
+        con_cargas = self.client.get("/api/pacientes/actividad-reciente/?incluir_cargas=1")
+        self.assertEqual(con_cargas.data["total"], response.data["total"] + 1)
+
+        por_rut = self.client.get("/api/pacientes/actividad-reciente/", {"search": paciente.rut})
+        self.assertGreaterEqual(por_rut.data["total"], 1)
+        sin_formato = self.client.get("/api/pacientes/actividad-reciente/", {"search": paciente.rut.replace("-", "")})
+        self.assertGreaterEqual(sin_formato.data["total"], 1)
+
+        solo_contactos = self.client.get("/api/pacientes/actividad-reciente/?tipo=CONTACTO")
+        self.assertEqual({a["tipo"] for a in solo_contactos.data["acciones"]}, {"CONTACTO"})
+
+    def test_actividad_reciente_del_profesional_solo_incluye_su_cartera(self):
+        otro = Usuario.objects.create_user(rut="55555555-5", password="testpass", nombre="Otro Kine", rol=Usuario.Rol.KINE)
+        mio = self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        ajeno = self.crear_paciente(estado=Paciente.Estado.PENDIENTE, kine_asignado=otro)
+        for paciente in (mio, ajeno):
+            LlamadoPaciente.objects.create(paciente=paciente, usuario=self.admin, resultado=LlamadoPaciente.Resultado.NO_CONTESTA)
+        self.client.force_authenticate(self.kine)
+
+        response = self.client.get("/api/pacientes/actividad-reciente/")
+
+        self.assertEqual({a["paciente_id"] for a in response.data["acciones"]}, {mio.id})
+
+    def test_actividad_reciente_el_encargado_y_el_admin_ven_todo_el_equipo(self):
+        otro = Usuario.objects.create_user(rut="66666666-6", password="testpass", nombre="Otro Kine", rol=Usuario.Rol.KINE)
+        encargado = Usuario.objects.create_user(
+            rut="77777777-7", password="testpass", nombre="Kine Encargado", rol=Usuario.Rol.KINE, es_encargado=True
+        )
+        mio = self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
+        ajeno = self.crear_paciente(estado=Paciente.Estado.PENDIENTE, kine_asignado=otro)
+        for paciente in (mio, ajeno):
+            LlamadoPaciente.objects.create(paciente=paciente, usuario=self.admin, resultado=LlamadoPaciente.Resultado.NO_CONTESTA)
+
+        for usuario in (encargado, self.admin):
+            self.client.force_authenticate(usuario)
+            response = self.client.get("/api/pacientes/actividad-reciente/")
+            self.assertEqual({a["paciente_id"] for a in response.data["acciones"]}, {mio.id, ajeno.id})
+
+        medico = Usuario.objects.create_user(rut="88888888-8", password="testpass", nombre="Medico", rol=Usuario.Rol.MEDICO)
+        self.client.force_authenticate(medico)
+        self.assertEqual(self.client.get("/api/pacientes/actividad-reciente/").status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_actividad_reciente_valida_el_rango_de_fechas(self):
+        malo = self.client.get("/api/pacientes/actividad-reciente/?desde=no-es-fecha")
+        self.assertEqual(malo.status_code, status.HTTP_400_BAD_REQUEST)
+        invertido = self.client.get("/api/pacientes/actividad-reciente/?desde=2026-02-01&hasta=2026-01-01")
+        self.assertEqual(invertido.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_dashboard_resumen_admin_devuelve_contadores_agregados(self):
         self.crear_paciente(estado=Paciente.Estado.PENDIENTE)
         self.crear_paciente(estado=Paciente.Estado.RESCATE)
@@ -1178,6 +1258,38 @@ class ActividadGrupalTests(APITestCase):
         self.assertEqual(self.client.get(f"/api/actividades-grupales/{actividad_id}/").status_code, status.HTTP_200_OK)
         editar = self.client.patch(f"/api/actividades-grupales/{actividad_id}/", {"nombre": "Otro"}, format="json")
         self.assertEqual(editar.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_actividad_con_varios_profesionales(self):
+        self.client.force_authenticate(self.kine)
+        response = self.client.post(
+            "/api/actividades-grupales/",
+            {**self.payload([self.p1.id, self.ajeno.id]), "profesional_ids": [self.otro_kine.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual([p["id"] for p in response.data["profesionales"]], [self.otro_kine.id])
+        actividad_id = response.data["id"]
+
+        # El segundo profesional la ve, la edita y marca asistencia.
+        self.client.force_authenticate(self.otro_kine)
+        listado = self.client.get("/api/actividades-grupales/")
+        data = listado.data.get("results", listado.data) if isinstance(listado.data, dict) else listado.data
+        self.assertEqual([a["id"] for a in data], [actividad_id])
+        editar = self.client.patch(f"/api/actividades-grupales/{actividad_id}/", {"nombre": "Taller 2"}, format="json")
+        self.assertEqual(editar.status_code, status.HTTP_200_OK, editar.data)
+        asistencia = self.client.post(
+            f"/api/actividades-grupales/{actividad_id}/asistencia/",
+            {"paciente_id": self.p1.id, "asistencia": "ASISTIO"},
+            format="json",
+        )
+        self.assertEqual(asistencia.status_code, status.HTTP_200_OK)
+
+        # Un profesional que no es parte no puede sumar pacientes de otros.
+        self.client.force_authenticate(self.kine)
+        sin_equipo = self.client.post(
+            "/api/actividades-grupales/", self.payload([self.ajeno.id]), format="json"
+        )
+        self.assertEqual(sin_equipo.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_actualizar_participantes(self):
         self.client.force_authenticate(self.kine)

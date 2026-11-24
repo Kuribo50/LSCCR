@@ -51,7 +51,7 @@ export const ITEM = {
   inasistencias: { href: "/inasistencias", label: "Inasistencias", icon: FiUserX, section: "seguimiento", tone: "text-rose-700" },
   riesgo: { href: "/riesgo-abandono", label: "Riesgo de abandono", icon: FiAlertTriangle, section: "seguimiento", tone: "text-rose-700" },
   egresos: { href: "/egresos", label: "Lista de egresados", icon: FiClock, section: "seguimiento", tone: "text-indigo-700", countKey: "egresos" },
-  lineaTiempo: { href: "/linea-tiempo", label: "Línea de tiempo", icon: FiGitCommit, section: "seguimiento", tone: "text-indigo-700" },
+  lineaTiempo: { href: "/linea-tiempo", label: "Actividad reciente", icon: FiGitCommit, section: "seguimiento", tone: "text-indigo-700" },
   estadisticas: { href: "/analisis/estadisticas", label: "Estadísticas", icon: FiBarChart2, section: "analisis", tone: "text-blue-700" },
   usuarios: { href: "/usuarios", label: "Usuarios", icon: FiUser, section: "admin", tone: "text-slate-700" },
 } satisfies Record<string, Item>;
