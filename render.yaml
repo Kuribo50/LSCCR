@@ -1,0 +1,32 @@
+# Backend de demostración en Render (plan gratuito).
+# Guía completa: docs/DEPLOY-DEMO.md
+services:
+  - type: web
+    name: lista-espera-ccr-api
+    runtime: docker
+    plan: free
+    region: oregon
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_PRODUCTION
+        value: "1"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DB_ENGINE
+        value: postgres
+      # URL del "Session pooler" de Supabase (Connect > Session pooler).
+      - key: DATABASE_URL
+        sync: false
+      - key: POSTGRES_SSLMODE
+        value: require
+      # URL del frontend en Vercel (https://xxx.vercel.app), para CSRF.
+      - key: FRONTEND_PUBLIC_URL
+        sync: false
+      # 512 MB de RAM en el plan gratuito: pocos procesos.
+      - key: GUNICORN_WORKERS
+        value: "2"
+      # Carga los datos ficticios al arrancar (no duplica).
+      - key: DEMO_SEED
+        value: "1"

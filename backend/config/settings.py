@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 from datetime import timedelta
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from django.core.exceptions import ImproperlyConfigured
 
 
@@ -117,6 +117,12 @@ def origins_from_railway() -> list[str]:
     return _unique(origins)
 
 
+def hosts_from_render() -> list[str]:
+    # Render entrega el dominio público del servicio (xxx.onrender.com).
+    host = _normalize_host(env("RENDER_EXTERNAL_HOSTNAME", ""))
+    return [host] if host else []
+
+
 def origins_from_urls(*names: str) -> list[str]:
     origins: list[str] = []
     for name in names:
@@ -153,10 +159,11 @@ def postgres_connection_from_env() -> dict[str, str]:
             db_host = parsed.hostname
         if parsed.port:
             db_port = str(parsed.port)
+        # Las URL traen usuario y clave codificados (%40 = @, etc.).
         if not db_user and parsed.username:
-            db_user = parsed.username
+            db_user = unquote(parsed.username)
         if not db_password and parsed.password:
-            db_password = parsed.password
+            db_password = unquote(parsed.password)
         if not db_name and parsed.path:
             db_name = parsed.path.lstrip("/")
     else:
@@ -186,7 +193,7 @@ DEBUG = env_bool("DJANGO_DEBUG", not IS_PRODUCTION)
 # pero siguen siendo sobreescribibles por variables explicitas.
 allowed_hosts_default = "localhost,127.0.0.1"
 if IS_PRODUCTION:
-    deployment_hosts = _unique(hosts_from_coolify() + hosts_from_railway())
+    deployment_hosts = _unique(hosts_from_coolify() + hosts_from_railway() + hosts_from_render())
     if deployment_hosts:
         allowed_hosts_default = ",".join(deployment_hosts)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", allowed_hosts_default)
@@ -280,6 +287,8 @@ if DB_ENGINE == "postgres":
             "PASSWORD": pg["PASSWORD"],
             "HOST": pg["HOST"],
             "PORT": pg["PORT"],
+            # Bases administradas (Supabase) piden SSL: POSTGRES_SSLMODE=require.
+            "OPTIONS": {"sslmode": env("POSTGRES_SSLMODE")} if env("POSTGRES_SSLMODE") else {},
         }
     }
 else:
