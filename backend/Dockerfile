@@ -17,7 +17,10 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . /app
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh \
+    # /app es de root (WORKDIR): estas carpetas las escribe el usuario app.
+    && mkdir -p /app/staticfiles /app/media \
+    && chown -R app:app /app/staticfiles /app/media
 
 USER app
 
