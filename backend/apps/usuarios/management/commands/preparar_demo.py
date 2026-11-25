@@ -18,6 +18,8 @@ class Command(BaseCommand):
         call_command("generar_usuarios_demo", stdout=self.stdout)
         call_command("generar_pacientes_demo", stdout=self.stdout)
         call_command("generar_grupos_demo", stdout=self.stdout)
+        # Volumen para presentar: cortes mensuales y ~100 pacientes ficticios.
+        call_command("generar_datos_demo", stdout=self.stdout)
 
         # El catálogo de diagnósticos sale de las fichas creadas.
         for texto in Paciente.objects.exclude(diagnostico="").values_list("diagnostico", flat=True):

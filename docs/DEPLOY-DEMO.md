@@ -48,6 +48,24 @@ El orden importa: primero la base, luego el backend y al final el frontend.
 
 En Render → servicio → **Environment**, pon `FRONTEND_PUBLIC_URL` = la URL de Vercel y guarda (se redepliega solo).
 
+## Datos de la demo
+
+Todo es inventado. Al arrancar, el backend (`DEMO_SEED=1`) corre `preparar_demo`, que carga:
+- 7 usuarios de demostración;
+- unos 130 pacientes ficticios en todos los estados, repartidos en 4 cortes mensuales (los últimos 4 meses);
+- una bandeja de Revisión de carga con 8 observaciones (errores, sectores vacíos y recurrentes);
+- grupos, actividades y el catálogo de diagnósticos.
+
+Los RUT están en el rango 90.000.000–99.999.999 (empresas: no existen personas con esos números).
+No duplica si se reinicia. Para regenerar: `python manage.py generar_datos_demo --rehacer`.
+
+## Dominio propio (opcional)
+
+Algunas redes institucionales bloquean `*.vercel.app`. Con un dominio propio en Cloudflare:
+1. En Vercel, agrega el dominio al proyecto (por ejemplo `demo.midominio.cl`).
+2. En Cloudflare crea un `CNAME` `demo` → el destino que indica Vercel, con proxy en gris (Solo DNS).
+3. En Render, agrega el dominio a `DJANGO_ALLOWED_HOSTS` y pon su URL en `FRONTEND_PUBLIC_URL`.
+
 ## Entrar
 
 | Rol | RUT | Clave |

@@ -21,6 +21,9 @@ services:
         sync: false
       - key: POSTGRES_SSLMODE
         value: require
+      # Vercel reenvía /api con su propio dominio (X-Forwarded-Host).
+      - key: DJANGO_ALLOWED_HOSTS
+        value: lista-espera-ccr-api.onrender.com,.vercel.app,demo.albertoreyes.cl
       # URL del frontend en Vercel (https://xxx.vercel.app), para CSRF.
       - key: FRONTEND_PUBLIC_URL
         sync: false
