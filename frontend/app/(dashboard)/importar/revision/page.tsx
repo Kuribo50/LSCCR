@@ -680,7 +680,8 @@ function RevisionImportacion() {
   const resumen = data?.resumen;
   const totalGestionadas = (data?.resueltos ?? 0) + (data?.descartados ?? 0);
   const totalTodas = totalGestionadas + (data?.pendientes ?? 0);
-  const avance = totalTodas > 0 ? Math.round((totalGestionadas / totalTodas) * 100) : 0;
+  // Hacia abajo: con pendientes nunca se muestra 100 %.
+  const avance = totalTodas > 0 ? Math.floor((totalGestionadas / totalTodas) * 100) : 0;
 
   function abrirRevision(item: ImportacionRevisionItem) {
     const base = formFromItem(item);
