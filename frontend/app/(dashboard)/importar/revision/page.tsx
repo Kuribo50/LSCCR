@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useCargaAlMontar } from "@/lib/useCargaAlMontar";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   FiAlertTriangle,
   FiEdit2,
@@ -24,6 +25,8 @@ import {
   FiUserCheck,
   FiX,
   FiZap,
+  FiCheck,
+  FiLogIn,
 } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -52,6 +55,8 @@ import CompletarTelefonos from "@/components/CompletarTelefonos";
 import MultiSelectFiltro from "@/components/MultiSelectFiltro";
 import FiltroPildoras from "@/components/FiltroPildoras";
 import Autocompletar from "@/components/Autocompletar";
+import AdministrarDiagnosticos, { type Diagnostico } from "@/components/AdministrarDiagnosticos";
+import { useAPI } from "@/lib/swr";
 import { useEntradaFilas } from "@/lib/useEntradaFilas";
 
 const FichaPaciente = dynamic(() => import("@/components/FichaPaciente"), { ssr: false });
@@ -170,9 +175,10 @@ function detectarProblemas(item: ImportacionRevisionItem, form: RevisionForm): P
   } else if (/rut (inv[aá]lid|incorrect|mal)/i.test(motivo)) {
     agregar("rut", "El RUT no es válido.");
   }
-  if (/diagn[oó]stico vac/i.test(motivo)) agregar("diagnostico", "Falta el diagnóstico.");
-  if (/fecha de derivaci/i.test(motivo)) agregar("fecha_derivacion", "Falta o no es válida la fecha de derivación.");
-  if (/nombre vac/i.test(motivo)) agregar("nombre", "Falta el nombre.");
+  // Los faltantes de la planilla dejan de contar en cuanto el campo se completa en el formulario.
+  if (/diagn[oó]stico vac/i.test(motivo) && !form.diagnostico.trim()) agregar("diagnostico", "Falta el diagnóstico.");
+  if (/fecha de derivaci/i.test(motivo) && !form.fecha_derivacion) agregar("fecha_derivacion", "Falta o no es válida la fecha de derivación.");
+  if (/nombre vac/i.test(motivo) && !form.nombre.trim()) agregar("nombre", "Falta el nombre.");
   if (/edad/i.test(motivo)) agregar("edad", "Revisa la edad.");
   const edadNac = edadDesde(form.fecha_nacimiento);
   if (edadNac !== null && form.edad && Number(form.edad) !== edadNac) {
@@ -203,7 +209,10 @@ function detectarProblemas(item: ImportacionRevisionItem, form: RevisionForm): P
     if (h.edad_coincide === false) agregar("edad", "No coincide con la edad de la carga automática.", { grave: false });
   }
 
-  if (lista.length === 0) agregar("general", motivo || item.tipo_label);
+  // Motivo que no se reconoce: se muestra tal cual. Si se reconoció y ya se corrigió, no queda nada pendiente.
+  const motivoConocido =
+    /rut vac|rut (inv[aá]lid|incorrect|mal)|diagn[oó]stico vac|fecha de derivaci|nombre vac|edad|sector territorial vac|repetid|duplicad/i.test(motivo);
+  if (lista.length === 0 && !motivoConocido) agregar("general", motivo || item.tipo_label);
   return lista;
 }
 
@@ -237,11 +246,14 @@ function Campo({
   problemas,
   nota,
   sugerencia,
+  accion,
   className = "",
   children,
 }: {
   label: string;
   problemas: Problema[];
+  /** Acción chica a la derecha de la etiqueta (por ejemplo, "Administrar"). */
+  accion?: React.ReactNode;
   nota?: string;
   /** Valor distinto que trae la carga automática, con un botón para usarlo. */
   sugerencia?: { texto: string; onUsar: () => void } | null;
@@ -251,9 +263,12 @@ function Campo({
   const grave = problemas.some((p) => p.grave);
   return (
     <div className={className}>
-      <span className={`text-[11px] font-bold ${problemas.length ? (grave ? "text-red-600" : "text-amber-700") : "text-slate-500 dark:text-ink-black-300"}`}>
-        {label}
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span className={`text-[11px] font-bold ${problemas.length ? (grave ? "text-red-600" : "text-amber-700") : "text-slate-500 dark:text-ink-black-300"}`}>
+          {label}
+        </span>
+        {accion}
+      </div>
       <div
         className={`mt-1 rounded-lg ${
           problemas.length ? (grave ? "ring-2 ring-red-300 dark:ring-red-500/50" : "ring-2 ring-amber-300 dark:ring-amber-400/50") : ""
@@ -316,9 +331,22 @@ function PanelPlegable({
           {icono}
           {titulo}
         </span>
-        <FiChevronDown size={14} className={`text-slate-500 dark:text-slate-400 transition-transform ${abierto ? "rotate-180" : ""}`} />
+        <FiChevronDown size={14} className={`text-slate-500 dark:text-slate-400 transition-transform duration-200 ${abierto ? "rotate-180" : ""}`} />
       </button>
-      {abierto && <div className="border-t border-[var(--border-subtle)] px-3 pb-3 pt-2.5">{children}</div>}
+      {/* El contenido se despliega y pliega con altura animada. */}
+      <AnimatePresence initial={false}>
+        {abierto && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-[var(--border-subtle)] px-3 pb-3 pt-2.5">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
@@ -485,10 +513,24 @@ function Chip({ children, tono }: { children: React.ReactNode; tono: "rojo" | "a
 // Componente principal
 // =============================================================================
 
+// useSearchParams necesita un Suspense para el prerender de Next.
 export default function RevisionImportacionPage() {
+  return (
+    <Suspense fallback={null}>
+      <RevisionImportacion />
+    </Suspense>
+  );
+}
+
+function RevisionImportacion() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: catalogoDiagnosticos, mutate: mutarDiagnosticos } = useAPI<Diagnostico[]>("/diagnosticos/");
+  const [administrarDiagnosticos, setAdministrarDiagnosticos] = useState(false);
+  // Escritos con "Agregar" y aún sin guardar (se guardan al completar la ficha).
+  const [diagnosticosNuevos, setDiagnosticosNuevos] = useState<string[]>([]);
   const [fichaPaciente, setFichaPaciente] = useState<Paciente | null>(null);
   const [data, setData] = useState<ImportacionRevisionResultado | null>(null);
   const [loading, setLoading] = useState(true);
@@ -654,6 +696,25 @@ export default function RevisionImportacionPage() {
     setModalError("");
   }
 
+  // Enlace directo desde el Historial (?corte=ID&obs=N): abre esa fila una vez cargada la bandeja.
+  const [enlacePendiente, setEnlacePendiente] = useState(() => {
+    const params = searchParams;
+    if (!params) return null;
+    const corte = Number(params.get("corte"));
+    const obs = Number(params.get("obs"));
+    return params.has("corte") && params.has("obs") && Number.isFinite(corte) && Number.isFinite(obs) ? { corte, obs } : null;
+  });
+  if (enlacePendiente && data) {
+    setEnlacePendiente(null);
+    const item = data.items.find((i) => i.importacion_id === enlacePendiente.corte && i.revision_index === enlacePendiente.obs);
+    // Si ya se resolvió, simplemente se queda en la bandeja.
+    if (item) abrirRevision(item);
+  }
+  // Quita ?corte=&obs= de la URL para que recargar no vuelva a abrir la fila.
+  useEffect(() => {
+    if (searchParams?.has("corte")) router.replace("/importar/revision", { scroll: false });
+  }, [searchParams, router]);
+
   function cerrarRevision() {
     if (actionLoading) return;
     setSeleccionado(null);
@@ -693,7 +754,7 @@ export default function RevisionImportacionPage() {
     toast.info("Cambios revertidos.");
   }
 
-  async function enviarAccion(accion: "COMPLETAR" | "DESCARTAR") {
+  async function enviarAccion(accion: "COMPLETAR" | "DESCARTAR" | "VOLVER_A_LISTA") {
     if (!seleccionado) return;
     setActionLoading(true);
     setModalError("");
@@ -717,10 +778,19 @@ export default function RevisionImportacionPage() {
       if (res.item.lote_resolucion) {
         setUltimaAccion({
           lote: res.item.lote_resolucion,
-          texto: `${accion === "COMPLETAR" ? "Resolviste" : "Descartaste"} a ${nombre}.`,
+          texto:
+            accion === "VOLVER_A_LISTA"
+              ? `${nombre} volvió a la lista.`
+              : `${accion === "COMPLETAR" ? "Resolviste" : "Descartaste"} a ${nombre}.`,
         });
       }
-      if (accion === "COMPLETAR") toast.success("Observación resuelta correctamente.");
+      if (accion === "VOLVER_A_LISTA") toast.success(`${nombre} volvió a la lista.`);
+      else if (accion === "COMPLETAR") {
+        toast.success("Observación resuelta correctamente.");
+        // El diagnóstico nuevo ya quedó en el catálogo: se recarga y deja de ser "pendiente".
+        setDiagnosticosNuevos([]);
+        void mutarDiagnosticos();
+      }
       else toast.warning("Observación descartada.");
       cerrarRevision();
       await cargarRevision();
@@ -1195,7 +1265,13 @@ export default function RevisionImportacionPage() {
                       </div>
                       {/* Carga automática */}
                       <div className={`${celda} justify-between gap-1`}>
-                        {!hist ? (
+                        {item.egresado && !gestionada ? (
+                          <span title={`${item.egresado_estado}: puede volver a la lista`}>
+                            <Chip tono="ambar">
+                              <FiLogIn size={10} /> Egresado
+                            </Chip>
+                          </span>
+                        ) : !hist ? (
                           <span className="text-slate-500 dark:text-slate-400">—</span>
                         ) : !hist.encontrado ? (
                           gestionada ? <span className="text-slate-500 dark:text-slate-400">—</span> : <Chip tono="ambar">Sin datos</Chip>
@@ -1255,7 +1331,8 @@ export default function RevisionImportacionPage() {
         </div>
       </div>
 
-      {/* Modal de revisión */}
+      {/* Modal de revisión: entra y sale animado (AnimatePresence conserva el último contenido al cerrar). */}
+      <AnimatePresence>
       {seleccionado && form && (() => {
         const problemas = detectarProblemas(seleccionado, form);
         const de = (campo: CampoForm) => problemas.filter((p) => p.campo === campo);
@@ -1280,8 +1357,16 @@ export default function RevisionImportacionPage() {
           pendiente && carga && normalizarSector(carga) !== normalizarSector(actual)
             ? { texto: formato(carga), onUsar: () => aplicar(carga) }
             : null;
-        const opcionesDiagnostico = Array.from(
-          new Set((data?.items ?? []).map((i) => (i.diagnostico || "").trim().toUpperCase()).filter(Boolean)),
+        // Catálogo de diagnósticos (editable); si aún no carga, los de la bandeja.
+        const opcionesDiagnostico = (
+          Array.from(
+            new Set([
+              ...(catalogoDiagnosticos?.length
+                ? catalogoDiagnosticos.map((d) => d.nombre)
+                : (data?.items ?? []).map((i) => (i.diagnostico || "").trim().toUpperCase()).filter(Boolean)),
+              ...diagnosticosNuevos,
+            ]),
+          )
         )
           .sort((a, b) => a.localeCompare(b, "es"))
           .map((d) => ({ value: d, label: d }));
@@ -1291,8 +1376,19 @@ export default function RevisionImportacionPage() {
           dot: TONO_CATEGORIA[c]?.dot,
         }));
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={cerrarRevision}>
-            <div
+          <motion.div
+            key="revision-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+            onClick={cerrarRevision}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98, transition: { duration: 0.15 } }}
+              transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
               role="dialog"
               aria-modal="true"
               aria-label={`Revisar ${seleccionado.paciente_nombre || seleccionado.nombre || "observación"}`}
@@ -1335,20 +1431,48 @@ export default function RevisionImportacionPage() {
               <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 <div className={`grid gap-5 ${lateralAbierto ? "lg:grid-cols-[290px_1fr]" : ""}`}>
                   {/* Panel lateral: cada bloque se puede cerrar */}
+                  <AnimatePresence initial={false}>
                   {lateralAbierto && (
-                    <aside className="space-y-3 lg:sticky lg:top-0 lg:self-start">
+                    <motion.aside
+                      key="panel-lateral"
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16, transition: { duration: 0.12 } }}
+                      transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                      className="space-y-3 lg:sticky lg:top-0 lg:self-start"
+                    >
                       <PanelPlegable
                         titulo={`Por resolver · ${problemas.length}`}
                         abierto={problemasAbierto}
                         onToggle={() => setProblemasAbierto((v) => !v)}
                       >
+                        {/* Cada problema se va con una animación apenas se corrige en el formulario. */}
                         <ul className="space-y-1.5">
-                          {problemas.map((p) => (
-                            <li key={`${p.campo}-${p.texto}`} className="flex items-start gap-2 text-xs">
-                              <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${p.grave ? "bg-red-500" : "bg-amber-400"}`} aria-hidden="true" />
-                              <span className="text-slate-700 dark:text-ink-black-100">{p.texto}</span>
-                            </li>
-                          ))}
+                          <AnimatePresence initial={false}>
+                            {problemas.map((p) => (
+                              <motion.li
+                                key={`${p.campo}-${p.texto}`}
+                                layout
+                                initial={{ opacity: 0, x: -6 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 12, height: 0, marginTop: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="flex items-start gap-2 overflow-hidden text-xs"
+                              >
+                                <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${p.grave ? "bg-red-500" : "bg-amber-400"}`} aria-hidden="true" />
+                                <span className="text-slate-700 dark:text-ink-black-100">{p.texto}</span>
+                              </motion.li>
+                            ))}
+                          </AnimatePresence>
+                          {problemas.length === 0 && (
+                            <motion.li
+                              initial={{ opacity: 0, scale: 0.96 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              className="flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300"
+                            >
+                              <FiCheck size={13} aria-hidden="true" /> Todo listo para completar.
+                            </motion.li>
+                          )}
                         </ul>
                       </PanelPlegable>
 
@@ -1417,8 +1541,9 @@ export default function RevisionImportacionPage() {
                           ))}
                         </dl>
                       </PanelPlegable>
-                    </aside>
+                    </motion.aside>
                   )}
+                  </AnimatePresence>
 
                   {/* Formulario */}
                   <div className="grid content-start gap-x-3 gap-y-3 sm:grid-cols-6">
@@ -1551,7 +1676,20 @@ export default function RevisionImportacionPage() {
                         onChange={(v) => setForm({ ...form, categoria: v })}
                       />
                     </Campo>
-                    <Campo label="Diagnóstico" problemas={de("diagnostico")} className="sm:col-span-6">
+                    <Campo
+                      label="Diagnóstico"
+                      problemas={de("diagnostico")}
+                      className="sm:col-span-6"
+                      accion={
+                        <button
+                          type="button"
+                          onClick={() => setAdministrarDiagnosticos(true)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
+                        >
+                          <FiEdit2 size={11} /> Administrar
+                        </button>
+                      }
+                    >
                       <Autocompletar
                         permitirLibre
                         ariaLabel="Diagnóstico"
@@ -1559,6 +1697,12 @@ export default function RevisionImportacionPage() {
                         value={form.diagnostico}
                         opciones={opcionesDiagnostico}
                         onChange={(v) => setForm({ ...form, diagnostico: v.toUpperCase() })}
+                        // No se guarda aún: entra al catálogo al completar la ficha (lo hace el backend).
+                        onAgregar={(texto) => {
+                          const nombre = texto.trim().toUpperCase();
+                          setDiagnosticosNuevos((actuales) => (actuales.includes(nombre) ? actuales : [...actuales, nombre]));
+                          toast.info(`${nombre} se guardará al completar la ficha.`);
+                        }}
                       />
                     </Campo>
 
@@ -1744,14 +1888,26 @@ export default function RevisionImportacionPage() {
                     >
                       <FiTrash2 size={13} /> Descartar
                     </button>
-                    <button
-                      type="button"
-                      disabled={actionLoading}
-                      onClick={() => void enviarAccion("COMPLETAR")}
-                      className="ccr-control-button ccr-control-button-primary px-4 py-2 text-xs disabled:opacity-50"
-                    >
-                      {actionLoading ? "Guardando..." : "Completar y crear ficha"}
-                    </button>
+                    {seleccionado.egresado ? (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => void enviarAccion("VOLVER_A_LISTA")}
+                        title={`Hoy: ${seleccionado.egresado_estado}. Queda Pendiente con esta derivación.`}
+                        className="ccr-control-button ccr-control-button-primary inline-flex items-center gap-2 px-4 py-2 text-xs disabled:opacity-50"
+                      >
+                        <FiLogIn size={13} /> {actionLoading ? "Guardando..." : "Volver a lista"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => void enviarAccion("COMPLETAR")}
+                        className="ccr-control-button ccr-control-button-primary px-4 py-2 text-xs disabled:opacity-50"
+                      >
+                        {actionLoading ? "Guardando..." : "Completar y crear ficha"}
+                      </button>
+                    )}
                   </>
                 ) : (
                   <button
@@ -1768,10 +1924,11 @@ export default function RevisionImportacionPage() {
                   </button>
                 )}
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         );
       })()}
+      </AnimatePresence>
 
       {/* El encargado completa también los teléfonos que faltan (no entra a Importar). */}
       <CompletarTelefonos />
@@ -1784,6 +1941,13 @@ export default function RevisionImportacionPage() {
           onRefresh={() => void cargarRevision()}
         />
       )}
+
+      <AdministrarDiagnosticos
+        abierto={administrarDiagnosticos}
+        onCerrar={() => setAdministrarDiagnosticos(false)}
+        diagnosticos={catalogoDiagnosticos ?? []}
+        onCambio={() => void mutarDiagnosticos()}
+      />
     </div>
   );
 }

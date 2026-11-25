@@ -1628,3 +1628,54 @@ class ObservacionesPacienteTests(APITestCase):
             ("ADMINISTRATIVA", "FALLECIDO (histórico Tomé 26-07-2026)", True),
         ])
         self.assertEqual(separar_observaciones("Paciente con dolor"), [("GENERAL", "Paciente con dolor", False)])
+
+
+class DiagnosticosCatalogoTests(APITestCase):
+    """Catálogo de diagnósticos: agregar, corregir (y unir) y borrar."""
+
+    def setUp(self):
+        from datetime import date
+
+        from .models import Diagnostico
+
+        self.Diagnostico = Diagnostico
+        self.admin = Usuario.objects.create_user(rut="11111111-1", password="x", nombre="Admin", rol=Usuario.Rol.ADMIN)
+        self.kine = Usuario.objects.create_user(rut="22222222-2", password="x", nombre="Kine", rol=Usuario.Rol.KINE)
+        base = dict(
+            fecha_derivacion=date(2026, 10, 1), edad=60, profesional="KINESIOLOGO",
+            prioridad=Paciente.Prioridad.MODERADA, categoria=Paciente.Categoria.LUMBAGOS,
+        )
+        self.p1 = Paciente.objects.create(id_ccr="D-1", nombre="UNO", rut="111", diagnostico="PARKISON", **base)
+        self.p2 = Paciente.objects.create(id_ccr="D-2", nombre="DOS", rut="222", diagnostico="LUMBAGO\nparkison", **base)
+        self.typo = Diagnostico.objects.create(nombre="PARKISON")
+        Diagnostico.objects.create(nombre="PARKINSON")
+        self.client.force_authenticate(self.admin)
+
+    def test_lista_con_usos_y_agregar_normaliza(self):
+        lista = self.client.get("/api/diagnosticos/")
+        self.assertEqual({d["nombre"]: d["usos"] for d in lista.data}["PARKISON"], 2)
+        creado = self.client.post("/api/diagnosticos/", {"nombre": "  tendinitis   rotuliana "}, format="json")
+        self.assertEqual(creado.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(creado.data["nombre"], "TENDINITIS ROTULIANA")
+        repetido = self.client.post("/api/diagnosticos/", {"nombre": "Tendinitis rotuliana"}, format="json")
+        self.assertEqual(repetido.status_code, status.HTTP_200_OK)
+
+    def test_corregir_hacia_existente_une_y_actualiza_pacientes(self):
+        r = self.client.patch(f"/api/diagnosticos/{self.typo.id}/", {"nombre": "Parkinson"}, format="json")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertTrue(r.data["unido"])
+        self.assertEqual(r.data["pacientes_actualizados"], 2)
+        self.assertFalse(self.Diagnostico.objects.filter(nombre="PARKISON").exists())
+        self.p1.refresh_from_db()
+        self.p2.refresh_from_db()
+        self.assertEqual(self.p1.diagnostico, "PARKINSON")
+        self.assertEqual(self.p2.diagnostico, "LUMBAGO\nPARKINSON")
+
+    def test_borrar_no_toca_pacientes_y_kine_no_puede_editar(self):
+        self.client.force_authenticate(self.kine)
+        self.assertEqual(self.client.get("/api/diagnosticos/").status_code, status.HTTP_200_OK)
+        self.assertEqual(self.client.delete(f"/api/diagnosticos/{self.typo.id}/").status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.delete(f"/api/diagnosticos/{self.typo.id}/").status_code, status.HTTP_204_NO_CONTENT)
+        self.p1.refresh_from_db()
+        self.assertEqual(self.p1.diagnostico, "PARKISON")

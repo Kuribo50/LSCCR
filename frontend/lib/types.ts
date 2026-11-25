@@ -677,6 +677,9 @@ export interface ImportacionRevisionItem {
   historico?: ImportacionRevisionHistorico;
   auto_resoluble?: boolean;
   auto_motivo?: string;
+  /** Recurrente cuya ficha está egresada: puede volver a la lista con esta derivación. */
+  egresado?: boolean;
+  egresado_estado?: string;
   /** Agrupa una acción de revisión para poder deshacerla completa. */
   lote_resolucion?: string;
 }

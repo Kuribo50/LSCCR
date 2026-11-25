@@ -449,3 +449,24 @@ class MovimientoGrupo(models.Model):
 
     def __str__(self):
         return f"{self.grupo_id}: {self.tipo}"
+
+
+class Diagnostico(models.Model):
+    """Catálogo de diagnósticos que se ofrecen al cargar o corregir una derivación.
+
+    `Paciente.diagnostico` sigue siendo texto: el catálogo solo sugiere nombres.
+    Corregir un nombre actualiza a los pacientes que lo tienen escrito igual.
+    """
+
+    nombre = models.CharField(max_length=255, unique=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nombre"]
+
+    def save(self, *args, **kwargs):
+        self.nombre = " ".join(str(self.nombre or "").split()).upper()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.nombre

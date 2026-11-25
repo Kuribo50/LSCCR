@@ -689,6 +689,42 @@ class ImportacionesMensualesTests(APITestCase):
         importacion.refresh_from_db()
         self.assertEqual(importacion.observaciones_revision[0]["estado_revision"], "DESCARTADO")
 
+    def test_historial_cuenta_pacientes_por_su_carga_y_no_por_su_fecha(self):
+        corte_octubre = ImportacionMensual.objects.create(
+            archivo=ContentFile(b"test", name="octubre.xlsx"),
+            archivo_nombre="octubre.xlsx",
+            mes=11,
+            anio=2026,
+            mes_datos=10,
+            anio_datos=2026,
+            usuario=self.admin,
+        )
+        base = dict(
+            percapita_desde="CESFAM",
+            edad=50,
+            diagnostico="Lumbago",
+            profesional="KINESIOLOGO",
+            prioridad=Paciente.Prioridad.MODERADA,
+            categoria=Paciente.Categoria.LUMBAGOS,
+        )
+        # Fila con fecha de noviembre que vino en la planilla de octubre.
+        Paciente.objects.create(
+            id_ccr="CORTE-1", nombre="DE LA PLANILLA", rut="111111111",
+            fecha_derivacion=date(2026, 11, 3), importacion_origen=corte_octubre, **base,
+        )
+        # Derivación manual de octubre, sin carga.
+        Paciente.objects.create(
+            id_ccr="CORTE-2", nombre="MANUAL", rut="222222222",
+            fecha_derivacion=date(2026, 10, 20), **base,
+        )
+
+        octubre = self.client.get("/api/importar/historial/10/2026/")
+        noviembre = self.client.get("/api/importar/historial/11/2026/")
+
+        self.assertEqual(octubre.data["pacientes_actuales_del_corte"]["pendientes"], 2)
+        self.assertEqual({p["nombre"] for p in octubre.data["pacientes"]}, {"DE LA PLANILLA", "MANUAL"})
+        self.assertEqual(noviembre.data["pacientes_actuales_del_corte"]["pendientes"], 0)
+
     def test_historial_mensual_devuelve_importaciones_y_resumen_corte(self):
         importacion = ImportacionMensual.objects.create(
             archivo=ContentFile(b"test", name="historial.xlsx"),
@@ -1359,6 +1395,56 @@ class RevisionConHistoricoTests(APITestCase):
         self.assertTrue(advertencia["auto_resoluble"])
         self.assertEqual(advertencia["historico"]["sector_oficial"], "FRUTILLARES")
         self.assertTrue(advertencia["historico"]["nombre_coincide"])
+
+    def test_recurrente_egresado_vuelve_a_lista_y_se_puede_deshacer(self):
+        self.paciente.estado = Paciente.Estado.EGRESO_ADMINISTRATIVO
+        self.paciente.fecha_egreso = date(2026, 9, 1)
+        self.paciente.save()
+
+        bandeja = self.client.get("/api/importar/revision/")
+        recurrente = next(i for i in bandeja.data["items"] if i["revision_index"] == 2 and i["importacion_id"] == self.importacion.id)
+        self.assertTrue(recurrente["egresado"])
+        self.assertFalse(recurrente["auto_resoluble"])
+
+        respuesta = self.client.patch(
+            f"/api/importar/revision/{self.importacion.id}/2/", {"accion": "VOLVER_A_LISTA"}, format="json",
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.estado, Paciente.Estado.PENDIENTE)
+        self.assertIsNone(self.paciente.fecha_egreso)
+        self.assertEqual(self.paciente.fecha_derivacion, date(2026, 6, 10))
+
+        lote = respuesta.data["item"]["lote_resolucion"]
+        self.client.post("/api/importar/revision/deshacer/", {"lote": lote}, format="json")
+        self.paciente.refresh_from_db()
+        self.assertEqual(self.paciente.estado, Paciente.Estado.EGRESO_ADMINISTRATIVO)
+        self.assertEqual(self.paciente.fecha_egreso, date(2026, 9, 1))
+        self.assertEqual(self.paciente.fecha_derivacion, date(2026, 8, 3))
+
+    def test_completar_ficha_suma_el_diagnostico_nuevo_al_catalogo(self):
+        from apps.pacientes.models import Diagnostico
+
+        self.assertFalse(Diagnostico.objects.filter(nombre="TENDINITIS ROTULIANA").exists())
+        respuesta = self.client.patch(
+            f"/api/importar/revision/{self.importacion.id}/3/",
+            {
+                "accion": "COMPLETAR",
+                "paciente": {
+                    "nombre": "PEDRO NUEVO", "rut": "333333333", "edad": 40,
+                    "diagnostico": "tendinitis rotuliana", "fecha_derivacion": "05/08/2026",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertTrue(Diagnostico.objects.filter(nombre="TENDINITIS ROTULIANA").exists())
+
+    def test_volver_a_lista_rechaza_paciente_en_lista(self):
+        respuesta = self.client.patch(
+            f"/api/importar/revision/{self.importacion.id}/2/", {"accion": "VOLVER_A_LISTA"}, format="json",
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_filtro_por_alerta_fallecido(self):
         response = self.client.get("/api/importar/revision/?alerta=FALLECIDO")

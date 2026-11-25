@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import CargasRevertibles from "../CargasRevertibles";
 import { avisarCargaImportada } from "@/lib/cargasEventos";
 import type { CargaRevertible } from "@/lib/types";
@@ -32,6 +32,7 @@ function carga(lote: string, corteId: number, minutosRestantes: number): CargaRe
 describe("CargasRevertibles", () => {
   beforeEach(() => {
     mutate.mockClear();
+    window.sessionStorage.clear();
     usuario = { rol: "MEDICO" };
     items = [];
   });
@@ -67,6 +68,23 @@ describe("CargasRevertibles", () => {
     items = [carga("a", 1, 5)];
     render(<CargasRevertibles />);
     expect(screen.queryByLabelText("Cargas que se pueden revertir")).not.toBeInTheDocument();
+  });
+
+  it("se cierra y vuelve a aparecer solo con una carga nueva", () => {
+    items = [carga("a", 1, 5)];
+    const primero = render(<CargasRevertibles />);
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar aviso" }));
+    expect(screen.queryByLabelText("Cargas que se pueden revertir")).not.toBeInTheDocument();
+
+    // Sigue cerrado al volver a montar (otra pantalla del dashboard).
+    primero.unmount();
+    const { rerender } = render(<CargasRevertibles />);
+    expect(screen.queryByLabelText("Cargas que se pueden revertir")).not.toBeInTheDocument();
+
+    items = [carga("a", 1, 5), carga("b", 2, 8)];
+    rerender(<CargasRevertibles />);
+    expect(screen.getByText("Puedes revertir una carga")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revertir 2" })).toBeInTheDocument();
   });
 
   it("se actualiza cuando se importa una carga en otra pantalla", () => {

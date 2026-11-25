@@ -8,7 +8,7 @@ from io import BytesIO
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.core.validators import validate_email
-from django.db.models import Q, F, Sum
+from django.db.models import Count, F, Q, Sum
 from django.http import HttpResponse
 from django.db import transaction
 from django.utils import timezone
@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.pacientes.exports import crear_excel_pacientes, excel_response
+from apps.pacientes.diagnosticos import registrar_diagnosticos
 from apps.pacientes.models import MovimientoPaciente, ObservacionPaciente, Paciente
 from apps.pacientes.services import (
     ESTADOS_FINALES,
@@ -37,6 +38,7 @@ from .parser import normalizar_texto, parsear_derivaciones, parsear_fecha, previ
 from .serializers import ImportacionDerivacionesSerializer, ImportacionTelefonosSerializer
 from .revision import (
     CAMPOS_ESPERA,
+    CAMPOS_REINGRESO,
     CAMPOS_SECTOR,
     ESTADOS_EN_LISTA,
     RESOLUCION_AUTO,
@@ -46,6 +48,7 @@ from .revision import (
     enriquecer_observaciones,
     foto_paciente,
     indice_recurrencias,
+    puede_volver_a_lista,
     restaurar_paciente,
 )
 from .reversion import MINUTOS_REVERSION, cortes_del_lote, estado_reversion, revertible_hasta, revertir_carga
@@ -111,9 +114,10 @@ def _periodo_q(mes: int, anio: int) -> Q:
 
 def _serialize_importacion(importacion: ImportacionMensual, usuario=None) -> dict:
     mes_ref, anio_ref = _mes_y_anio_referencia(importacion)
+    # revision_index: posición en la lista completa, para abrir la observación en Revisión de carga.
     observaciones = [
-        observacion
-        for observacion in (importacion.observaciones_revision or [])
+        {**observacion, "revision_index": indice}
+        for indice, observacion in enumerate(importacion.observaciones_revision or [])
         if not observacion.get("tipo") or observacion.get("tipo") == "ERROR"
     ]
     return {
@@ -151,19 +155,32 @@ def _serialize_importacion(importacion: ImportacionMensual, usuario=None) -> dic
     }
 
 
+def _pacientes_periodo(mes: int, anio: int):
+    """Pacientes de un mes del calendario de cortes.
+
+    Una planilla se guarda en un solo corte aunque traiga fechas de otros meses,
+    así que cuenta la carga que creó al paciente, no su fecha de derivación. Los
+    pacientes sin carga (derivación manual o carga eliminada) van por su fecha.
+    """
+    cortes = ImportacionMensual.objects.filter(_periodo_q(mes, anio)).values("id")
+    return Paciente.objects.filter(
+        Q(importacion_origen__in=cortes)
+        | Q(importacion_origen__isnull=True, fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+    )
+
+
 def _resumen_pacientes_corte(mes: int, anio: int) -> dict:
-    pacientes = Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
-    return {
-        "pendientes": pacientes.filter(estado=Paciente.Estado.PENDIENTE).count(),
-        "rescate": pacientes.filter(estado=Paciente.Estado.RESCATE).count(),
-        "ingresados": pacientes.filter(estado=Paciente.Estado.INGRESADO).count(),
-        "egresados_total": pacientes.filter(estado__in=ESTADOS_EGRESADOS).count(),
-    }
+    return _pacientes_periodo(mes, anio).aggregate(
+        pendientes=Count("id", filter=Q(estado=Paciente.Estado.PENDIENTE)),
+        rescate=Count("id", filter=Q(estado=Paciente.Estado.RESCATE)),
+        ingresados=Count("id", filter=Q(estado=Paciente.Estado.INGRESADO)),
+        egresados_total=Count("id", filter=Q(estado__in=ESTADOS_EGRESADOS)),
+    )
 
 
 def _pacientes_corte(mes: int, anio: int) -> list[dict]:
     pacientes = (
-        Paciente.objects.filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+        _pacientes_periodo(mes, anio)
         .select_related("kine_asignado")
         .order_by("nombre", "id")
     )
@@ -724,7 +741,7 @@ def _actualizar_observacion_resuelta(
     deshacer: dict | None = None,
 ) -> dict:
     # Los campos calculados para la vista (cruce con histórico) no se guardan.
-    base = {k: v for k, v in observacion.items() if k not in {"historico", "auto_resoluble", "auto_motivo"}}
+    base = {k: v for k, v in observacion.items() if k not in {"historico", "auto_resoluble", "auto_motivo", "egresado", "egresado_estado", "egresado_paciente_id"}}
     actualizada = {
         **base,
         "estado_revision": "DESCARTADO" if accion == "DESCARTAR" else "RESUELTO",
@@ -1413,6 +1430,51 @@ class ObservacionesRevisionImportacionView(APIView):
         )
 
 
+def _volver_a_lista(request, importacion, observaciones, index, observacion):
+    """Recurrente egresado: vuelve a Pendiente con la fecha de su nueva derivación.
+
+    Guarda estado, fecha de egreso y fecha de derivación previos para poder deshacerlo.
+    """
+    if observacion.get("tipo") != "RECURRENTE":
+        return Response({"detail": "Solo aplica a recurrentes."}, status=status.HTTP_400_BAD_REQUEST)
+    paciente = (
+        Paciente.objects.filter(pk=observacion.get("paciente_id")).first()
+        if observacion.get("paciente_id")
+        else Paciente.objects.filter(rut=_normalizar_rut(observacion.get("rut"))).order_by("-id").first()
+    )
+    if not puede_volver_a_lista(paciente):
+        return Response({"detail": "El paciente no está egresado."}, status=status.HTTP_400_BAD_REQUEST)
+
+    foto = foto_paciente(paciente, CAMPOS_ESPERA + CAMPOS_REINGRESO)
+    estado_anterior = paciente.estado
+    nueva_fecha = parsear_fecha(observacion.get("fecha_derivacion") or observacion.get("fecha_original"))
+    paciente.estado = Paciente.Estado.PENDIENTE
+    paciente.fecha_egreso = None
+    campos = ["estado", "fecha_egreso"]
+    if nueva_fecha:
+        paciente.fecha_derivacion = nueva_fecha
+        campos.append("fecha_derivacion")
+    paciente.save(update_fields=campos)
+    MovimientoPaciente.objects.create(
+        paciente=paciente,
+        usuario=request.user,
+        estado_anterior=estado_anterior,
+        estado_nuevo=paciente.estado,
+        notas=f"Vuelve a lista por nueva derivación en el corte {observacion.get('periodo_label') or ''}.".strip(),
+    )
+    observaciones[index] = _actualizar_observacion_resuelta(
+        observacion=observacion,
+        accion="COMPLETAR",
+        usuario=request.user,
+        resolucion="Vuelve a lista con la nueva derivación.",
+        paciente=paciente,
+        deshacer={"paciente": foto},
+    )
+    importacion.observaciones_revision = observaciones
+    importacion.save(update_fields=["observaciones_revision"])
+    return Response({"item": observaciones[index]}, status=status.HTTP_200_OK)
+
+
 class ObservacionRevisionDetalleView(APIView):
     permission_classes = [IsAdminOrEncargado]
 
@@ -1448,11 +1510,14 @@ class ObservacionRevisionDetalleView(APIView):
         paciente = None
         ficha_creada = None
 
-        if accion not in {"DESCARTAR", "COMPLETAR"}:
+        if accion not in {"DESCARTAR", "COMPLETAR", "VOLVER_A_LISTA"}:
             return Response(
                 {"detail": "Acción inválida."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if accion == "VOLVER_A_LISTA":
+            return _volver_a_lista(request, importacion, observaciones, index_int, observacion)
 
         if accion == "DESCARTAR":
             if not resolucion:
@@ -1603,6 +1668,8 @@ class ObservacionRevisionDetalleView(APIView):
                 estado_nuevo=paciente.estado,
                 notas=f"{movimiento_nota} Corte {observacion.get('periodo_label')}. Resolución: {resolucion}",
             )
+            # Un diagnóstico nuevo escrito en la revisión entra al catálogo recién aquí, al guardar la ficha.
+            registrar_diagnosticos(diagnostico)
 
         observaciones[index_int] = _actualizar_observacion_resuelta(
             observacion=observacion,
@@ -1907,8 +1974,8 @@ class ExportarHistorialImportacionesMesView(APIView):
         anio = int(anio)
         periodo = f"{MESES_LABEL.get(mes, mes)} {anio}"
         pacientes = (
-            Paciente.objects.select_related("kine_asignado", "importacion_origen")
-            .filter(fecha_derivacion__month=mes, fecha_derivacion__year=anio)
+            _pacientes_periodo(mes, anio)
+            .select_related("kine_asignado", "importacion_origen")
             .order_by("fecha_derivacion", "nombre")
         )
         workbook = crear_excel_pacientes(

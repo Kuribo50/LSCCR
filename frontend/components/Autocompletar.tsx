@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { FiCheck, FiChevronDown, FiX } from "react-icons/fi";
+import { FiCheck, FiChevronDown, FiPlus, FiX } from "react-icons/fi";
 import { normalizeSearchText } from "@/lib/utils";
 
 export interface OpcionAutocompletar {
@@ -16,6 +16,7 @@ export interface OpcionAutocompletar {
 /**
  * Selector con búsqueda: se escribe para filtrar y se elige con clic o Enter.
  * Con `permitirLibre` acepta un texto que no esté en la lista.
+ * Con `onAgregar`, un texto nuevo muestra «Agregar …» para sumarlo al catálogo.
  */
 export default function Autocompletar({
   value,
@@ -25,6 +26,7 @@ export default function Autocompletar({
   permitirLibre = false,
   ariaLabel,
   className = "",
+  onAgregar,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -33,6 +35,8 @@ export default function Autocompletar({
   permitirLibre?: boolean;
   ariaLabel?: string;
   className?: string;
+  /** Guarda un texto nuevo en el catálogo; después queda elegido. */
+  onAgregar?: (texto: string) => void | Promise<void>;
 }) {
   const seleccion = opciones.find((o) => o.value === value);
   const [abierto, setAbierto] = useState(false);
@@ -57,6 +61,21 @@ export default function Autocompletar({
     if (!q || exacta) return opciones.slice(0, 60);
     return opciones.filter((o) => normalizeSearchText(o.label).includes(q)).slice(0, 60);
   }, [texto, opciones, seleccion]);
+
+  const textoNuevo = texto.trim();
+  const puedeAgregar =
+    Boolean(onAgregar) &&
+    abierto &&
+    textoNuevo.length > 0 &&
+    !opciones.some((o) => normalizeSearchText(o.label) === normalizeSearchText(textoNuevo));
+
+  async function agregar() {
+    if (!onAgregar || !textoNuevo) return;
+    await onAgregar(textoNuevo);
+    onChange(textoNuevo);
+    setTexto(textoNuevo);
+    setAbierto(false);
+  }
 
   function elegir(op: OpcionAutocompletar) {
     onChange(op.value);
@@ -108,6 +127,7 @@ export default function Autocompletar({
           } else if (e.key === "Enter") {
             e.preventDefault();
             if (abierto && filtradas[activo]) elegir(filtradas[activo]);
+            else if (puedeAgregar) void agregar();
             else cerrar();
           } else if (e.key === "Escape") {
             e.stopPropagation();
@@ -142,10 +162,26 @@ export default function Autocompletar({
           role="listbox"
           className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-[0_18px_48px_-16px_rgba(22,24,27,0.35)] dark:border-ink-black-600 dark:bg-ink-black-800"
         >
-          {filtradas.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
-              {permitirLibre && texto.trim() ? `Se usará "${texto.trim()}"` : "Sin resultados"}
+          {puedeAgregar && (
+            <li
+              role="option"
+              aria-selected={false}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                void agregar();
+              }}
+              className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2 text-[13px] font-bold text-blue-700 hover:bg-blue-50 dark:border-ink-black-700 dark:text-blue-300 dark:hover:bg-blue-500/10"
+            >
+              <FiPlus size={13} className="shrink-0" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">Agregar «{textoNuevo.toUpperCase()}»</span>
             </li>
+          )}
+          {filtradas.length === 0 ? (
+            !puedeAgregar && (
+              <li className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                {permitirLibre && texto.trim() ? `Se usará "${texto.trim()}"` : "Sin resultados"}
+              </li>
+            )
           ) : (
             filtradas.map((op, i) => (
               <li

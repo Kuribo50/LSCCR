@@ -22,6 +22,15 @@ MOTIVOS_SOLO_SECTOR = {
 
 ESTADOS_EN_LISTA = {Paciente.Estado.PENDIENTE, Paciente.Estado.RESCATE}
 
+
+def puede_volver_a_lista(paciente: Paciente | None) -> bool:
+    """Un recurrente egresado (alta, abandono, egreso...) puede volver a la lista con su nueva derivación."""
+    from apps.pacientes.services import validar_transicion_estado
+
+    if not paciente or paciente.estado in ESTADOS_EN_LISTA or paciente.estado == Paciente.Estado.INGRESADO:
+        return False
+    return validar_transicion_estado(paciente.estado, Paciente.Estado.PENDIENTE)
+
 RESOLUCION_AUTO = "Resuelta automáticamente: el sector quedó completo con el cruce del histórico de Tomé."
 
 
@@ -77,6 +86,11 @@ def enriquecer_observaciones(observaciones: list[dict]) -> None:
     historicos = {h.rut: h for h in HistoricoPaciente.objects.filter(rut__in=ruts)} if ruts else {}
     ids = {o.get("paciente_id") for o in observaciones if o.get("paciente_id")}
     pacientes = {p.id: p for p in Paciente.objects.filter(id__in=ids)} if ids else {}
+    # Recurrentes sin paciente_id: su ficha se busca por RUT (la más reciente).
+    ruts_recurrentes = {o.get("rut") for o in observaciones if o.get("tipo") == "RECURRENTE" and not o.get("paciente_id") and o.get("rut")}
+    por_rut: dict[str, Paciente] = {}
+    for p in Paciente.objects.filter(rut__in=ruts_recurrentes).order_by("id") if ruts_recurrentes else []:
+        por_rut[p.rut] = p
 
     ruts_en_lista = (
         set(Paciente.objects.filter(rut__in=ruts, estado__in=ESTADOS_EN_LISTA).values_list("rut", flat=True))
@@ -90,10 +104,15 @@ def enriquecer_observaciones(observaciones: list[dict]) -> None:
 
         obs["auto_resoluble"] = False
         obs["auto_motivo"] = ""
+        obs["egresado"] = False
         if (obs.get("estado_revision") or "PENDIENTE") != "PENDIENTE":
             continue
         if obs.get("tipo") == "RECURRENTE":
-            paciente = pacientes.get(obs.get("paciente_id"))
+            paciente = pacientes.get(obs.get("paciente_id")) or por_rut.get(obs.get("rut"))
+            if puede_volver_a_lista(paciente):
+                obs["egresado"] = True
+                obs["egresado_estado"] = paciente.get_estado_display()
+                obs["egresado_paciente_id"] = paciente.id
             sigue = paciente.estado in ESTADOS_EN_LISTA if paciente else obs.get("rut") in ruts_en_lista
             if sigue:
                 obs["auto_resoluble"] = True
@@ -131,6 +150,8 @@ def _fecha_ddmmyyyy(valor: str):
 
 CAMPOS_ESPERA = ("fecha_derivacion", "n_meses_espera")
 CAMPOS_SECTOR = ("sector_oficial", "sector_cesfam")
+# Lo que cambia "Volver a lista": se guarda para poder deshacerlo.
+CAMPOS_REINGRESO = ("estado", "fecha_egreso")
 
 
 def foto_paciente(paciente: Paciente, campos: tuple[str, ...] = CAMPOS_ESPERA + CAMPOS_SECTOR) -> dict:
@@ -146,9 +167,10 @@ def restaurar_paciente(foto: dict) -> bool:
     """Vuelve solo los campos guardados en la foto (no pisa otros cambios)."""
     if not foto or not foto.get("id"):
         return False
-    valores = {k: v for k, v in foto.items() if k in CAMPOS_ESPERA + CAMPOS_SECTOR}
-    if "fecha_derivacion" in valores:
-        valores["fecha_derivacion"] = date.fromisoformat(valores["fecha_derivacion"])
+    valores = {k: v for k, v in foto.items() if k in CAMPOS_ESPERA + CAMPOS_SECTOR + CAMPOS_REINGRESO}
+    for campo in ("fecha_derivacion", "fecha_egreso"):
+        if valores.get(campo):
+            valores[campo] = date.fromisoformat(valores[campo])
     return bool(valores) and bool(Paciente.objects.filter(pk=foto["id"]).update(**valores))
 
 
