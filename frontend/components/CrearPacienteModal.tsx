@@ -357,6 +357,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                         </div>
                         <Autocompletar
                           permitirLibre
+                          variante="formulario"
                           ariaLabel="Diagnóstico"
                           placeholder="Buscar o escribir diagnóstico"
                           value={diagnostico}

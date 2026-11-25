@@ -27,6 +27,8 @@ export default function Autocompletar({
   ariaLabel,
   className = "",
   onAgregar,
+  variante = "barra",
+  autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -37,6 +39,9 @@ export default function Autocompletar({
   className?: string;
   /** Guarda un texto nuevo en el catálogo; después queda elegido. */
   onAgregar?: (texto: string) => void | Promise<void>;
+  /** "barra" = sin borde (filtros); "formulario" = con borde, igual a los demás campos de una ficha. */
+  variante?: "barra" | "formulario";
+  autoFocus?: boolean;
 }) {
   const seleccion = opciones.find((o) => o.value === value);
   const [abierto, setAbierto] = useState(false);
@@ -136,7 +141,12 @@ export default function Autocompletar({
             cerrar();
           }
         }}
-        className="ccr-control-input w-full py-2 pl-3 pr-14 text-sm"
+        autoFocus={autoFocus}
+        className={
+          variante === "formulario"
+            ? "h-10 w-full rounded-lg border border-slate-200 bg-white pl-3 pr-14 text-[13px] font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-500 hover:border-slate-300 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 dark:border-ink-black-600 dark:bg-ink-black-800 dark:text-ink-black-50"
+            : "ccr-control-input w-full py-2 pl-3 pr-14 text-sm"
+        }
       />
       <div className="pointer-events-none absolute inset-y-0 right-2 flex items-center gap-1">
         {value && (

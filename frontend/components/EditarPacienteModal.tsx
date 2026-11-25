@@ -162,6 +162,8 @@ export default function EditarPacienteModal({
   // Escritos con "Agregar" y aún sin guardar (entran al catálogo al guardar la ficha).
   const [diagnosticosNuevos, setDiagnosticosNuevos] = useState<string[]>([]);
   const lineas = lineasDiagnostico(form.diagnostico);
+  // Línea recién creada con "Otro diagnóstico": recibe el foco al aparecer.
+  const [lineaNueva, setLineaNueva] = useState<number | null>(null);
 
   const opcionesDiagnostico = useMemo(
     () =>
@@ -460,6 +462,8 @@ export default function EditarPacienteModal({
                         <Autocompletar
                           className="min-w-0 flex-1"
                           permitirLibre
+                          variante="formulario"
+                          autoFocus={i === lineaNueva}
                           ariaLabel={lineas.length > 1 ? `Diagnóstico ${i + 1}` : "Diagnóstico"}
                           placeholder="Buscar o escribir diagnóstico"
                           value={linea}
@@ -493,7 +497,10 @@ export default function EditarPacienteModal({
                     {lineas[lineas.length - 1]?.trim() && (
                       <button
                         type="button"
-                        onClick={() => set("diagnostico", `${form.diagnostico}\n`)}
+                        onClick={() => {
+                          setLineaNueva(lineas.length);
+                          set("diagnostico", `${form.diagnostico}\n`);
+                        }}
                         className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
                       >
                         <FiPlus size={11} /> Otro diagnóstico
