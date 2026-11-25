@@ -1336,7 +1336,6 @@ function RevisionImportacion() {
       {seleccionado && form && (() => {
         const problemas = detectarProblemas(seleccionado, form);
         const de = (campo: CampoForm) => problemas.filter((p) => p.campo === campo);
-        const generales = problemas.filter((p) => p.campo === "general");
         const notaCarga = (campo: CampoForm) => (precargados.includes(campo) ? "Cargado desde la carga automática." : undefined);
         const pendiente = seleccionado.estado_revision === "PENDIENTE";
         // Solo los barrios de la zona del sector elegido; sin sector, todos.

@@ -203,6 +203,8 @@ export function descargarBlob(blob: Blob, filename: string) {
  * array-based multi-select filtering (checking membership in selected values).
  * Attach to a column via `filterFn: multiSelectFilter`.
  */
+// TData se conserva por compatibilidad con la firma de FilterFn de TanStack, aunque no se use.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function multiSelectFilter<TData>(
   row: { getValue: (columnId: string) => unknown },
   columnId: string,

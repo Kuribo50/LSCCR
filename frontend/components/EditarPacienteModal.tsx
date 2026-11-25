@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { FiCheck, FiRefreshCw, FiX } from "react-icons/fi";
+import { FiCheck, FiEdit2, FiPlus, FiRefreshCw, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { getErrorMessage } from "@/lib/errors";
-import { unwrapResults } from "@/lib/swr";
+import { unwrapResults, useAPI } from "@/lib/swr";
 import { useToast } from "@/lib/toast-context";
 import type { Categoria, Paciente, Prioridad, Usuario } from "@/lib/types";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
@@ -15,8 +15,20 @@ import { formatearRut } from "@/lib/rut";
 import { TONO_CATEGORIA } from "./AgendaGrid";
 import CampoFecha from "./CampoFecha";
 import SelectFiltro from "./SelectFiltro";
+import Autocompletar from "./Autocompletar";
+import AdministrarDiagnosticos, { type Diagnostico } from "./AdministrarDiagnosticos";
 import { puedeCorregirDatos } from "@/lib/roles";
-import { formatearFecha } from "@/lib/utils";
+import { formatearFecha, normalizeSearchText } from "@/lib/utils";
+
+/** Como lo guarda el catálogo: mayúsculas y un solo espacio entre palabras. */
+function normalizarDiagnostico(texto: string) {
+  return texto.split(/\s+/).filter(Boolean).join(" ").toUpperCase();
+}
+
+/** Un paciente puede tener varios diagnósticos, uno por línea. */
+function lineasDiagnostico(texto: string) {
+  return texto.split(/\r?\n/);
+}
 
 interface Props {
   paciente: Paciente;
@@ -89,20 +101,26 @@ function Campo({
   label,
   htmlFor,
   ayuda,
+  accion,
   className = "",
   children,
 }: {
   label: string;
   htmlFor?: string;
   ayuda?: ReactNode;
+  /** Acción chica a la derecha de la etiqueta (por ejemplo, "Administrar"). */
+  accion?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <div className={className}>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-[12px] font-semibold text-slate-600 dark:text-ink-black-200">
-        {label}
-      </label>
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <label htmlFor={htmlFor} className="block text-[12px] font-semibold text-slate-600 dark:text-ink-black-200">
+          {label}
+        </label>
+        {accion}
+      </div>
       {children}
       {ayuda && <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-ink-black-400">{ayuda}</p>}
     </div>
@@ -135,6 +153,50 @@ export default function EditarPacienteModal({
   const [kines, setKines] = useState<Usuario[]>([]);
   const isContactOnly = mode === "contact-only";
   const puedeAsignarKine = !isContactOnly && puedeCorregirDatos(user);
+  // Administrador y encargados agregan y corrigen el catálogo de diagnósticos.
+  const puedeEditarCatalogo = !isContactOnly && puedeCorregirDatos(user);
+  const { data: catalogoDiagnosticos, mutate: mutarDiagnosticos } = useAPI<Diagnostico[]>(
+    isContactOnly ? null : "/diagnosticos/",
+  );
+  const [administrarDiagnosticos, setAdministrarDiagnosticos] = useState(false);
+  // Escritos con "Agregar" y aún sin guardar (entran al catálogo al guardar la ficha).
+  const [diagnosticosNuevos, setDiagnosticosNuevos] = useState<string[]>([]);
+  const lineas = lineasDiagnostico(form.diagnostico);
+
+  const opcionesDiagnostico = useMemo(
+    () =>
+      Array.from(new Set([...(catalogoDiagnosticos ?? []).map((d) => d.nombre), ...diagnosticosNuevos]))
+        .sort((a, b) => a.localeCompare(b, "es"))
+        .map((d) => ({ value: d, label: d })),
+    [catalogoDiagnosticos, diagnosticosNuevos],
+  );
+
+  function setLinea(indice: number, valor: string) {
+    const siguientes = [...lineas];
+    siguientes[indice] = valor.toUpperCase();
+    set("diagnostico", siguientes.join("\n"));
+  }
+
+  function quitarLinea(indice: number) {
+    set("diagnostico", lineas.filter((_, i) => i !== indice).join("\n"));
+  }
+
+  /** Suma al catálogo los diagnósticos nuevos de la ficha recién guardada. */
+  async function registrarEnCatalogo(texto: string) {
+    if (!puedeEditarCatalogo) return;
+    const conocidos = new Set(
+      [...(catalogoDiagnosticos ?? []).map((d) => d.nombre), ...lineasDiagnostico(paciente.diagnostico ?? "")].map(
+        (n) => normalizeSearchText(normalizarDiagnostico(n)),
+      ),
+    );
+    const nuevos = Array.from(
+      new Set(lineasDiagnostico(texto).map(normalizarDiagnostico).filter(Boolean)),
+    ).filter((n) => !conocidos.has(normalizeSearchText(n)));
+    if (nuevos.length === 0) return;
+    // Si alguno falla, el paciente ya quedó guardado; el catálogo se completa después.
+    await Promise.allSettled(nuevos.map((nombre) => api.post("/diagnosticos/", { nombre })));
+    void mutarDiagnosticos();
+  }
 
   // Profesionales activos: Administrador y encargados pueden asignar responsable.
   useEffect(() => {
@@ -223,7 +285,10 @@ export default function EditarPacienteModal({
       payload.edad = Number.isFinite(edadFinal) ? edadFinal : 0;
       payload.prioridad = form.prioridad;
       payload.categoria = form.categoria;
-      payload.diagnostico = form.diagnostico.trim();
+      payload.diagnostico = lineasDiagnostico(form.diagnostico)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .join("\n");
       payload.telefono = form.telefono.trim();
       payload.telefono_recados = form.telefono_recados.trim();
       payload.email = form.email.trim();
@@ -247,6 +312,7 @@ export default function EditarPacienteModal({
         await api.post("/observaciones-paciente/", { paciente: paciente.id, texto: nuevaObservacion, tipo: "GENERAL" });
         actualizado = await api.get<Paciente>(`/pacientes/${paciente.id}/`);
       }
+      await registrarEnCatalogo(String(payload.diagnostico));
       onGuardado(actualizado);
       toast.success("Paciente actualizado correctamente.");
     } catch (e: unknown) {
@@ -373,14 +439,67 @@ export default function EditarPacienteModal({
                   onChange={(v) => set("prioridad", v)}
                 />
                 {selectCategoria}
-                <Campo label="Diagnóstico" htmlFor="edit-diagnostico" className="sm:col-span-2">
-                  <textarea
-                    id="edit-diagnostico"
-                    rows={2}
-                    value={form.diagnostico}
-                    onChange={(e) => set("diagnostico", e.target.value)}
-                    className={`${INPUT} h-auto resize-none py-2.5 leading-snug`}
-                  />
+                <Campo
+                  label="Diagnóstico"
+                  className="sm:col-span-2"
+                  accion={
+                    puedeEditarCatalogo && (
+                      <button
+                        type="button"
+                        onClick={() => setAdministrarDiagnosticos(true)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
+                      >
+                        <FiEdit2 size={11} /> Administrar
+                      </button>
+                    )
+                  }
+                >
+                  <div className="space-y-2">
+                    {lineas.map((linea, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Autocompletar
+                          className="min-w-0 flex-1"
+                          permitirLibre
+                          ariaLabel={lineas.length > 1 ? `Diagnóstico ${i + 1}` : "Diagnóstico"}
+                          placeholder="Buscar o escribir diagnóstico"
+                          value={linea}
+                          opciones={opcionesDiagnostico}
+                          onChange={(v) => setLinea(i, v)}
+                          // No se guarda aún: entra al catálogo al guardar la ficha.
+                          onAgregar={
+                            puedeEditarCatalogo
+                              ? (texto) => {
+                                  const nombre = normalizarDiagnostico(texto);
+                                  setDiagnosticosNuevos((actuales) =>
+                                    actuales.includes(nombre) ? actuales : [...actuales, nombre],
+                                  );
+                                  toast.info(`${nombre} se guardará al guardar la ficha.`);
+                                }
+                              : undefined
+                          }
+                        />
+                        {lineas.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => quitarLinea(i)}
+                            aria-label={`Quitar diagnóstico ${i + 1}`}
+                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-ink-black-700"
+                          >
+                            <FiX size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {lineas[lineas.length - 1]?.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => set("diagnostico", `${form.diagnostico}\n`)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
+                      >
+                        <FiPlus size={11} /> Otro diagnóstico
+                      </button>
+                    )}
+                  </div>
                 </Campo>
               </Bloque>
 
@@ -438,6 +557,26 @@ export default function EditarPacienteModal({
             {loading ? "Guardando..." : "Guardar cambios"}
           </button>
         </footer>
+
+        {/* Dentro del diálogo (y fuera del formulario) para que se pueda escribir en él. */}
+        {puedeEditarCatalogo && (
+          <div
+            onKeyDown={(e) => {
+              // Escape cierra solo la lista de diagnósticos, no la edición del paciente.
+              if (e.key === "Escape" && administrarDiagnosticos) {
+                e.stopPropagation();
+                setAdministrarDiagnosticos(false);
+              }
+            }}
+          >
+            <AdministrarDiagnosticos
+              abierto={administrarDiagnosticos}
+              onCerrar={() => setAdministrarDiagnosticos(false)}
+              diagnosticos={catalogoDiagnosticos ?? []}
+              onCambio={() => void mutarDiagnosticos()}
+            />
+          </div>
+        )}
       </Dialog>
       </Modal>
     </ModalOverlay>

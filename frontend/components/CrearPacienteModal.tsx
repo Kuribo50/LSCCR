@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { FiUserPlus, FiX } from "react-icons/fi";
+import { FiEdit2, FiUserPlus, FiX } from "react-icons/fi";
 import CampoFecha, { fechaHoyKey } from "./CampoFecha";
+import Autocompletar from "./Autocompletar";
+import AdministrarDiagnosticos, { type Diagnostico } from "./AdministrarDiagnosticos";
 import { api } from "@/lib/api";
 import { CATEGORIA_LABELS, PRIORIDAD_LABELS } from "@/lib/types";
 import type { Categoria, Paciente, Prioridad } from "@/lib/types";
 import { formatearRut } from "@/lib/rut";
 import { useAuth } from "@/lib/auth-context";
+import { puedeCorregirDatos } from "@/lib/roles";
+import { useAPI } from "@/lib/swr";
+import { useToast } from "@/lib/toast-context";
+import { normalizeSearchText } from "@/lib/utils";
+
+/** Como lo guarda el catálogo: mayúsculas y un solo espacio entre palabras. */
+function normalizarDiagnostico(texto: string) {
+  return texto.split(/\s+/).filter(Boolean).join(" ").toUpperCase();
+}
 
 interface Props {
   isOpen: boolean;
@@ -32,9 +43,18 @@ const CATEGORIAS: Categoria[] = [
 
 export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: Props) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const isKine = user?.rol === "KINE";
+  // Administrador y encargados agregan y corrigen el catálogo de diagnósticos.
+  const puedeEditarCatalogo = puedeCorregirDatos(user);
+  const { data: catalogoDiagnosticos, mutate: mutarDiagnosticos } = useAPI<Diagnostico[]>(
+    isOpen ? "/diagnosticos/" : null,
+  );
+  const [administrarDiagnosticos, setAdministrarDiagnosticos] = useState(false);
+  // Escritos con "Agregar" y aún sin guardar (entran al catálogo al guardar la ficha).
+  const [diagnosticosNuevos, setDiagnosticosNuevos] = useState<string[]>([]);
 
   const [rut, setRut] = useState("");
   const [nombre, setNombre] = useState("");
@@ -51,6 +71,31 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
   const [observaciones, setObservaciones] = useState("");
   const [autoAsignar, setAutoAsignar] = useState(isKine);
 
+  const opcionesDiagnostico = useMemo(
+    () =>
+      Array.from(new Set([...(catalogoDiagnosticos ?? []).map((d) => d.nombre), ...diagnosticosNuevos]))
+        .sort((a, b) => a.localeCompare(b, "es"))
+        .map((d) => ({ value: d, label: d })),
+    [catalogoDiagnosticos, diagnosticosNuevos],
+  );
+
+  /** Suma al catálogo el diagnóstico de la ficha recién guardada si aún no estaba. */
+  async function registrarEnCatalogo(texto: string) {
+    if (!puedeEditarCatalogo) return;
+    const nombre = normalizarDiagnostico(texto);
+    if (!nombre) return;
+    const existe = (catalogoDiagnosticos ?? []).some(
+      (d) => normalizeSearchText(d.nombre) === normalizeSearchText(nombre),
+    );
+    if (existe) return;
+    try {
+      await api.post("/diagnosticos/", { nombre });
+      void mutarDiagnosticos();
+    } catch {
+      // El paciente ya quedó guardado; el catálogo se puede completar después.
+    }
+  }
+
   function resetForm() {
     setRut("");
     setNombre("");
@@ -61,6 +106,7 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
     setSectorOficial("");
     setSectorCesfam("");
     setDiagnostico("");
+    setDiagnosticosNuevos([]);
     setObservaciones("");
     setPrioridad("MODERADA");
     setCategoria("OA_MENOS65");
@@ -82,6 +128,11 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // El selector de diagnóstico no es un input nativo: se valida aquí.
+    if (!diagnostico.trim()) {
+      setError("Escribe o elige el diagnóstico.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -113,6 +164,8 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
           // Si falla la autoasignacion, el paciente igual queda creado.
         }
       }
+
+      await registrarEnCatalogo(diagnostico);
 
       resetForm();
       onOpenChange(false);
@@ -288,15 +341,39 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                     <h3 className="mb-3 text-[11px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Información de derivación</h3>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <div className="space-y-1.5 sm:col-span-2">
-                        <label className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
-                          Diagnóstico
-                        </label>
-                        <input
-                          required
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[12px] font-bold text-slate-700 dark:text-[color:var(--text-secondary)]">
+                            Diagnóstico
+                          </span>
+                          {puedeEditarCatalogo && (
+                            <button
+                              type="button"
+                              onClick={() => setAdministrarDiagnosticos(true)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
+                            >
+                              <FiEdit2 size={11} /> Administrar
+                            </button>
+                          )}
+                        </div>
+                        <Autocompletar
+                          permitirLibre
+                          ariaLabel="Diagnóstico"
+                          placeholder="Buscar o escribir diagnóstico"
                           value={diagnostico}
-                          onChange={(e) => setDiagnostico(e.target.value)}
-                          placeholder="Descripción detallada del diagnóstico"
-                          className="w-full rounded-lg border border-slate-200 dark:border-[var(--border-subtle)] bg-white dark:bg-[var(--bg-card)] px-3 py-2 text-[13px] text-slate-800 dark:text-[color:var(--text-primary)] outline-none transition placeholder:text-slate-500 dark:placeholder:text-[color:var(--text-muted)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          opciones={opcionesDiagnostico}
+                          onChange={(v) => setDiagnostico(v.toUpperCase())}
+                          // No se guarda aún: entra al catálogo al guardar la ficha.
+                          onAgregar={
+                            puedeEditarCatalogo
+                              ? (texto) => {
+                                  const nombre = normalizarDiagnostico(texto);
+                                  setDiagnosticosNuevos((actuales) =>
+                                    actuales.includes(nombre) ? actuales : [...actuales, nombre],
+                                  );
+                                  toast.info(`${nombre} se guardará al guardar la ficha.`);
+                                }
+                              : undefined
+                          }
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -423,6 +500,26 @@ export default function CrearPacienteModal({ isOpen, onOpenChange, onSuccess }: 
                   )}
                 </button>
               </footer>
+
+              {/* Dentro del diálogo (y fuera del formulario) para que se pueda escribir en él. */}
+              {puedeEditarCatalogo && (
+                <div
+                  onKeyDown={(e) => {
+                    // Escape cierra solo la lista de diagnósticos, no el ingreso.
+                    if (e.key === "Escape" && administrarDiagnosticos) {
+                      e.stopPropagation();
+                      setAdministrarDiagnosticos(false);
+                    }
+                  }}
+                >
+                  <AdministrarDiagnosticos
+                    abierto={administrarDiagnosticos}
+                    onCerrar={() => setAdministrarDiagnosticos(false)}
+                    diagnosticos={catalogoDiagnosticos ?? []}
+                    onCambio={() => void mutarDiagnosticos()}
+                  />
+                </div>
+              )}
             </>
           )}
         </Dialog>

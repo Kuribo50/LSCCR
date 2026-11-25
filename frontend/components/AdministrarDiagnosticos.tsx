@@ -6,9 +6,10 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { FiAlertTriangle, FiEdit2, FiPlus, FiSearch, FiTrash2, FiX } from "react-icons/fi";
+import { FiAlertTriangle, FiCheck, FiEdit2, FiGitMerge, FiPlus, FiSearch, FiTrash2, FiX } from "react-icons/fi";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { useAPI } from "@/lib/swr";
 import { useToast } from "@/lib/toast-context";
 import { normalizeSearchText } from "@/lib/utils";
 
@@ -16,6 +17,60 @@ export interface Diagnostico {
   id: number;
   nombre: string;
   usos?: number;
+}
+
+/** Nombres parecidos que conviene unir; `sugerido` es el que se propone conservar. */
+interface GrupoDuplicado {
+  sugerido: number;
+  diagnosticos: Required<Diagnostico>[];
+}
+
+/** Un grupo de nombres parecidos: se elige cuál queda y se unen los demás en él. */
+function GrupoDuplicados({ grupo, onUnir }: { grupo: GrupoDuplicado; onUnir: (destino: Required<Diagnostico>) => void }) {
+  const [destinoId, setDestinoId] = useState(grupo.sugerido);
+  const destino = grupo.diagnosticos.find((d) => d.id === destinoId) ?? grupo.diagnosticos[0];
+  return (
+    <li className="rounded-xl border border-slate-200 p-3 dark:border-ink-black-600">
+      <p className="mb-2 text-[11px] font-semibold text-slate-500 dark:text-ink-black-300">Elige cuál queda</p>
+      <div role="radiogroup" className="flex flex-col gap-1">
+        {grupo.diagnosticos.map((d) => {
+          const elegido = d.id === destino.id;
+          return (
+            <button
+              key={d.id}
+              type="button"
+              role="radio"
+              aria-checked={elegido}
+              onClick={() => setDestinoId(d.id)}
+              className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                elegido ? "bg-blue-50 text-blue-900 dark:bg-blue-500/15 dark:text-blue-100" : "text-slate-600 hover:bg-slate-50 dark:text-ink-black-200 dark:hover:bg-ink-black-700"
+              }`}
+            >
+              <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                  elegido ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 dark:border-ink-black-500"
+                }`}
+                aria-hidden="true"
+              >
+                {elegido && <FiCheck size={10} />}
+              </span>
+              <span className={`min-w-0 flex-1 truncate ${elegido ? "font-black" : "font-semibold line-through decoration-slate-300"}`}>{d.nombre}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-slate-400">{pacientes(d.usos)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => onUnir(destino)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700"
+        >
+          <FiGitMerge size={12} /> Unir en {destino.nombre}
+        </button>
+      </div>
+    </li>
+  );
 }
 
 const pacientes = (n: number) => `${n} ${n === 1 ? "paciente" : "pacientes"}`;
@@ -166,6 +221,35 @@ export default function AdministrarDiagnosticos({
   const [nuevo, setNuevo] = useState("");
   const [aBorrar, setABorrar] = useState<Diagnostico | null>(null);
   const [borrando, setBorrando] = useState(false);
+  const [vista, setVista] = useState<"todos" | "duplicados">("todos");
+  const { data: duplicados, mutate: mutarDuplicados } = useAPI<GrupoDuplicado[]>(abierto ? "/diagnosticos/duplicados/" : null);
+  const [aUnir, setAUnir] = useState<{ grupo: GrupoDuplicado; destino: Required<Diagnostico> } | null>(null);
+  const otrosAUnir = aUnir ? aUnir.grupo.diagnosticos.filter((d) => d.id !== aUnir.destino.id) : [];
+  const pacientesAUnir = otrosAUnir.reduce((suma, d) => suma + d.usos, 0);
+
+  function refrescar() {
+    onCambio();
+    void mutarDuplicados();
+  }
+
+  // Unir = corregir cada nombre del grupo hacia el elegido (el backend actualiza pacientes y une).
+  async function confirmarUnir() {
+    if (!aUnir) return;
+    setBorrando(true);
+    try {
+      for (const d of otrosAUnir) {
+        await api.patch(`/diagnosticos/${d.id}/`, { nombre: aUnir.destino.nombre });
+      }
+      toast.success(`Unidos en ${aUnir.destino.nombre}${pacientesAUnir ? ` · ${pacientes(pacientesAUnir)}` : ""}.`);
+      setAUnir(null);
+      refrescar();
+    } catch (e) {
+      toast.error(getErrorMessage(e, "No se pudo unir."));
+      refrescar();
+    } finally {
+      setBorrando(false);
+    }
+  }
   const q = normalizeSearchText(busqueda);
   const visibles = q ? diagnosticos.filter((d) => normalizeSearchText(d.nombre).includes(q)) : diagnosticos;
 
@@ -175,7 +259,7 @@ export default function AdministrarDiagnosticos({
       const d = await api.post<Diagnostico>("/diagnosticos/", { nombre: nuevo });
       toast.success(`${d.nombre} agregado.`);
       setNuevo("");
-      onCambio();
+      refrescar();
     } catch (e) {
       toast.error(getErrorMessage(e, "No se pudo agregar."));
     }
@@ -188,7 +272,7 @@ export default function AdministrarDiagnosticos({
       await api.delete(`/diagnosticos/${aBorrar.id}/`);
       toast.info(`${aBorrar.nombre} borrado.`);
       setABorrar(null);
-      onCambio();
+      refrescar();
     } catch (e) {
       toast.error(getErrorMessage(e, "No se pudo borrar."));
     } finally {
@@ -227,6 +311,59 @@ export default function AdministrarDiagnosticos({
               </button>
             </header>
 
+            {/* Pestañas: todos los diagnósticos o solo los grupos de nombres parecidos. */}
+            <div role="tablist" className="flex gap-1 border-b border-slate-100 px-5 dark:border-ink-black-700">
+              {(
+                [
+                  ["todos", `Todos · ${diagnosticos.length}`],
+                  ["duplicados", `Posibles duplicados · ${duplicados?.length ?? "…"}`],
+                ] as const
+              ).map(([valor, etiqueta]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  role="tab"
+                  aria-selected={vista === valor}
+                  onClick={() => setVista(valor)}
+                  className={`relative px-3 py-2.5 text-xs font-bold transition-colors ${
+                    vista === valor ? "text-slate-900 dark:text-white" : "text-slate-400 hover:text-slate-700 dark:text-ink-black-400"
+                  }`}
+                >
+                  {etiqueta}
+                  {vista === valor && (
+                    <motion.span layoutId="diagnosticos-pestana" className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-blue-600" aria-hidden="true" />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {vista === "duplicados" ? (
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                <p className="mb-3 text-[11px] text-slate-500 dark:text-ink-black-300">
+                  Nombres parecidos (tildes, «DE» de más, plural o un error de tipeo). Al unir, los pacientes pasan al nombre que queda.
+                </p>
+                {!duplicados ? (
+                  <div className="flex justify-center py-8">
+                    <span className="d-loading d-loading-dots d-loading-md text-slate-400" aria-label="Cargando" />
+                  </div>
+                ) : duplicados.length === 0 ? (
+                  <p className="py-8 text-center text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <FiCheck className="mr-1 inline" /> No hay nombres parecidos.
+                  </p>
+                ) : (
+                  <ul className="grid gap-3 sm:grid-cols-2">
+                    {duplicados.map((g) => (
+                      <GrupoDuplicados
+                        key={g.diagnosticos.map((d) => d.id).join("-")}
+                        grupo={g}
+                        onUnir={(destino) => setAUnir({ grupo: g, destino })}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+            <>
             <div className="grid gap-2 border-b border-slate-100 px-5 py-3 sm:grid-cols-2 dark:border-ink-black-700">
               <div className="relative">
                 <FiSearch size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
@@ -253,7 +390,7 @@ export default function AdministrarDiagnosticos({
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {visibles.map((d) => (
                 // key con el nombre: al corregir, la fila se rearma con el valor nuevo.
-                <Fila key={`${d.id}-${d.nombre}`} diagnostico={d} onCambio={onCambio} onBorrar={setABorrar} />
+                <Fila key={`${d.id}-${d.nombre}`} diagnostico={d} onCambio={refrescar} onBorrar={setABorrar} />
               ))}
               {visibles.length === 0 && <li className="px-5 py-8 text-center text-xs text-slate-500">Sin resultados.</li>}
             </ul>
@@ -261,6 +398,72 @@ export default function AdministrarDiagnosticos({
             <footer className="border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500 dark:border-ink-black-700 dark:text-ink-black-300">
               {visibles.length === diagnosticos.length ? `${diagnosticos.length} diagnósticos` : `${visibles.length} de ${diagnosticos.length} diagnósticos`}
             </footer>
+            </>
+            )}
+
+            {/* Confirmación de unir un grupo. */}
+            <AnimatePresence>
+              {aUnir && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/40 p-6"
+                  onClick={() => !borrando && setAUnir(null)}
+                >
+                  <motion.div
+                    role="alertdialog"
+                    aria-modal="true"
+                    aria-label={`Unir en ${aUnir.destino.nombre}`}
+                    initial={{ scale: 0.96, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.96, opacity: 0 }}
+                    transition={{ duration: 0.16 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-ink-black-600 dark:bg-ink-black-800"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-200">
+                        <FiGitMerge size={16} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black text-slate-900 dark:text-white">¿Unir en {aUnir.destino.nombre}?</h3>
+                        <ul className="mt-1.5 space-y-0.5 text-xs text-slate-500 dark:text-ink-black-300">
+                          {otrosAUnir.map((d) => (
+                            <li key={d.id}>
+                              <span className="line-through">{d.nombre}</span> → {aUnir.destino.nombre}
+                            </li>
+                          ))}
+                        </ul>
+                        {pacientesAUnir > 0 && (
+                          <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-400/10 dark:text-amber-200">
+                            Se editará en {pacientes(pacientesAUnir)}.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-5 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={borrando}
+                        onClick={() => setAUnir(null)}
+                        className="rounded-lg px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 dark:text-ink-black-200 dark:hover:bg-ink-black-700"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={borrando}
+                        onClick={() => void confirmarUnir()}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        <FiGitMerge size={12} /> {borrando ? "Uniendo…" : "Unir"}
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Confirmación de borrado, encima de la lista. */}
             <AnimatePresence>

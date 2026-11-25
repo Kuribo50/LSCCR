@@ -794,6 +794,8 @@ export default function ListaEsperaPage() {
     [user?.rol],
   );
 
+  // useReactTable devuelve funciones no memoizables; el React Compiler omite este componente a propósito.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: rowsData,
     columns,

@@ -1,9 +1,13 @@
 """Catálogo de diagnósticos: listar (todos), crear, corregir y borrar (Administrador o encargado)."""
 
+import re
+import unicodedata
 from collections import Counter
+from difflib import SequenceMatcher
 
 from django.db import transaction
 from rest_framework import serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -32,6 +36,62 @@ def _usos() -> Counter:
             if nombre:
                 conteo[nombre] += 1
     return conteo
+
+
+# --- Posibles duplicados -------------------------------------------------------
+
+_PALABRAS_VACIAS = {"DE", "DEL", "LA", "EL", "LOS", "LAS", "Y", "EN", "POR", "CON"}
+_NEGACIONES = {"NO", "SIN"}
+UMBRAL_PARECIDO = 0.9
+
+
+def _clave(nombre: str) -> str:
+    """Forma comparable: sin tildes ni signos, sin palabras vacías y sin plural simple."""
+    texto = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().upper()
+    texto = re.sub(r"[^A-Z0-9 ]", " ", texto)
+    palabras = [p[:-1] if len(p) > 4 and p.endswith("S") else p for p in texto.split() if p not in _PALABRAS_VACIAS]
+    return " ".join(palabras)
+
+
+def _parecidos(a: str, b: str) -> bool:
+    # "NO TRAUMÁTICO" y "TRAUMÁTICO" dicen lo contrario: nunca se unen.
+    if bool(_NEGACIONES & set(a.split())) != bool(_NEGACIONES & set(b.split())):
+        return False
+    return a == b or SequenceMatcher(None, a, b).ratio() >= UMBRAL_PARECIDO
+
+
+def grupos_duplicados(diagnosticos: list[Diagnostico], usos: Counter) -> list[dict]:
+    """Agrupa nombres parecidos. Sugiere conservar el más usado (y, si empatan, el más completo)."""
+    claves = [_clave(d.nombre) for d in diagnosticos]
+    padre = list(range(len(diagnosticos)))
+
+    def raiz(i: int) -> int:
+        while padre[i] != i:
+            padre[i] = padre[padre[i]]
+            i = padre[i]
+        return i
+
+    for i in range(len(diagnosticos)):
+        for j in range(i + 1, len(diagnosticos)):
+            if _parecidos(claves[i], claves[j]):
+                padre[raiz(j)] = raiz(i)
+
+    grupos: dict[int, list[Diagnostico]] = {}
+    for i, d in enumerate(diagnosticos):
+        grupos.setdefault(raiz(i), []).append(d)
+    resultado = []
+    for miembros in grupos.values():
+        if len(miembros) < 2:
+            continue
+        miembros.sort(key=lambda d: (-usos.get(d.nombre, 0), -len(d.nombre), d.nombre))
+        resultado.append(
+            {
+                "sugerido": miembros[0].id,
+                "diagnosticos": [{"id": d.id, "nombre": d.nombre, "usos": usos.get(d.nombre, 0)} for d in miembros],
+            }
+        )
+    resultado.sort(key=lambda g: g["diagnosticos"][0]["nombre"])
+    return resultado
 
 
 def _renombrar_en_pacientes(anterior: str, nuevo: str) -> int:
@@ -123,3 +183,8 @@ class DiagnosticoViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
+
+    @action(detail=False, methods=["get"])
+    def duplicados(self, request):
+        """Grupos de nombres parecidos (errores de tipeo, "DE" de más, plural, tildes) para unirlos."""
+        return Response(grupos_duplicados(list(Diagnostico.objects.all()), _usos()))

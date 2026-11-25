@@ -1679,3 +1679,26 @@ class DiagnosticosCatalogoTests(APITestCase):
         self.assertEqual(self.client.delete(f"/api/diagnosticos/{self.typo.id}/").status_code, status.HTTP_204_NO_CONTENT)
         self.p1.refresh_from_db()
         self.assertEqual(self.p1.diagnostico, "PARKISON")
+
+
+class DiagnosticosDuplicadosTests(APITestCase):
+    """Sugerencia de nombres parecidos para unir."""
+
+    def setUp(self):
+        from .models import Diagnostico
+
+        for nombre in ["ESGUINCE RODILLA", "ESGUINCE DE RODILLA", "AYUDA TECNICA", "AYUDAS TECNICAS",
+                       "SD DOLOROSO TRAUMATICO", "SD DOLOROSO NO TRAUMATICO", "LUMBAGO", "PARKISON", "PARKINSON"]:
+            Diagnostico.objects.create(nombre=nombre)
+        self.admin = Usuario.objects.create_user(rut="33333333-3", password="x", nombre="Admin", rol=Usuario.Rol.ADMIN)
+        self.client.force_authenticate(self.admin)
+
+    def test_agrupa_parecidos_y_no_une_negaciones(self):
+        r = self.client.get("/api/diagnosticos/duplicados/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        grupos = [sorted(d["nombre"] for d in g["diagnosticos"]) for g in r.data]
+        self.assertIn(["ESGUINCE DE RODILLA", "ESGUINCE RODILLA"], grupos)
+        self.assertIn(["AYUDA TECNICA", "AYUDAS TECNICAS"], grupos)
+        self.assertIn(["PARKINSON", "PARKISON"], grupos)
+        self.assertFalse(any("SD DOLOROSO TRAUMATICO" in g for g in grupos))
+        self.assertFalse(any("LUMBAGO" in g for g in grupos))

@@ -1,10 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
+import { FiEdit2 } from 'react-icons/fi'
 
+import AdministrarDiagnosticos, { type Diagnostico } from '@/components/AdministrarDiagnosticos'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { puedeCorregirDatos } from '@/lib/roles'
 import { formatearRut, rutParaApi } from '@/lib/rut'
+import { useAPI } from '@/lib/swr'
 import type { ImportacionResultado } from '@/lib/types'
+import { normalizeSearchText } from '@/lib/utils'
+
+/** Como lo guarda el catálogo: mayúsculas y un solo espacio entre palabras. */
+function normalizarDiagnostico(texto: string) {
+  return texto.split(/\s+/).filter(Boolean).join(' ').toUpperCase()
+}
 
 type EstadoFila = 'ok' | 'incompleta' | 'error'
 type CampoEditable =
@@ -198,6 +209,27 @@ export default function IngresoManual() {
   const [resultado, setResultado] = useState<ImportacionResultado | null>(null)
   const [error, setError] = useState('')
   const [importando, setImportando] = useState(false)
+  const { user } = useAuth()
+  // Administrador y encargados agregan y corrigen el catálogo de diagnósticos.
+  const puedeEditarCatalogo = puedeCorregirDatos(user)
+  const { data: catalogoDiagnosticos, mutate: mutarDiagnosticos } = useAPI<Diagnostico[]>('/diagnosticos/')
+  const [administrarDiagnosticos, setAdministrarDiagnosticos] = useState(false)
+  const listaDiagnosticosId = useId()
+
+  /** Suma al catálogo los diagnósticos de las filas que sí se importaron. */
+  async function registrarEnCatalogo(importadas: FilaManual[]) {
+    if (!puedeEditarCatalogo) return
+    const conocidos = new Set((catalogoDiagnosticos ?? []).map((d) => normalizeSearchText(d.nombre)))
+    const nuevos = Array.from(
+      new Set(
+        importadas.flatMap((fila) => fila.diagnostico.split(/\r?\n/).map(normalizarDiagnostico).filter(Boolean))
+      )
+    ).filter((nombre) => !conocidos.has(normalizeSearchText(nombre)))
+    if (nuevos.length === 0) return
+    // Si alguno falla, los pacientes ya quedaron guardados; el catálogo se completa después.
+    await Promise.allSettled(nuevos.map((nombre) => api.post('/diagnosticos/', { nombre })))
+    void mutarDiagnosticos()
+  }
 
   const resumen = filas.reduce(
     (acc, fila) => {
@@ -256,6 +288,11 @@ export default function IngresoManual() {
         pacientes: payload,
       })
       setResultado(data)
+      if (data.importados > 0) {
+        // El backend numera las filas desde 1; las que tienen error (o están duplicadas) no se crearon.
+        const conError = new Set(data.errores.map((item) => Number(item.fila)))
+        await registrarEnCatalogo(filas.filter((_, index) => !conError.has(index + 1)))
+      }
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'detail' in err) {
         setError((err as { detail: string }).detail)
@@ -345,7 +382,20 @@ export default function IngresoManual() {
                         className="px-3 py-3 text-left text-[11px] font-semibold tracking-[0.2px]"
                         style={{ borderBottom: '0.5px solid #a8d4f0' }}
                       >
-                        {columna.label}
+                        {columna.key === 'diagnostico' && puedeEditarCatalogo ? (
+                          <span className="flex items-center justify-between gap-2">
+                            {columna.label}
+                            <button
+                              type="button"
+                              onClick={() => setAdministrarDiagnosticos(true)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline dark:text-blue-300"
+                            >
+                              <FiEdit2 size={11} /> Administrar
+                            </button>
+                          </span>
+                        ) : (
+                          columna.label
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -365,6 +415,8 @@ export default function IngresoManual() {
                               value={fila[columna.key]}
                               onChange={(e) => actualizarCelda(fila.id, columna.key, e.target.value)}
                               placeholder={columna.placeholder}
+                              // Diagnóstico: sugiere los del catálogo y acepta texto libre.
+                              list={columna.key === 'diagnostico' ? listaDiagnosticosId : undefined}
                               className="w-full rounded-md border bg-white dark:bg-[var(--bg-card)] px-2 py-2 text-sm text-gray-700 dark:text-[color:var(--text-secondary)] outline-none"
                               style={{ borderColor: '#a8d4f0' }}
                             />
@@ -435,6 +487,21 @@ export default function IngresoManual() {
             </div>
           )}
         </div>
+      )}
+
+      <datalist id={listaDiagnosticosId}>
+        {(catalogoDiagnosticos ?? []).map((d) => (
+          <option key={d.id} value={d.nombre} />
+        ))}
+      </datalist>
+
+      {puedeEditarCatalogo && (
+        <AdministrarDiagnosticos
+          abierto={administrarDiagnosticos}
+          onCerrar={() => setAdministrarDiagnosticos(false)}
+          diagnosticos={catalogoDiagnosticos ?? []}
+          onCambio={() => void mutarDiagnosticos()}
+        />
       )}
     </section>
   )
